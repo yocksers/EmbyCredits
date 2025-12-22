@@ -168,19 +168,6 @@ After processing, credits markers appear as chapter points in Emby's video playe
 - ✅ Set **Max Analysis Duration** to `300` seconds
 - ✅ Enable **Lower Thread Priority** to reduce system impact
 
-## 🏗️ Building from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/EmbyCredits.git
-cd EmbyCredits
-
-# Build the plugin
-dotnet build -c Release
-
-# Output will be in: bin/Release/net6.0/EmbyCredits.dll
-```
-
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -201,4 +188,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 If you enjoy this plugin and wish to show your appreciation, you can...
 
 <a href="https://buymeacoffee.com/yockser" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
 
