@@ -1,0 +1,57 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- It is recommended to target net8.0 for modern Emby versions, but net6.0 is acceptable for now. -->
+		<TargetFramework>net6.0</TargetFramework>
+		<AssemblyName>EmbyCredits</AssemblyName>
+		<OutputType>Library</OutputType>
+
+		<LangVersion>10.0</LangVersion>
+		<Nullable>enable</Nullable>
+
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+	<AssemblyVersion>1.0.7.0</AssemblyVersion>
+	<FileVersion>1.0.7.0</FileVersion>
+		<!-- THIS IS THE CRITICAL FIX -->
+		<RootNamespace>EmbyCredits</RootNamespace>
+		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**</DefaultItemExcludes>
+		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+	</PropertyGroup>
+
+	<!-- This section is added for robustness -->
+	<ItemGroup>
+		<None Remove="Configuration\PlaybackReporterConfiguration.html" />
+		<None Remove="Configuration\PlaybackReporterConfiguration.js" />
+		<None Remove="Images\logo.jpg" />
+	</ItemGroup>
+
+	<!-- This section explicitly defines the resource names -->
+	<ItemGroup>
+		<EmbeddedResource Include="Images\logo.jpg" />
+		<EmbeddedResource Include="Configuration\PlaybackReporterConfiguration.html">
+			<LogicalName>EmbyCredits.Configuration.PlaybackReporterConfiguration.html</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\PlaybackReporterConfiguration.js">
+			<LogicalName>EmbyCredits.Configuration.PlaybackReporterConfiguration.js</LogicalName>
+		</EmbeddedResource>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MediaBrowser.Server.Core" Version="4.9.1.90">
+			<PrivateAssets>all</PrivateAssets>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</PackageReference>
+		<PackageReference Include="ServiceStack" Version="8.2.2">
+			<PrivateAssets>all</PrivateAssets>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</PackageReference>
+		<PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="plugin.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+</Project>

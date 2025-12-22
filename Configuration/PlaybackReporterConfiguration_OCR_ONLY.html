@@ -1,0 +1,290 @@
+<div is="emby-scroller" class="view flex flex-direction-column scrollFrameY flex-grow" data-horizontal="false" data-forcescrollbar="true" data-centerfocus="true" data-bindheader="true" data-controller="__plugin/PlaybackReporterConfigurationjs" data-title="Credits Detector - OCR Edition">
+    <style>
+        .help-page h2 { margin-top: 1.5em; margin-bottom: 0.5em; }
+        .help-page h3 { margin-top: 1.5em; margin-bottom: 0.5em; color: #52B54B; }
+        .help-page p { margin-bottom: 0.5em; line-height: 1.5; }
+        .help-page code { background-color: rgba(0,0,0,0.3); padding: 0.2em 0.4em; border-radius: 3px; font-family: monospace; }
+        .help-page pre { background-color: rgba(0,0,0,0.3); padding: 1em; border-radius: 5px; white-space: pre-wrap; word-break: break-all; }
+    </style>
+    <div class="scrollSlider flex-direction-column padded-left padded-left-page padded-right padded-top-page padded-bottom-page">
+        <div class="readOnlyContent auto-center" style="max-width: 1200px;">
+            <h1 class="pageTitle">Credits Detector - OCR Edition</h1>
+
+            <form class="playbackReporterForm">
+                <!-- Docker Setup Guide Section -->
+                <div class="paper-card" style="padding: 1.5em; margin-top: 2em; background: linear-gradient(135deg, rgba(82,181,75,0.15) 0%, rgba(74,159,229,0.15) 100%); border-left: 4px solid #52B54B;">
+                    <h2 style="margin-top: 0; color: #52B54B;">🐳 Docker Setup Guide</h2>
+                    
+                    <div style="margin-bottom: 1.5em;">
+                        <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">What is OCR Detection?</h3>
+                        <p class="fieldDescription">
+                            This plugin uses <strong>Optical Character Recognition (OCR)</strong> to detect credits by reading text from video frames. 
+                            It requires a Tesseract OCR server running in Docker to analyze the video frames.
+                        </p>
+                    </div>
+
+                    <div style="margin-bottom: 1.5em;">
+                        <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">Step 1: Install Docker</h3>
+                        <p class="fieldDescription">If you don't have Docker installed:</p>
+                        <ul class="fieldDescription">
+                            <li><strong>Windows:</strong> Download <a href="https://www.docker.com/products/docker-desktop" target="_blank" style="color: #52B54B;">Docker Desktop for Windows</a></li>
+                            <li><strong>Linux:</strong> Install Docker Engine from your package manager</li>
+                        </ul>
+                    </div>
+
+                    <div style="margin-bottom: 1.5em;">
+                        <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">Step 2: Pull the Tesseract Docker Image</h3>
+                        <p class="fieldDescription">Open a terminal/PowerShell and run:</p>
+                        <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
+                            <code style="color: #52B54B;">docker pull hertzg/tesseract-server:branch-renovate_all-minor-patch</code>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 1.5em;">
+                        <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">Step 3: Start the Tesseract Container</h3>
+                        <p class="fieldDescription"><strong>Option A - Simple Docker Run:</strong></p>
+                        <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
+                            <code style="color: #52B54B;">docker run -d --name tesseract-ocr -p 8884:8884 --restart unless-stopped hertzg/tesseract-server:branch-renovate_all-minor-patch</code>
+                        </div>
+                        
+                        <p class="fieldDescription" style="margin-top: 1em;"><strong>Option B - Docker Compose:</strong></p>
+                        <p class="fieldDescription">Create a file named <code>docker-compose.yml</code>:</p>
+                        <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
+                            <pre style="margin: 0; color: #E0E0E0;"><code>version: '3'
+services:
+  tesseract:
+    image: hertzg/tesseract-server:branch-renovate_all-minor-patch
+    container_name: tesseract-ocr
+    ports:
+      - "8884:8884"
+    restart: unless-stopped</code></pre>
+                        </div>
+                        <p class="fieldDescription">Then run: <code style="color: #52B54B;">docker-compose up -d</code></p>
+                    </div>
+
+                    <div style="margin-bottom: 1.5em;">
+                        <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">Step 4: Verify the Container is Running</h3>
+                        <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
+                            <code style="color: #52B54B;">docker ps</code>
+                        </div>
+                        <p class="fieldDescription">You should see the <code>tesseract-ocr</code> container running on port 8884.</p>
+                    </div>
+
+                    <div style="margin-bottom: 1.5em;">
+                        <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">Step 5: Configure the Plugin</h3>
+                        <ul class="fieldDescription">
+                            <li><strong>OCR Endpoint:</strong> <code style="color: #52B54B;">http://localhost:8884</code> (if on same machine) or <code style="color: #52B54B;">http://HOST_IP:8884</code></li>
+                            <li><strong>Custom Temp Folder Path:</strong> ⚠️ <strong>CRITICAL for Docker users!</strong> Set a custom temp folder path below (e.g., <code>C:\temp\embycredits</code>) to prevent filling up Docker images with temp files</li>
+                        </ul>
+                    </div>
+
+                    <div style="background: rgba(229,165,74,0.2); border-left: 3px solid #E5A54A; padding: 1em; border-radius: 4px; margin-top: 1em;">
+                        <h4 style="color: #E5A54A; margin-top: 0;">⚡ Recommended Settings for Best Performance</h4>
+                        <ul class="fieldDescription" style="margin-bottom: 0;">
+                            <li><strong>Minutes From End:</strong> 2-3 minutes (skips to near the end for faster processing)</li>
+                            <li><strong>Frame Rate:</strong> 0.5 fps (1 frame every 2 seconds - optimal speed/accuracy balance)</li>
+                            <li><strong>Max Analysis Duration:</strong> 600 seconds (10 minutes - prevents runaway processing)</li>
+                            <li><strong>Minimum Matches:</strong> 2 (requires 2 keyword matches within 10 seconds)</li>
+                        </ul>
+                    </div>
+
+                    <div style="background: rgba(74,159,229,0.2); border-left: 3px solid #4A9FE5; padding: 1em; border-radius: 4px; margin-top: 1em;">
+                        <h4 style="color: #4A9FE5; margin-top: 0;">💡 How It Works</h4>
+                        <p class="fieldDescription" style="margin-bottom: 0;">
+                            The plugin extracts video frames using FFmpeg, sends them to the Tesseract OCR server, and searches for credit keywords 
+                            (like "created by", "produced by", "directed by"). When it finds sustained keyword matches, it marks that as the credit start time.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- General Settings Section -->
+                <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
+                    <h2 style="margin-top:0;">General Settings</h2>
+                    
+                    <div class="checkboxContainer">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="chkEnableAutoDetection" data-config-key="EnableAutoDetection" />
+                            <span>Enable Automatic Detection</span>
+                        </label>
+                        <div class="fieldDescription">Automatically process new episodes as they are added to the library</div>
+                    </div>
+
+                    <div class="checkboxContainer">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="chkUseEpisodeComparison" data-config-key="UseEpisodeComparison" />
+                            <span>Use Episode Comparison</span>
+                        </label>
+                        <div class="fieldDescription">Compare multiple episodes from the same season for more accurate detection (processes each episode twice)</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtTempFolderPath">Custom Temp Folder Path</label>
+                        <input is="emby-input" type="text" id="txtTempFolderPath" data-config-key="TempFolderPath" label="Custom Temp Folder Path" />
+                        <div class="fieldDescription"><strong style="color: #E5A54A;">⚠️ CRITICAL FOR DOCKER USERS:</strong> Set this to prevent filling your Docker image! Leave empty only if running Emby natively on host OS. Temp files are automatically cleaned up after processing.</div>
+                    </div>
+
+                    <div class="checkboxContainer" style="margin-top: 1.5em;">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="chkEnableDetailedLogging" data-config-key="EnableDetailedLogging" />
+                            <span>Enable Detailed Logging</span>
+                        </label>
+                        <div class="fieldDescription">Log detailed detection information to server logs (errors are always logged)</div>
+                    </div>
+                </div>
+
+                <!-- OCR Detection Section -->
+                <div class="paper-card" style="padding: 1.5em; margin-top: 2em; border-left: 4px solid #52B54B;">
+                    <h2 style="margin-top: 0; color: #52B54B;">OCR Detection Settings</h2>
+                    <p class="fieldDescription">Configure how the OCR detection works</p>
+
+                    <div class="checkboxContainer">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="chkEnableOcrDetection" data-config-key="EnableOcrDetection" />
+                            <span>Enable OCR Detection</span>
+                        </label>
+                        <div class="fieldDescription">Use external OCR service (Tesseract) to read actual text from video frames. Requires Docker container running (see guide above).</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtOcrEndpoint">OCR API Endpoint</label>
+                        <input is="emby-input" type="text" id="txtOcrEndpoint" data-config-key="OcrEndpoint" label="OCR Endpoint" />
+                        <div class="fieldDescription">URL of your OCR API (e.g., <code>http://localhost:8884</code> or <code>http://192.168.1.100:8884</code>)</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtOcrDetectionKeywords">OCR Keywords (comma-separated)</label>
+                        <input is="emby-input" type="text" id="txtOcrDetectionKeywords" data-config-key="OcrDetectionKeywords" label="OCR Keywords" />
+                        <div class="fieldDescription">Keywords to search for in OCR text. Example: <code>directed by,cast,credits,produced by,executive producer,written by,created by</code></div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtOcrMinutesFromEnd">Minutes From End</label>
+                        <input is="emby-input" type="number" step="0.5" id="txtOcrMinutesFromEnd" data-config-key="OcrMinutesFromEnd" min="0" max="20" label="Minutes From End" />
+                        <div class="fieldDescription"><strong>Recommended: 2-3 minutes.</strong> Start OCR this many minutes before video end (e.g., 2.0 = start at 48:00 in a 50 min video). If 0, uses Search Start % below.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtOcrDetectionSearchStart">Search Start Position (% fallback)</label>
+                        <input is="emby-input" type="number" step="0.05" id="txtOcrDetectionSearchStart" data-config-key="OcrDetectionSearchStart" min="0.5" max="0.9" label="OCR Search Start" />
+                        <div class="fieldDescription">Used only if Minutes From End = 0. Where to start (0.65=65% into video, default: 0.65)</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtOcrFrameRate">Frame Rate (fps)</label>
+                        <input is="emby-input" type="number" step="0.25" id="txtOcrFrameRate" data-config-key="OcrFrameRate" min="0.25" max="3" label="OCR Frame Rate" />
+                        <div class="fieldDescription"><strong>Recommended: 0.5 fps</strong> (1 frame every 2 seconds - fast & sufficient). Credits are static for several seconds, so no need to check every frame. Lower = faster!</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtOcrMinimumMatches">Minimum Keyword Matches</label>
+                        <input is="emby-input" type="number" id="txtOcrMinimumMatches" data-config-key="OcrMinimumMatches" min="1" max="5" label="Min Matches" />
+                        <div class="fieldDescription"><strong>Recommended: 2.</strong> Minimum number of keyword detections within 10 seconds to confirm credits</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtOcrMaxFramesToProcess">Max Frames to Process (0=unlimited)</label>
+                        <input is="emby-input" type="number" id="txtOcrMaxFramesToProcess" data-config-key="OcrMaxFramesToProcess" min="0" max="1000" label="Max Frames" />
+                        <div class="fieldDescription">Limit frames for faster testing (0=no limit for production, default: 0)</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtOcrMaxAnalysisDuration">Max Analysis Duration (seconds)</label>
+                        <input is="emby-input" type="number" id="txtOcrMaxAnalysisDuration" data-config-key="OcrMaxAnalysisDuration" min="0" step="60" label="Max Duration" />
+                        <div class="fieldDescription"><strong>Recommended: 600 seconds (10 minutes).</strong> Maximum seconds of video to analyze. Prevents excessive processing on long videos. Set to 0 for unlimited.</div>
+                    </div>
+                </div>
+
+                <!-- Process TV Shows Section -->
+                <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
+                    <h2 style="margin-top:0;">Process TV Shows</h2>
+                    <div class="fieldDescription" style="margin-bottom: 1em;">Manually trigger credits detection for specific TV shows or all shows in your library.</div>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="selectSeries">Select a TV Show</label>
+                        <select is="emby-select" id="selectSeries" data-config-key="SelectedSeries" label="TV Show">
+                            <option value="">-- All TV Shows --</option>
+                        </select>
+                        <div class="fieldDescription">Choose a specific TV show to process, or leave empty to process all shows</div>
+                    </div>
+
+                    <div style="margin-top: 1.5em;">
+                        <button is="emby-button" type="button" class="raised button-submit" id="btnProcessSeries">
+                            <span>Process Selected Show</span>
+                        </button>
+                        <button is="emby-button" type="button" class="raised" id="btnQueueAll" style="margin-left: 1em;">
+                            <span>Queue All Shows</span>
+                        </button>
+                    </div>
+
+                    <div id="progressContainer" style="margin-top: 2em; display: none;">
+                        <div class="fieldDescription" style="margin-bottom: 0.5em;">
+                            <strong>Processing: <span id="currentItem">-</span></strong>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.1); border-radius: 4px; height: 24px; overflow: hidden; position: relative; margin-bottom: 0.5em;">
+                            <div id="progressBar" style="background: linear-gradient(90deg, #52B54B 0%, #6FC774 100%); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center; justify-content: center;">
+                                <span id="percentText" style="color: white; font-weight: bold; font-size: 0.9em; text-shadow: 0 1px 2px rgba(0,0,0,0.5);"></span>
+                            </div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.05); border-radius: 4px; height: 8px; overflow: hidden; position: relative; margin-bottom: 0.5em;">
+                            <div id="itemProgressBar" style="background: linear-gradient(90deg, #4A9FE5 0%, #5AAEF5 100%); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.9em; color: rgba(255,255,255,0.7);">
+                            <span>Episodes: <span id="progressCount">0/0</span></span>
+                            <span>Success: <span id="successCount">0</span> | Failed: <span id="failedCount">0</span></span>
+                            <span>ETA: <span id="etaText">-</span></span>
+                        </div>
+                        <div id="failureDetails" style="margin-top: 1.5em; display: none;">
+                            <h3 style="color: #E5A54A; margin-bottom: 0.5em;">Failed Episodes</h3>
+                            <div id="failureList" style="background: rgba(255,255,255,0.05); border-radius: 4px; padding: 1em; max-height: 300px; overflow-y: auto;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- View Chapter Markers Section -->
+                <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
+                    <h2 style="margin-top:0;">View Chapter Markers</h2>
+                    <div class="fieldDescription" style="margin-bottom: 1em;">View existing chapter markers for episodes in a TV show to verify detection results.</div>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="selectSeriesForMarkers">Select a TV Show</label>
+                        <select is="emby-select" id="selectSeriesForMarkers" label="TV Show">
+                            <option value="">-- Select a TV Show --</option>
+                        </select>
+                        <div class="fieldDescription">Choose a TV show to view its episode markers</div>
+                    </div>
+
+                    <div style="margin-top: 1.5em;">
+                        <button is="emby-button" type="button" class="raised button-submit" id="btnViewMarkers">
+                            <span>View Markers</span>
+                        </button>
+                    </div>
+
+                    <div id="markersDisplay" style="margin-top: 2em; display: none;">
+                        <h3 id="markersSeriesName" style="color: #52B54B;"></h3>
+                        <div id="markersContent" style="max-height: 500px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+
+                <!-- API Endpoints Section -->
+                <div class="paper-card help-page" style="padding: 1.5em 2em; margin-top: 2em;">
+                    <h2 style="margin-top: 0;">API Endpoints</h2>
+                    <p>You can manually trigger credits detection via the API:</p>
+                    <h3>POST /CreditsDetector/TriggerDetection</h3>
+                    <p>Process all episodes in the library (queued sequentially)</p>
+                    <h3>POST /CreditsDetector/ProcessSeries</h3>
+                    <p>Process all episodes in a specific TV series by SeriesId</p>
+                    <h3>POST /CreditsDetector/ProcessEpisode</h3>
+                    <p>Process a specific episode by ItemId</p>
+                    <h3>GET /CreditsDetector/GetAllSeries</h3>
+                    <p>Get a list of all TV series in the library</p>
+                </div>
+
+                <div style="margin-top: 2em;">
+                    <button is="emby-button" type="submit" class="raised button-submit block">
+                        <span>Save</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
