@@ -181,26 +181,6 @@ dotnet build -c Release
 # Output will be in: bin/Release/net6.0/EmbyCredits.dll
 ```
 
-## 📝 Technical Details
-
-- **Language**: C# (.NET 6.0)
-- **OCR Engine**: Tesseract (via Docker API)
-- **Video Processing**: FFmpeg
-- **Detection Method**: Keyword-based OCR with cross-episode correlation
-- **Chapter Marker Type**: `CreditsStart` (native Emby type)
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### Development Setup
-
-1. Clone the repository
-2. Open in Visual Studio or VS Code with C# extensions
-3. Restore NuGet packages
-4. Build and copy DLL to Emby plugins folder
-5. Restart Emby Server for testing
-
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -218,4 +198,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**⭐ If this plugin helps you, please consider starring the repository!**
+If you enjoy this plugin and wish to show your appreciation, you can...
+
+<a href="https://buymeacoffee.com/yockser" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
