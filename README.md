@@ -1,7 +1,5 @@
 # EmbyCredits - Automatic Credits Detection Plugin for Emby
 
-![Version](https://img.shields.io/badge/version-1.0.7-blue)
-![.NET](https://img.shields.io/badge/.NET-6.0-purple)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Automatically detect and mark end credits in TV show episodes using OCR (Optical Character Recognition). Never miss the start of the next episode again!
@@ -188,5 +186,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 If you enjoy this plugin and wish to show your appreciation, you can...
 
 <a href="https://buymeacoffee.com/yockser" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
 
 
