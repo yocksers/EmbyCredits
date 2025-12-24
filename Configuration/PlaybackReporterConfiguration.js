@@ -606,7 +606,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 view.querySelector('#txtTempFolderPath').value = config.TempFolderPath || '';
 
                 view.querySelector('#chkEnableOcrDetection').checked = config.EnableOcrDetection || false;
-                view.querySelector('#txtOcrEndpoint').value = config.OcrEndpoint || 'http:
+                view.querySelector('#txtOcrEndpoint').value = config.OcrEndpoint || 'http://localhost:8884';
                 view.querySelector('#txtOcrDetectionKeywords').value = config.OcrDetectionKeywords || 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine';
                 view.querySelector('#txtOcrMinutesFromEnd').value = config.OcrMinutesFromEnd || 0;
                 view.querySelector('#txtOcrDetectionSearchStart').value = config.OcrDetectionSearchStart || 0.65;
@@ -655,7 +655,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             this.config.TempFolderPath = view.querySelector('#txtTempFolderPath').value || '';
 
             this.config.EnableOcrDetection = view.querySelector('#chkEnableOcrDetection').checked;
-            this.config.OcrEndpoint = view.querySelector('#txtOcrEndpoint').value || 'http:
+            this.config.OcrEndpoint = view.querySelector('#txtOcrEndpoint').value || 'http://localhost:8884';
             this.config.OcrDetectionKeywords = view.querySelector('#txtOcrDetectionKeywords').value || 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine';
             this.config.OcrMinutesFromEnd = parseFloat(view.querySelector('#txtOcrMinutesFromEnd').value) || 0;
             this.config.OcrDetectionSearchStart = parseFloat(view.querySelector('#txtOcrDetectionSearchStart').value) || 0.65;
