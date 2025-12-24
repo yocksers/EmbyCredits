@@ -72,19 +72,38 @@ namespace EmbyCredits
             CreditsDetectionService.SetItemRepository(_itemRepository);
             CreditsDetectionService.SetFfmpegManager(_ffmpegManager);
             Services.Utilities.FFmpegHelper.SetCustomTempPath(Configuration.TempFolderPath);
-            
+
+            var cleanedCount = Services.Utilities.FFmpegHelper.CleanupOrphanedTempDirectories();
+            if (cleanedCount > 0)
+            {
+                _logger.Info($"Cleaned up {cleanedCount} orphaned OCR temp directories from previous runs");
+            }
+
             if (string.IsNullOrWhiteSpace(Configuration.TempFolderPath) && 
                 System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux))
             {
                 _logger.Warn("⚠️ RUNNING ON LINUX WITHOUT CUSTOM TEMP FOLDER! If using Docker/Unraid, your image may fill up with temp files. Configure 'Custom Temp Folder Path' in plugin settings to point to a mapped volume (e.g., /mnt/user/appdata/emby-temp or /tmp).");
             }
-            
+
             CreditsDetectionService.Start(_logger, _appPaths, Configuration);
         }
 
         public void Dispose()
         {
             CreditsDetectionService.Stop();
+
+            try
+            {
+                var cleanedCount = Services.Utilities.FFmpegHelper.CleanupOrphanedTempDirectories();
+                if (cleanedCount > 0)
+                {
+                    _logger.Info($"Final cleanup: removed {cleanedCount} temp directories");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"Error during final temp directory cleanup: {ex.Message}");
+            }
         }
 
         public Stream GetThumbImage()

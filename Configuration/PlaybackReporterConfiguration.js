@@ -24,7 +24,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             view.querySelector('#btnProcessSeries').addEventListener('click', () => {
                 const seriesId = view.querySelector('#selectSeries').value;
                 const episodeId = view.querySelector('#selectEpisode').value;
-                
+
                 if (episodeId) {
                     loading.show();
                     ApiClient.ajax({
@@ -91,14 +91,14 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             view.querySelector('#selectSeries').addEventListener('change', (e) => {
                 const seriesId = e.target.value;
                 const episodeSelect = view.querySelector('#selectEpisode');
-                
+
                 episodeSelect.innerHTML = '<option value="">-- Loading Episodes... --</option>';
-                
+
                 if (!seriesId) {
                     episodeSelect.innerHTML = '<option value="">-- Select Show First --</option>';
                     return;
                 }
-                
+
                 loading.show();
                 ApiClient.getJSON(ApiClient.getUrl('Items', {
                     ParentId: seriesId,
@@ -109,9 +109,9 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     SortOrder: 'Ascending'
                 })).then(result => {
                     loading.hide();
-                    
+
                     episodeSelect.innerHTML = '<option value="">-- All Episodes --</option>';
-                    
+
                     result.Items.forEach(episode => {
                         const option = document.createElement('option');
                         option.value = episode.Id;
@@ -164,7 +164,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             view.querySelector('#btnDryRun').addEventListener('click', () => {
                 const seriesId = view.querySelector('#selectSeries').value;
                 const episodeId = view.querySelector('#selectEpisode').value;
-                
+
                 if (episodeId) {
                     loading.show();
                     ApiClient.ajax({
@@ -209,7 +209,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             view.querySelector('#btnDryRun').addEventListener('click', () => {
                 const seriesId = view.querySelector('#selectSeries').value;
                 const episodeId = view.querySelector('#selectEpisode').value;
-                
+
                 if (episodeId) {
                     loading.show();
                     ApiClient.ajax({
@@ -254,13 +254,12 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             view.querySelector('#btnTestOcrConnection').addEventListener('click', () => {
                 const ocrEndpoint = view.querySelector('#txtOcrEndpoint').value;
                 const successIndicator = view.querySelector('#ocrTestSuccess');
-                
+
                 if (!ocrEndpoint) {
                     toast({ type: 'error', text: 'Please enter an OCR endpoint URL first.' });
                     return;
                 }
 
-                // Hide success indicator while testing
                 if (successIndicator) {
                     successIndicator.style.display = 'none';
                 }
@@ -277,13 +276,13 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     console.log('OCR test response:', response);
                     if (response && response.Success) {
                         toast(response.Message || 'Connection successful!');
-                        // Show green checkmark
+
                         if (successIndicator) {
                             successIndicator.style.display = 'inline';
                         }
                     } else {
                         toast({ type: 'error', text: response && response.Message ? response.Message : 'Connection failed' });
-                        // Hide checkmark on failure
+
                         if (successIndicator) {
                             successIndicator.style.display = 'none';
                         }
@@ -292,7 +291,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     loading.hide();
                     console.error('Error testing OCR connection:', error);
                     toast({ type: 'error', text: 'Failed to test connection. Check console for details.' });
-                    // Hide checkmark on error
+
                     if (successIndicator) {
                         successIndicator.style.display = 'none';
                     }
@@ -308,13 +307,13 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             const markersContent = view.querySelector('#markersContent');
 
             markersSeriesName.textContent = `${response.SeriesName} - ${response.TotalEpisodes} Episodes`;
-            
+
             let html = '<div style="display: flex; flex-direction: column; gap: 1em;">';
-            
+
             response.Episodes.forEach(ep => {
                 const hasMarker = ep.HasCreditsMarker;
                 const markerColor = hasMarker ? '#52B54B' : '#E5A00D';
-                
+
                 html += `<div style="background: rgba(255,255,255,0.05); padding: 1em; border-radius: 4px; border-left: 3px solid ${markerColor};">`;
                 html += `<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5em;">`;
                 html += `<div>`;
@@ -329,7 +328,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 }
                 html += `</div>`;
                 html += `</div>`;
-                
+
                 if (ep.Markers && ep.Markers.length > 0) {
                     html += `<div style="margin-top: 0.75em; padding-top: 0.75em; border-top: 1px solid rgba(255,255,255,0.1);">`;
                     html += `<strong style="color: #52B54B;">Credits Markers:</strong><br>`;
@@ -344,7 +343,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     });
                     html += `</div>`;
                 }
-                
+
                 if (ep.AllChapters && ep.AllChapters.length > 1) {
                     html += `<details style="margin-top: 0.75em; cursor: pointer;">`;
                     html += `<summary style="color: rgba(255,255,255,0.7); font-size: 0.9em;">All Chapters (${ep.AllChapters.length})</summary>`;
@@ -361,12 +360,12 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     html += `</div>`;
                     html += `</details>`;
                 }
-                
+
                 html += `</div>`;
             });
-            
+
             html += '</div>';
-            
+
             markersContent.innerHTML = html;
             markersDisplay.style.display = 'block';
         }
@@ -377,7 +376,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 clearInterval(this.progressInterval);
             }
 
-            // Show the cancel button when starting progress polling
             const btnCancel = view.querySelector('#btnCancelProcessing');
             if (btnCancel) btnCancel.style.display = 'inline-block';
 
@@ -428,7 +426,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             const failureDetails = view.querySelector('#failureDetails');
             const failureList = view.querySelector('#failureList');
 
-            // Add null checks to prevent errors when elements don't exist
             if (!progressBar || !percentText) return;
 
             const percent = progress.PercentComplete || 0;
@@ -457,7 +454,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             console.log('updateProgressUI - FailureReasons:', progress.FailureReasons);
             console.log('updateProgressUI - SuccessDetails:', progress.SuccessDetails);
 
-            // Display failure reasons if any episodes failed
             if (progress.FailureReasons && Object.keys(progress.FailureReasons).length > 0) {
                 console.log('Showing failure details');
                 failureDetails.style.display = 'block';
@@ -474,7 +470,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 failureDetails.style.display = 'none';
             }
 
-            // Display success details if any episodes succeeded
             const successDetails = view.querySelector('#successDetails');
             const successList = view.querySelector('#successList');
             if (progress.SuccessDetails && Object.keys(progress.SuccessDetails).length > 0) {
@@ -501,10 +496,8 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             const successDetails = view.querySelector('#successDetails');
             const successList = view.querySelector('#successList');
 
-            // Add null checks
             if (!failureDetails || !successDetails) return;
 
-            // Display failure reasons if any episodes failed
             if (progress.FailureReasons && Object.keys(progress.FailureReasons).length > 0) {
                 failureDetails.style.display = 'block';
                 if (failureList) failureList.innerHTML = '';
@@ -519,7 +512,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 failureDetails.style.display = 'none';
             }
 
-            // Display success details if any episodes succeeded
             if (progress.SuccessDetails && Object.keys(progress.SuccessDetails).length > 0) {
                 successDetails.style.display = 'block';
                 if (successList) successList.innerHTML = '';
@@ -541,7 +533,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 if (response.Success && response.Series) {
                     const selectSeries = view.querySelector('#selectSeries');
                     const selectSeriesForMarkers = view.querySelector('#selectSeriesForMarkers');
-                    
+
                     selectSeries.innerHTML = '<option value="">-- Select a TV Show --</option>';
                     selectSeriesForMarkers.innerHTML = '<option value="">-- Select a TV Show --</option>';
 
@@ -566,7 +558,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             ApiClient.getJSON(ApiClient.getUrl('Library/MediaFolders')).then(response => {
                 const autoDetectionContainer = view.querySelector('#autoDetectionLibraries');
                 const scheduledTaskContainer = view.querySelector('#scheduledTaskLibraries');
-                
+
                 autoDetectionContainer.innerHTML = '';
                 scheduledTaskContainer.innerHTML = '';
 
@@ -574,7 +566,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 const scheduledTaskIds = config.ScheduledTaskLibraryIds || [];
 
                 response.Items.forEach(library => {
-                    // Auto Detection checkbox
+
                     const autoDiv = document.createElement('div');
                     autoDiv.className = 'checkboxContainer';
                     autoDiv.innerHTML = `
@@ -585,7 +577,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     `;
                     autoDetectionContainer.appendChild(autoDiv);
 
-                    // Scheduled Task checkbox
                     const schedDiv = document.createElement('div');
                     schedDiv.className = 'checkboxContainer';
                     schedDiv.innerHTML = `
@@ -606,19 +597,16 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             getPluginConfiguration().then(config => {
                 this.config = config;
 
-                // Essential Settings
                 view.querySelector('#chkEnableAutoDetection').checked = config.EnableAutoDetection !== false;
                 view.querySelector('#chkUseEpisodeComparison').checked = config.UseEpisodeComparison !== false;
                 view.querySelector('#chkEnableFailedEpisodeFallback').checked = config.EnableFailedEpisodeFallback || false;
                 view.querySelector('#txtMinimumSuccessRateForFallback').value = config.MinimumSuccessRateForFallback || 0.5;
                 view.querySelector('#chkEnableDetailedLogging').checked = config.EnableDetailedLogging || false;
 
-                // Temp Folder Path
                 view.querySelector('#txtTempFolderPath').value = config.TempFolderPath || '';
 
-                // OCR Detection Settings
                 view.querySelector('#chkEnableOcrDetection').checked = config.EnableOcrDetection || false;
-                view.querySelector('#txtOcrEndpoint').value = config.OcrEndpoint || 'http://localhost:8884';
+                view.querySelector('#txtOcrEndpoint').value = config.OcrEndpoint || 'http:
                 view.querySelector('#txtOcrDetectionKeywords').value = config.OcrDetectionKeywords || 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine';
                 view.querySelector('#txtOcrMinutesFromEnd').value = config.OcrMinutesFromEnd || 0;
                 view.querySelector('#txtOcrDetectionSearchStart').value = config.OcrDetectionSearchStart || 0.65;
@@ -633,19 +621,17 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 this.loadSeriesList(view);
                 this.loadLibraries(view, config);
 
-                // Check if processing is currently running and resume progress display
-                // Also load success/failure data even if processing is complete
                 ApiClient.getJSON(ApiClient.getUrl('CreditsDetector/GetProgress')).then(progress => {
                     console.log('Progress data loaded:', progress);
                     console.log('FailureReasons:', progress.FailureReasons);
                     console.log('SuccessDetails:', progress.SuccessDetails);
-                    
+
                     if (progress.IsRunning) {
                         view.querySelector('#progressContainer').style.display = 'block';
                         this.updateProgressUI(view, progress);
                         this.startProgressPolling(view);
                     } else {
-                        // Processing not running, but still show success/failure logs
+
                         console.log('Calling displayDetectionResults');
                         this.displayDetectionResults(view, progress);
                     }
@@ -660,19 +646,16 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
         saveData(view) {
             loading.show();
 
-            // Essential Settings
             this.config.EnableAutoDetection = view.querySelector('#chkEnableAutoDetection').checked;
             this.config.UseEpisodeComparison = view.querySelector('#chkUseEpisodeComparison').checked;
             this.config.EnableFailedEpisodeFallback = view.querySelector('#chkEnableFailedEpisodeFallback').checked;
             this.config.MinimumSuccessRateForFallback = parseFloat(view.querySelector('#txtMinimumSuccessRateForFallback').value) || 0.5;
             this.config.EnableDetailedLogging = view.querySelector('#chkEnableDetailedLogging').checked;
-            
-            // Temp Folder Path
+
             this.config.TempFolderPath = view.querySelector('#txtTempFolderPath').value || '';
 
-            // OCR Detection Settings
             this.config.EnableOcrDetection = view.querySelector('#chkEnableOcrDetection').checked;
-            this.config.OcrEndpoint = view.querySelector('#txtOcrEndpoint').value || 'http://localhost:8884';
+            this.config.OcrEndpoint = view.querySelector('#txtOcrEndpoint').value || 'http:
             this.config.OcrDetectionKeywords = view.querySelector('#txtOcrDetectionKeywords').value || 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine';
             this.config.OcrMinutesFromEnd = parseFloat(view.querySelector('#txtOcrMinutesFromEnd').value) || 0;
             this.config.OcrDetectionSearchStart = parseFloat(view.querySelector('#txtOcrDetectionSearchStart').value) || 0.65;
@@ -684,7 +667,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             this.config.OcrImageFormat = view.querySelector('#selectOcrImageFormat').value || 'png';
             this.config.OcrJpegQuality = parseInt(view.querySelector('#txtOcrJpegQuality').value) || 92;
 
-            // Library selections
             const autoDetectionLibraries = [];
             view.querySelectorAll('.chkAutoDetectionLibrary').forEach(checkbox => {
                 if (checkbox.checked) {

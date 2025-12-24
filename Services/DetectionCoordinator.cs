@@ -9,10 +9,7 @@ using EmbyCredits.Services.DetectionMethods;
 
 namespace EmbyCredits.Services
 {
-    /// <summary>
-    /// Coordinates all detection methods and analyzes results using correlation scoring
-    /// or priority-based selection.
-    /// </summary>
+
     public class DetectionCoordinator
     {
         private readonly ILogger _logger;
@@ -36,10 +33,6 @@ namespace EmbyCredits.Services
             _detectionMethods.Add(new OcrDetection(_logger, _configuration));
         }
 
-        /// <summary>
-        /// Run all detection methods and return the best credits start time.
-        /// Returns the timestamp (0 if not found) and a failure reason if applicable.
-        /// </summary>
         public async Task<(double timestamp, string failureReason)> DetectCredits(string videoPath, double duration, string episodeId)
         {
             var detectionResults = await RunAllDetectionMethods(videoPath, duration, episodeId);
@@ -53,9 +46,6 @@ namespace EmbyCredits.Services
             return (SelectByStrategy(detectionResults), string.Empty);
         }
 
-        /// <summary>
-        /// Run detection with cross-episode comparison support.
-        /// </summary>
         public async Task<(double timestamp, string failureReason)> DetectCreditsWithComparison(
             Episode episode,
             double duration,
@@ -65,9 +55,6 @@ namespace EmbyCredits.Services
             return (SelectByStrategy(crossEpisodeResults), string.Empty);
         }
 
-        /// <summary>
-        /// Pre-compute detections for batch processing.
-        /// </summary>
         public async Task PreComputeBatchDetections(List<Episode> episodes, Func<double, Task> progressCallback)
         {
             _batchDetectionCache.Clear();
@@ -91,16 +78,13 @@ namespace EmbyCredits.Services
 
                 var detectionResults = await RunAllDetectionMethods(episode.Path, duration, episodeId);
                 _batchDetectionCache[episodeId] = detectionResults.Select(r => (r.method, r.timestamp)).ToList();
-                
+
                 _logger.Info($"  Cached {detectionResults.Count} detection results for {episode.Name}");
             }
 
             _logger.Info($"Batch pre-computation complete: {_batchDetectionCache.Count} episodes");
         }
 
-        /// <summary>
-        /// Analyze cached batch detection results with cross-episode comparison.
-        /// </summary>
         public double AnalyzeBatchDetectionResults(string episodeId, List<string> comparisonEpisodeIds)
         {
             if (!_batchDetectionCache.TryGetValue(episodeId, out var currentResults))
@@ -112,7 +96,7 @@ namespace EmbyCredits.Services
             if (currentResults.Count == 0)
             {
                 _logger.Info("No detections found for episode");
-                
+
                 if (_configuration.EnableFailedEpisodeFallback)
                 {
                     _logger.Info("Attempting fallback for failed episode in batch mode...");
@@ -123,7 +107,7 @@ namespace EmbyCredits.Services
                         return fallbackTimestamp;
                     }
                 }
-                
+
                 return 0;
             }
 
@@ -149,7 +133,7 @@ namespace EmbyCredits.Services
                                 {
                                     agreementMethods.Add(otherMethod);
                                 }
-                                break; // Count each episode only once
+                                break; 
                             }
                         }
                     }
@@ -183,7 +167,7 @@ namespace EmbyCredits.Services
         private double CalculateFallbackTimestampFromCache(string currentEpisodeId, List<string> comparisonEpisodeIds)
         {
             var successfulTimestamps = new List<double>();
-            
+
             foreach (var episodeId in comparisonEpisodeIds)
             {
                 if (_batchDetectionCache.TryGetValue(episodeId, out var results) && results.Count > 0)
@@ -192,27 +176,27 @@ namespace EmbyCredits.Services
                     successfulTimestamps.Add(avgTimestamp);
                 }
             }
-            
+
             if (successfulTimestamps.Count == 0)
             {
                 _logger.Info("No successful episodes in cache to calculate fallback from");
                 return 0;
             }
-            
+
             var successRate = (double)successfulTimestamps.Count / comparisonEpisodeIds.Count;
             _logger.Info($"Cache success rate: {successRate:P0} ({successfulTimestamps.Count}/{comparisonEpisodeIds.Count} episodes)");
-            
+
             if (successRate < _configuration.MinimumSuccessRateForFallback)
             {
                 _logger.Info($"Success rate {successRate:P0} is below minimum threshold {_configuration.MinimumSuccessRateForFallback:P0}");
                 return 0;
             }
-            
+
             successfulTimestamps.Sort();
             var medianTimestamp = successfulTimestamps.Count % 2 == 0
                 ? (successfulTimestamps[successfulTimestamps.Count / 2 - 1] + successfulTimestamps[successfulTimestamps.Count / 2]) / 2
                 : successfulTimestamps[successfulTimestamps.Count / 2];
-            
+
             _logger.Info($"Calculated fallback timestamp from cache (median of {successfulTimestamps.Count} episodes): {FormatTime(medianTimestamp)}");
             return medianTimestamp;
         }
@@ -220,39 +204,39 @@ namespace EmbyCredits.Services
         private double CalculateFallbackTimestamp(Dictionary<string, List<(string method, double timestamp)>> episodeDetectionResults, string currentEpisodeId, int totalComparisonEpisodes)
         {
             var successfulTimestamps = new List<double>();
-            
+
             foreach (var kvp in episodeDetectionResults)
             {
                 if (kvp.Key == currentEpisodeId)
                     continue;
-                    
+
                 if (kvp.Value.Count > 0)
                 {
                     var avgTimestamp = kvp.Value.Average(r => r.timestamp);
                     successfulTimestamps.Add(avgTimestamp);
                 }
             }
-            
+
             if (successfulTimestamps.Count == 0)
             {
                 _logger.Info("No successful episodes to calculate fallback from");
                 return 0;
             }
-            
+
             var successRate = (double)successfulTimestamps.Count / totalComparisonEpisodes;
             _logger.Info($"Success rate: {successRate:P0} ({successfulTimestamps.Count}/{totalComparisonEpisodes} episodes)");
-            
+
             if (successRate < _configuration.MinimumSuccessRateForFallback)
             {
                 _logger.Info($"Success rate {successRate:P0} is below minimum threshold {_configuration.MinimumSuccessRateForFallback:P0}");
                 return 0;
             }
-            
+
             successfulTimestamps.Sort();
             var medianTimestamp = successfulTimestamps.Count % 2 == 0
                 ? (successfulTimestamps[successfulTimestamps.Count / 2 - 1] + successfulTimestamps[successfulTimestamps.Count / 2]) / 2
                 : successfulTimestamps[successfulTimestamps.Count / 2];
-            
+
             _logger.Info($"Calculated fallback timestamp (median of {successfulTimestamps.Count} successful episodes): {FormatTime(medianTimestamp)}");
             return medianTimestamp;
         }
@@ -314,11 +298,11 @@ namespace EmbyCredits.Services
             foreach (var compEpisode in comparisonEpisodes)
             {
                 episodeDetectionResults[compEpisode.Id.ToString()] = new List<(string method, double timestamp)>();
-                
+
                 var compDuration = compEpisode.RunTimeTicks.HasValue 
                     ? compEpisode.RunTimeTicks.Value / TimeSpan.TicksPerSecond 
                     : 0;
-                    
+
                 if (compDuration <= 0) continue;
 
                 if (Plugin.Instance != null)
@@ -335,7 +319,7 @@ namespace EmbyCredits.Services
             _logger.Info("Analyzing cross-episode detection patterns");
 
             var currentEpisodeResults = episodeDetectionResults[episode.Id.ToString()];
-            
+
             if (currentEpisodeResults.Count == 0 && _configuration.EnableFailedEpisodeFallback)
             {
                 _logger.Info("Current episode failed detection. Checking if fallback is possible...");
@@ -353,7 +337,7 @@ namespace EmbyCredits.Services
                     return results;
                 }
             }
-            
+
             foreach (var (method, timestamp) in currentEpisodeResults)
             {
                 int agreementCount = 0;
@@ -401,11 +385,11 @@ namespace EmbyCredits.Services
 
             var correlationWindow = _configuration.CorrelationWindowSeconds;
             var groupedResults = new List<(double timestamp, double combinedScore, List<string> methods)>();
-            
+
             foreach (var result in detectionResults)
             {
                 var existingGroup = groupedResults.FirstOrDefault(g => Math.Abs(g.timestamp - result.timestamp) <= correlationWindow);
-                
+
                 if (existingGroup.timestamp > 0)
                 {
                     var index = groupedResults.IndexOf(existingGroup);
@@ -434,24 +418,24 @@ namespace EmbyCredits.Services
                 return 0;
 
             var strategy = _configuration.DetectionResultSelection ?? "CorrelationScoring";
-            
+
             switch (strategy)
             {
                 case "Earliest":
                     var earliest = detectionResults.OrderBy(r => r.timestamp).First();
                     _logger.Info($"Earliest mode selected {earliest.method} at {FormatTime(earliest.timestamp)}");
                     return earliest.timestamp;
-                    
+
                 case "Latest":
                     var latest = detectionResults.OrderByDescending(r => r.timestamp).First();
                     _logger.Info($"Latest mode selected {latest.method} at {FormatTime(latest.timestamp)}");
                     return latest.timestamp;
-                    
+
                 case "Average":
                     var average = detectionResults.Average(r => r.timestamp);
                     _logger.Info($"Average mode calculated {FormatTime(average)} from {detectionResults.Count} detections");
                     return average;
-                    
+
                 case "Median":
                     var sorted = detectionResults.OrderBy(r => r.timestamp).ToList();
                     var median = sorted.Count % 2 == 0
@@ -459,12 +443,12 @@ namespace EmbyCredits.Services
                         : sorted[sorted.Count / 2].timestamp;
                     _logger.Info($"Median mode calculated {FormatTime(median)} from {detectionResults.Count} detections");
                     return median;
-                    
+
                 case "Priority":
                     var byPriority = detectionResults.OrderBy(r => r.priority).First();
                     _logger.Info($"Priority mode selected {byPriority.method} at {FormatTime(byPriority.timestamp)} (priority: {byPriority.priority})");
                     return byPriority.timestamp;
-                    
+
                 case "CorrelationScoring":
                 default:
                     return AnalyzeWithCorrelationScoring(detectionResults);

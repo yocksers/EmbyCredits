@@ -4,9 +4,7 @@ using System.IO;
 
 namespace EmbyCredits.Services.Utilities
 {
-    /// <summary>
-    /// Helper class for FFmpeg-related operations
-    /// </summary>
+
     public static class FFmpegHelper
     {
         private static string? _customTempPath;
@@ -57,6 +55,39 @@ namespace EmbyCredits.Services.Utilities
             }
 
             return config.ProbePath;
+        }
+
+        public static int CleanupOrphanedTempDirectories()
+        {
+            var deletedCount = 0;
+            try
+            {
+                var tempPath = GetTempPath();
+                var directories = Directory.GetDirectories(tempPath, "ocr_frames_*");
+
+                foreach (var dir in directories)
+                {
+                    try
+                    {
+                        var dirInfo = new DirectoryInfo(dir);
+
+                        if (dirInfo.Exists && (DateTime.Now - dirInfo.CreationTime).TotalHours > 1)
+                        {
+                            Directory.Delete(dir, true);
+                            deletedCount++;
+                        }
+                    }
+                    catch
+                    {
+
+                    }
+                }
+            }
+            catch
+            {
+
+            }
+            return deletedCount;
         }
     }
 }

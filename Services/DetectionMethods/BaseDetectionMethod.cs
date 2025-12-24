@@ -4,9 +4,7 @@ using System.Threading.Tasks;
 
 namespace EmbyCredits.Services.DetectionMethods
 {
-    /// <summary>
-    /// Base class for all detection methods with common functionality
-    /// </summary>
+
     public abstract class BaseDetectionMethod : IDetectionMethod
     {
         protected readonly ILogger Logger;

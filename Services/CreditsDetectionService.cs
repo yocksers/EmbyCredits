@@ -33,13 +33,11 @@ namespace EmbyCredits.Services
         private static ConcurrentQueue<Episode> _processingQueue = new ConcurrentQueue<Episode>();
         private static SemaphoreSlim _processingSemaphore = new SemaphoreSlim(1, 1);
         private static bool _isProcessing = false;
-        private static string? _cacheDirectory;
-        private static string? _audioCacheDirectory;
         private static bool _cancellationRequested = false;
         private static bool _isDryRun = false;
-        
+
         private static DetectionCoordinator? _detectionCoordinator;
-        
+
         private static readonly ConcurrentDictionary<string, List<(string method, double timestamp)>> _batchDetectionCache = new ConcurrentDictionary<string, List<(string method, double timestamp)>>();
         private static bool _isBatchMode = false;
 
@@ -76,23 +74,9 @@ namespace EmbyCredits.Services
             _configuration = configuration;
             _isRunning = true;
 
-            _cacheDirectory = Path.Combine(_appPaths.CachePath, "EmbyCredits", "Fingerprints");
-            if (!Directory.Exists(_cacheDirectory))
-            {
-                Directory.CreateDirectory(_cacheDirectory);
-            }
-
-            _audioCacheDirectory = Path.Combine(_appPaths.CachePath, "EmbyCredits", "AudioFingerprints");
-            if (!Directory.Exists(_audioCacheDirectory))
-            {
-                Directory.CreateDirectory(_audioCacheDirectory);
-            }
-
             _detectionCoordinator = new DetectionCoordinator(_logger, _configuration);
 
             _logger.Info("Credits Detection Service started");
-            LogInfo($"Fingerprint cache directory: {_cacheDirectory}");
-            LogInfo($"Audio fingerprint cache directory: {_audioCacheDirectory}");
 
             if (_libraryManager != null && configuration.EnableAutoDetection)
             {
@@ -111,7 +95,7 @@ namespace EmbyCredits.Services
             LogInfo($"Text Detection Threshold: {configuration.TextDetectionThreshold}");
             LogInfo($"Text Detection MinLines: {configuration.TextDetectionMinLines}");
             LogInfo($"Text Detection SearchStart: {configuration.TextDetectionSearchStart}");
-            
+
             if (_logger != null)
             {
                 _detectionCoordinator = new DetectionCoordinator(_logger, configuration);
@@ -122,48 +106,9 @@ namespace EmbyCredits.Services
         {
             try
             {
-                int deletedCount = 0;
-
-                if (!string.IsNullOrEmpty(_cacheDirectory) && Directory.Exists(_cacheDirectory))
-                {
-                    var files = Directory.GetFiles(_cacheDirectory, "*.json");
-                    foreach (var file in files)
-                    {
-                        try
-                        {
-                            File.Delete(file);
-                            deletedCount++;
-                        }
-                        catch (Exception ex)
-                        {
-                            LogWarn($"Failed to delete cache file {file}: {ex.Message}");
-                        }
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(_audioCacheDirectory) && Directory.Exists(_audioCacheDirectory))
-                {
-                    var files = Directory.GetFiles(_audioCacheDirectory, "*.json");
-                    foreach (var file in files)
-                    {
-                        try
-                        {
-                            File.Delete(file);
-                            deletedCount++;
-                        }
-                        catch (Exception ex)
-                        {
-                            LogWarn($"Failed to delete audio cache file {file}: {ex.Message}");
-                        }
-                    }
-                }
 
                 _detectionCoordinator?.ClearCache();
-
-                if (deletedCount > 0)
-                {
-                    _logger?.Info($"Cleared {deletedCount} fingerprint cache files for fresh detection");
-                }
+                _logger?.Info("Cleared in-memory batch detection cache for fresh detection");
             }
             catch (Exception ex)
             {
@@ -176,12 +121,12 @@ namespace EmbyCredits.Services
             _isRunning = false;
             _processingTimer?.Dispose();
             _isProcessing = false;
-            
+
             if (_libraryManager != null)
             {
                 _libraryManager.ItemAdded -= OnItemAdded;
             }
-            
+
             LogInfo("Credits Detection Service stopped");
         }
 
@@ -194,11 +139,11 @@ namespace EmbyCredits.Services
             {
                 if (e.Item is Episode episode)
                 {
-                    // Check if library filtering is enabled
+
                     var autoDetectionLibraryIds = _configuration.AutoDetectionLibraryIds ?? Array.Empty<string>();
                     if (autoDetectionLibraryIds.Length > 0)
                     {
-                        // Get the library ID for this episode
+
                         var libraryId = episode.GetTopParent()?.Id.ToString();
                         if (string.IsNullOrEmpty(libraryId) || !autoDetectionLibraryIds.Contains(libraryId))
                         {
@@ -307,7 +252,7 @@ namespace EmbyCredits.Services
         public static void QueueSeries(List<Episode> episodes)
         {
             ClearCache();
-            
+
             _batchDetectionCache.Clear();
 
             _cancellationRequested = false;
@@ -336,7 +281,7 @@ namespace EmbyCredits.Services
             LogInfo($"Service running: {_isRunning}, Already processing: {_isProcessing}");
 
             _isBatchMode = queuedCount >= 3 && _configuration?.UseEpisodeComparison == true && _configuration?.UseCorrelationScoring == true;
-            
+
             if (_isBatchMode)
             {
                 LogInfo($"Batch mode enabled: Pre-computing detections for {queuedCount} episodes");
@@ -351,9 +296,9 @@ namespace EmbyCredits.Services
         public static void CancelProcessing()
         {
             _cancellationRequested = true;
-            
+
             while (_processingQueue.TryDequeue(out _)) { }
-            
+
             LogInfo("Cancellation requested for credits detection - queue cleared");
 
             if (Plugin.Instance != null)
@@ -393,14 +338,14 @@ namespace EmbyCredits.Services
                         var currentEpisode = processedCount > 0 && processedCount <= episodes.Count 
                             ? episodes[processedCount - 1] 
                             : null;
-                        
+
                         Plugin.Progress.CurrentItem = currentEpisode != null 
                             ? $"Pre-analyzing: {currentEpisode.Name}" 
                             : "Pre-analyzing episodes...";
                         Plugin.Progress.ProcessedItems = processedCount;
-                        Plugin.Progress.CurrentItemProgress = (int)(progress * 50); // Use first 50% for pre-computation
+                        Plugin.Progress.CurrentItemProgress = (int)(progress * 50); 
                     }
-                    
+
                     await Task.CompletedTask;
                 });
 
@@ -416,7 +361,7 @@ namespace EmbyCredits.Services
                 LogError("Error in batch pre-computation", ex);
                 _isBatchMode = false;
                 _batchDetectionCache.Clear();
-                
+
                 if (!_isProcessing)
                 {
                     await ProcessQueue();
@@ -436,7 +381,7 @@ namespace EmbyCredits.Services
                 try
                 {
                     var chapters = _itemRepository.GetChapters(episode)?.ToList() ?? new System.Collections.Generic.List<ChapterInfo>();
-                    
+
                     var creditsMarkers = chapters.Where(c =>
                     {
                         var markerType = GetMarkerType(c);
@@ -615,7 +560,7 @@ namespace EmbyCredits.Services
                     if (_isBatchMode)
                     {
                         _logger.Info("Using batch mode with cross-episode analysis");
-                        
+
                         var comparisonEpisodeIds = _batchDetectionCache.Keys
                             .Where(id => id != episodeId)
                             .ToList();
@@ -682,14 +627,14 @@ namespace EmbyCredits.Services
                     if (Plugin.Instance != null)
                     {
                         Plugin.Progress.SuccessfulItems++;
-                        
+
                         var series = episode.Series;
                         var episodeKey = series != null
                             ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
                             : episode.Name;
                         Plugin.Progress.SuccessDetails[episodeKey] = FormatTime(creditsStart);
                     }
-                    
+
                     _processedEpisodes.TryAdd(episodeId, DateTime.UtcNow);
                 }
                 else
@@ -699,14 +644,14 @@ namespace EmbyCredits.Services
                     if (Plugin.Instance != null)
                     {
                         Plugin.Progress.FailedItems++;
-                        
+
                         var series = episode.Series;
                         var episodeKey = series != null
                             ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
                             : episode.Name;
                         Plugin.Progress.FailureReasons[episodeKey] = failureReason;
                     }
-                    
+
                     _processedEpisodes.TryAdd(episodeId, DateTime.UtcNow);
                 }
 
@@ -775,7 +720,7 @@ namespace EmbyCredits.Services
                     var markerType = GetMarkerType(c);
                     if (markerType == "CreditsStart" || markerType == "Credits")
                         return true;
-                    
+
                     if (c.Name != null)
                     {
                         var nameLower = c.Name.ToLowerInvariant();
@@ -785,7 +730,7 @@ namespace EmbyCredits.Services
                             nameLower == "credits")
                             return true;
                     }
-                    
+
                     var duration = episode.RunTimeTicks ?? 0;
                     if (duration > 0)
                     {
@@ -793,7 +738,7 @@ namespace EmbyCredits.Services
                         if (positionRatio >= 0.80 && (string.IsNullOrEmpty(c.Name) || c.Name.Length < 3))
                             return true;
                     }
-                    
+
                     return false;
                 }).ToList();
 
@@ -918,9 +863,9 @@ namespace EmbyCredits.Services
                 return 0;
 
             var throttlePercentage = 100 - _configuration.CpuUsageLimit;
-            var baseDelayMs = 100; // Base delay of 100ms
+            var baseDelayMs = 100; 
             var throttleDelayMs = (int)(baseDelayMs * (throttlePercentage / 100.0));
-            
+
             return throttleDelayMs;
         }
 

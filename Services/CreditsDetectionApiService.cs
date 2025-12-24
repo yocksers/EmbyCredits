@@ -284,7 +284,7 @@ namespace EmbyCredits.Services
 
                     return new { Success = true, Message = $"Dry run queued for {episodes.Count} episodes from {series.Name}", EpisodeCount = episodes.Count };
                 }
-                
+
                 return new { Success = false, Message = "Either SeriesId or EpisodeId is required" };
             }
             catch (Exception ex)
@@ -304,11 +304,11 @@ namespace EmbyCredits.Services
                 }
 
                 var endpoint = request.OcrEndpoint.TrimEnd('/');
-                
+
                 using (var httpClient = new System.Net.Http.HttpClient())
                 {
                     httpClient.Timeout = TimeSpan.FromSeconds(15);
-                    
+
                     try
                     {
                         var pingResponse = await httpClient.GetAsync(endpoint).ConfigureAwait(false);
@@ -326,7 +326,7 @@ namespace EmbyCredits.Services
                     {
                         var assembly = System.Reflection.Assembly.GetExecutingAssembly();
                         var resourceName = "EmbyCredits.Images.logo.jpg";
-                        
+
                         byte[] imageBytes;
                         using (var stream = assembly.GetManifestResourceStream(resourceName))
                         {
@@ -335,7 +335,7 @@ namespace EmbyCredits.Services
                                 var availableResources = string.Join(", ", assembly.GetManifestResourceNames());
                                 return new { Success = false, Message = $"Logo not found in embedded resources. Available: {availableResources}" };
                             }
-                            
+
                             using (var memoryStream = new System.IO.MemoryStream())
                             {
                                 stream.CopyTo(memoryStream);
@@ -353,14 +353,14 @@ namespace EmbyCredits.Services
 
                         var ocrEndpoint = endpoint.TrimEnd('/') + "/tesseract";
                         var ocrResponse = await httpClient.PostAsync(ocrEndpoint, content).ConfigureAwait(false);
-                        
+
                         if (!ocrResponse.IsSuccessStatusCode)
                         {
                             return new { Success = false, Message = $"OCR processing failed with status: {ocrResponse.StatusCode}" };
                         }
 
                         var ocrResult = await ocrResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        
+
                         if (ocrResult.IndexOf("EmbyCredits", StringComparison.OrdinalIgnoreCase) >= 0)
                         {
                             return new { Success = true, Message = "✓ Connection successful! OCR correctly detected 'EmbyCredits' text from test image." };

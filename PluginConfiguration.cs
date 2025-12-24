@@ -1,4 +1,4 @@
-﻿using MediaBrowser.Model.Plugins;
+using MediaBrowser.Model.Plugins;
 using System;
 
 namespace EmbyCredits
@@ -25,19 +25,19 @@ namespace EmbyCredits
         public int VideoPatternSensitivity { get; set; } = 3;
         public int VideoPatternWindowSize { get; set; } = 5;
         public double VideoPatternSearchStart { get; set; } = 0.5;
-        
+
         public int AudioPatternSensitivity { get; set; } = 3;
         public int AudioPatternWindowSize { get; set; } = 5;
         public double AudioPatternSearchStart { get; set; } = 0.5;
-        
+
         public int BlackScreenThreshold { get; set; } = 15;
         public int BlackScreenMinDuration { get; set; } = 2;
         public double BlackScreenSearchStart { get; set; } = 0.7;
-        
+
         public int TextDetectionThreshold { get; set; } = 100;
         public int TextDetectionMinLines { get; set; } = 5;
         public double TextDetectionSearchStart { get; set; } = 0.7;
-        
+
         public int AudioSilenceThreshold { get; set; } = -30;
         public double AudioSilenceMinDuration { get; set; } = 1.5;
         public double AudioSearchStartPosition { get; set; } = 0.6;
@@ -46,14 +46,14 @@ namespace EmbyCredits
         public double SceneChangeSearchStart { get; set; } = 0.7;
         public double SceneChangeMinDeviation { get; set; } = 0.25;
 
-        public string KeywordDetectionKeywords { get; set; } = "directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine";
+        public string KeywordDetectionKeywords { get; set; } = "directed by,produced by,executive producer,written by,cast,credits,fin,ende,?,?,fim,fine";
         public double KeywordDetectionSearchStart { get; set; } = 0.65;
         public int KeywordDetectionMinTextScore { get; set; } = 50;
         public int KeywordDetectionRegionHeight { get; set; } = 120;
 
         public bool EnableOcrDetection { get; set; } = false;
         public string OcrEndpoint { get; set; } = "http://localhost:8884";
-        public string OcrDetectionKeywords { get; set; } = "directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine";
+        public string OcrDetectionKeywords { get; set; } = "directed by,produced by,executive producer,written by,cast,credits,fin,ende,?,?,fim,fine";
         public double OcrDetectionSearchStart { get; set; } = 0.65;
         public double OcrMinutesFromEnd { get; set; } = 0.0;
         public double OcrFrameRate { get; set; } = 0.5;
@@ -66,9 +66,9 @@ namespace EmbyCredits
 
         public bool UseCorrelationScoring { get; set; } = true;
         public int CorrelationWindowSeconds { get; set; } = 5;
-        
+
         public string DetectionResultSelection { get; set; } = "CorrelationScoring";
-        
+
         public int VideoPatternPriority { get; set; } = 1;
         public int AudioPatternPriority { get; set; } = 2;
         public int BlackScreenPriority { get; set; } = 3;

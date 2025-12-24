@@ -11,10 +11,7 @@ using EmbyCredits.Services.Utilities;
 
 namespace EmbyCredits.Services.DetectionMethods
 {
-    /// <summary>
-    /// OCR-based credit detection using an external Tesseract Docker container.
-    /// Extracts frames and sends them to the OCR API to detect credit keywords.
-    /// </summary>
+
     public class OcrDetection : BaseDetectionMethod
     {
         public override string MethodName => "OCR Detection";
@@ -70,9 +67,9 @@ namespace EmbyCredits.Services.DetectionMethods
                     startTime = duration * searchStartPercentage;
                     LogDebug($"OCR starting at {searchStartPercentage:P0} ({FormatTime(startTime)})");
                 }
-                
+
                 var analysisDuration = duration - startTime;
-                
+
                 if (Configuration.OcrStopSecondsFromEnd > 0)
                 {
                     var stopTime = duration - Configuration.OcrStopSecondsFromEnd;
@@ -82,7 +79,7 @@ namespace EmbyCredits.Services.DetectionMethods
                         LogDebug($"Stopping analysis {Configuration.OcrStopSecondsFromEnd} seconds before end at {FormatTime(stopTime)}");
                     }
                 }
-                
+
                 if (Configuration.OcrMaxAnalysisDuration > 0 && analysisDuration > Configuration.OcrMaxAnalysisDuration)
                 {
                     analysisDuration = Configuration.OcrMaxAnalysisDuration;
@@ -98,7 +95,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     var imageFormat = Configuration.OcrImageFormat?.ToLower() == "jpg" ? "jpg" : "png";
                     var imageExtension = imageFormat;
                     var qualityParam = imageFormat == "jpg" ? $"-q:v {Math.Max(1, Math.Min(100, Configuration.OcrJpegQuality))}" : "";
-                    
+
                     var extractArgs = $"-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"fps={fps}\" {qualityParam} -f image2 \"{tempDir}\\frame_%04d.{imageExtension}\"";
 
                     LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps ({imageFormat.ToUpper()}{(imageFormat == "jpg" ? $" Q{Configuration.OcrJpegQuality}" : "")}) for OCR analysis");
@@ -122,13 +119,13 @@ namespace EmbyCredits.Services.DetectionMethods
                     await process.WaitForExitAsync().ConfigureAwait(false);
 
                     var frameFiles = Directory.GetFiles(tempDir, $"frame_*.{imageExtension}").OrderBy(f => f).ToList();
-                    
+
                     if (Configuration.OcrMaxFramesToProcess > 0 && frameFiles.Count > Configuration.OcrMaxFramesToProcess)
                     {
                         frameFiles = frameFiles.Take(Configuration.OcrMaxFramesToProcess).ToList();
                         LogDebug($"Limited to first {frameFiles.Count} frames (OcrMaxFramesToProcess setting)");
                     }
-                    
+
                     LogDebug($"Extracted {frameFiles.Count} frames for OCR analysis");
                     UpdateProgress(15, $"Processing {frameFiles.Count} frames with OCR");
 
@@ -180,7 +177,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                 var matchedText = string.Join(", ", matchedKeywords);
                                 detectionScores.Add((timestamp, matchedKeywords.Count, matchedText));
                                 LogDebug($"Frame at {FormatTime(timestamp)}: Found {matchedKeywords.Count} keyword(s): {matchedText}");
-                                
+
                                 if (detectionScores.Count >= Configuration.OcrMinimumMatches)
                                 {
                                     var creditsStart = FindCreditsStartFromOcrScores(detectionScores, duration);
@@ -201,7 +198,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
 
                     UpdateProgress(95, $"OCR: {frameFiles.Count}/{frameFiles.Count} frames (100%)");
-                    
+
                     LogDebug($"OCR analysis complete: Found {detectionScores.Count} frames with keyword matches");
                     UpdateProgress(98, "Analyzing results");
 
@@ -220,14 +217,32 @@ namespace EmbyCredits.Services.DetectionMethods
                 }
                 finally
                 {
-                    try
+
+                    var maxRetries = 3;
+                    var retryDelay = 100;
+
+                    for (int attempt = 0; attempt < maxRetries; attempt++)
                     {
-                        if (Directory.Exists(tempDir))
-                            Directory.Delete(tempDir, true);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogWarn($"Failed to cleanup temp directory: {ex.Message}");
+                        try
+                        {
+                            if (Directory.Exists(tempDir))
+                            {
+                                Directory.Delete(tempDir, true);
+                                LogDebug($"Successfully cleaned up temp directory: {tempDir}");
+                                break;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            if (attempt == maxRetries - 1)
+                            {
+                                LogWarn($"Failed to cleanup temp directory after {maxRetries} attempts: {ex.Message}. Directory: {tempDir}");
+                            }
+                            else
+                            {
+                                System.Threading.Thread.Sleep(retryDelay);
+                            }
+                        }
                     }
                 }
             }
@@ -238,17 +253,14 @@ namespace EmbyCredits.Services.DetectionMethods
             }
         }
 
-        /// <summary>
-        /// Test if the OCR endpoint is accessible before extracting frames
-        /// </summary>
         private async Task<bool> TestOcrEndpoint()
         {
             try
             {
                 var endpoint = Configuration.OcrEndpoint.TrimEnd('/');
-                
+
                 var response = await _httpClient.GetAsync(endpoint).ConfigureAwait(false);
-                
+
                 if (response.IsSuccessStatusCode)
                 {
                     LogDebug($"OCR endpoint {endpoint} is accessible");
@@ -277,15 +289,12 @@ namespace EmbyCredits.Services.DetectionMethods
             }
         }
 
-        /// <summary>
-        /// Send an image to the OCR API and get the extracted text
-        /// </summary>
         private async Task<string> PerformOcr(string imagePath)
         {
             try
             {
                 var endpoint = Configuration.OcrEndpoint.TrimEnd('/') + "/tesseract";
-                
+
                 LogDebug($"Reading image file: {imagePath}");
                 var imageBytes = File.ReadAllBytes(imagePath);
                 LogDebug($"Image size: {imageBytes.Length} bytes");
@@ -310,9 +319,9 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
 
                     var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    
+
                     var text = ParseOcrResponse(responseText);
-                    
+
                     return text;
                 }
             }
@@ -333,9 +342,6 @@ namespace EmbyCredits.Services.DetectionMethods
             }
         }
 
-        /// <summary>
-        /// Parse the OCR API response to extract text
-        /// </summary>
         private string ParseOcrResponse(string response)
         {
             if (string.IsNullOrWhiteSpace(response))
@@ -350,7 +356,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     {
                         var colonIndex = response.IndexOf(":", stdoutStart);
                         var quoteStart = response.IndexOf("\"", colonIndex + 1);
-                        
+
                         if (quoteStart >= 0)
                         {
                             var quoteEnd = quoteStart + 1;
@@ -362,7 +368,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                 }
                                 quoteEnd++;
                             }
-                            
+
                             if (quoteEnd < response.Length)
                             {
                                 var text = response.Substring(quoteStart + 1, quoteEnd - quoteStart - 1);
@@ -371,14 +377,14 @@ namespace EmbyCredits.Services.DetectionMethods
                             }
                         }
                     }
-                    
+
                     var textStart = response.IndexOf("\"text\"", StringComparison.OrdinalIgnoreCase);
                     if (textStart >= 0)
                     {
                         var colonIndex = response.IndexOf(":", textStart);
                         var quoteStart = response.IndexOf("\"", colonIndex + 1);
                         var quoteEnd = response.IndexOf("\"", quoteStart + 1);
-                        
+
                         if (quoteStart >= 0 && quoteEnd > quoteStart)
                         {
                             return response.Substring(quoteStart + 1, quoteEnd - quoteStart - 1);
@@ -394,9 +400,6 @@ namespace EmbyCredits.Services.DetectionMethods
             return response;
         }
 
-        /// <summary>
-        /// Parse comma-separated keywords from configuration
-        /// </summary>
         private List<string> ParseKeywords(string keywordString)
         {
             if (string.IsNullOrWhiteSpace(keywordString))
@@ -410,9 +413,6 @@ namespace EmbyCredits.Services.DetectionMethods
                 .ToList();
         }
 
-        /// <summary>
-        /// Find keyword matches in OCR text (case-insensitive)
-        /// </summary>
         private List<string> FindKeywordMatches(string text, List<string> keywords)
         {
             var matches = new List<string>();
@@ -429,9 +429,6 @@ namespace EmbyCredits.Services.DetectionMethods
             return matches;
         }
 
-        /// <summary>
-        /// Find the credits start time from OCR detection scores
-        /// </summary>
         private double FindCreditsStartFromOcrScores(List<(double timestamp, int matchCount, string matchedKeywords)> scores, double duration)
         {
             if (scores.Count == 0)
@@ -440,7 +437,7 @@ namespace EmbyCredits.Services.DetectionMethods
             var sortedScores = scores.OrderBy(s => s.timestamp).ToList();
 
             var minMatches = Configuration.OcrMinimumMatches;
-            var windowSeconds = 10.0; // Look for matches within 10 second window
+            var windowSeconds = 10.0; 
 
             for (int i = 0; i < sortedScores.Count; i++)
             {

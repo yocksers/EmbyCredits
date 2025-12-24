@@ -11,10 +11,10 @@
             <h1 class="pageTitle">Credits Detector - OCR Edition</h1>
 
             <form class="playbackReporterForm">
-                <!-- General Settings Section -->
+
                 <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
                     <h2 style="margin-top:0;">General Settings</h2>
-                    
+
                     <div class="checkboxContainer">
                         <label>
                             <input is="emby-checkbox" type="checkbox" id="chkEnableAutoDetection" data-config-key="EnableAutoDetection" />
@@ -62,7 +62,7 @@
                     <div style="margin-top: 1.5em;">
                         <h3 style="color: #52B54B;">Library Selection</h3>
                         <div class="fieldDescription" style="margin-bottom: 1em;">Choose which libraries these features should work in. If none are selected, all libraries will be used.</div>
-                        
+
                         <div style="margin-bottom: 1em;">
                             <label style="display: block; font-weight: bold; margin-bottom: 0.5em;">Automatic Detection Libraries:</label>
                             <div id="autoDetectionLibraries" style="margin-left: 1em;"></div>
@@ -77,7 +77,6 @@
                     </div>
                 </div>
 
-                <!-- OCR Detection Section -->
                 <div class="paper-card" style="padding: 1.5em; margin-top: 2em; border-left: 4px solid #52B54B;">
                     <h2 style="margin-top: 0; color: #52B54B;">OCR Detection Settings</h2>
                     <p class="fieldDescription">Configure how the OCR detection works</p>
@@ -173,7 +172,6 @@
                     </div>
                 </div>
 
-                <!-- Process TV Shows Section -->
                 <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
                     <h2 style="margin-top:0;">Process TV Shows</h2>
                     <div class="fieldDescription" style="margin-bottom: 1em;">Manually trigger credits detection for specific TV shows or all shows in your library.</div>
@@ -234,7 +232,6 @@
                         </div>
                     </div>
 
-                    <!-- Detection Results (Stay Visible After Completion) -->
                     <div id="failureDetails" style="margin-top: 1.5em; display: none;">
                         <h3 style="color: #E5A54A; margin-bottom: 0.5em;">Failed Episodes</h3>
                         <div id="failureList" style="background: rgba(255,255,255,0.05); border-radius: 4px; padding: 1em; max-height: 300px; overflow-y: auto;"></div>
@@ -245,7 +242,6 @@
                     </div>
                 </div>
 
-                <!-- View Chapter Markers Section -->
                 <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
                     <h2 style="margin-top:0;">View Chapter Markers</h2>
                     <div class="fieldDescription" style="margin-bottom: 1em;">View existing chapter markers for episodes in a TV show to verify detection results.</div>
@@ -270,10 +266,9 @@
                     </div>
                 </div>
 
-                <!-- Docker Setup Guide Section -->
                 <div class="paper-card" style="padding: 1.5em; margin-top: 2em; background: linear-gradient(135deg, rgba(82,181,75,0.15) 0%, rgba(74,159,229,0.15) 100%); border-left: 4px solid #52B54B;">
                     <h2 style="margin-top: 0; color: #52B54B;">🐳 Docker Setup Guide</h2>
-                    
+
                     <div style="margin-bottom: 1.5em;">
                         <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">What is OCR Detection?</h3>
                         <p class="fieldDescription">
@@ -305,7 +300,7 @@
                         <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
                             <code style="color: #52B54B;">docker run -d --name tesseract-ocr -p 8884:8884 --restart unless-stopped hertzg/tesseract-server:branch-renovate_all-minor-patch</code>
                         </div>
-                        
+
                         <p class="fieldDescription" style="margin-top: 1em;"><strong>Option B - Docker Compose:</strong></p>
                         <p class="fieldDescription">Create a file named <code>docker-compose.yml</code>:</p>
                         <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
@@ -356,7 +351,6 @@ services:
                     </div>
                 </div>
 
-                <!-- API Endpoints Section -->
                 <div class="paper-card help-page" style="padding: 1.5em 2em; margin-top: 2em;">
                     <h2 style="margin-top: 0;">API Endpoints</h2>
                     <p>You can manually trigger credits detection via the API:</p>
