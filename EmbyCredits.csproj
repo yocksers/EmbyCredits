@@ -10,8 +10,8 @@
 		<Nullable>enable</Nullable>
 
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-	<AssemblyVersion>1.0.7.0</AssemblyVersion>
-	<FileVersion>1.0.7.0</FileVersion>
+	<AssemblyVersion>1.0.8.0</AssemblyVersion>
+	<FileVersion>1.0.8.0</FileVersion>
 		<!-- THIS IS THE CRITICAL FIX -->
 		<RootNamespace>EmbyCredits</RootNamespace>
 		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**</DefaultItemExcludes>

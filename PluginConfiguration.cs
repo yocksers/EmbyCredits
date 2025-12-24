@@ -7,8 +7,8 @@ namespace EmbyCredits
     {
         public string ConfigurationVersion { get; set; } = Guid.NewGuid().ToString();
 
-        public bool EnableAutoDetection { get; set; } = true;
-        public bool UseEpisodeComparison { get; set; } = true;
+        public bool EnableAutoDetection { get; set; } = false;
+        public bool UseEpisodeComparison { get; set; } = false;
         public int MinimumEpisodesToCompare { get; set; } = 3;
         public double SimilarityThreshold { get; set; } = 0.85;
         public bool EnableFailedEpisodeFallback { get; set; } = false;
@@ -100,5 +100,6 @@ namespace EmbyCredits
         public bool EnableDetailedLogging { get; set; } = false;
 
         public string[] ScheduledTaskLibraryIds { get; set; } = Array.Empty<string>();
+        public string[] AutoDetectionLibraryIds { get; set; } = Array.Empty<string>();
     }
 }

@@ -11,5 +11,6 @@ namespace EmbyCredits.Api
         public const string CancelDetection = "/CreditsDetector/CancelDetection";
         public const string GetSeriesMarkers = "/CreditsDetector/GetSeriesMarkers";
         public const string TestOcrConnection = "/CreditsDetector/TestOcrConnection";
+        public const string DryRunSeries = "/CreditsDetector/DryRunSeries";
     }
 }

@@ -36,6 +36,7 @@ namespace EmbyCredits.Services
         private static string? _cacheDirectory;
         private static string? _audioCacheDirectory;
         private static bool _cancellationRequested = false;
+        private static bool _isDryRun = false;
         
         private static DetectionCoordinator? _detectionCoordinator;
         
@@ -193,6 +194,19 @@ namespace EmbyCredits.Services
             {
                 if (e.Item is Episode episode)
                 {
+                    // Check if library filtering is enabled
+                    var autoDetectionLibraryIds = _configuration.AutoDetectionLibraryIds ?? Array.Empty<string>();
+                    if (autoDetectionLibraryIds.Length > 0)
+                    {
+                        // Get the library ID for this episode
+                        var libraryId = episode.GetTopParent()?.Id.ToString();
+                        if (string.IsNullOrEmpty(libraryId) || !autoDetectionLibraryIds.Contains(libraryId))
+                        {
+                            LogDebug($"Skipping episode {episode.Name} - not in configured auto-detection libraries");
+                            return;
+                        }
+                    }
+
                     LogInfo($"New episode detected: {episode.SeriesName} - {episode.Name}");
                     QueueEpisode(episode);
                 }
@@ -348,6 +362,18 @@ namespace EmbyCredits.Services
             }
         }
 
+        public static void QueueEpisodeDryRun(Episode episode)
+        {
+            _isDryRun = true;
+            QueueEpisode(episode);
+        }
+
+        public static void QueueSeriesDryRun(List<Episode> episodes)
+        {
+            _isDryRun = true;
+            QueueSeries(episodes);
+        }
+
         private static async Task PreComputeBatchDetections(List<Episode> episodes)
         {
             if (_configuration == null || _detectionCoordinator == null) return;
@@ -493,9 +519,10 @@ namespace EmbyCredits.Services
                     {
                         Plugin.Progress.IsRunning = false;
                         Plugin.Progress.EndTime = DateTime.Now;
-                        Plugin.Progress.CurrentItem = "Complete";
+                        Plugin.Progress.CurrentItem = _isDryRun ? "Dry Run Complete" : "Complete";
                         Plugin.Progress.CurrentItemProgress = 100;
                         LogInfo($"Processing complete: {Plugin.Progress.SuccessfulItems} succeeded, {Plugin.Progress.FailedItems} failed");
+                        _isDryRun = false;
                     }
                 }
             }
@@ -646,8 +673,11 @@ namespace EmbyCredits.Services
 
                 if (creditsStart > 0)
                 {
-                    SaveCreditsChapterMarker(episode, creditsStart);
-                    _logger.Info($"Credits detected at {FormatTime(creditsStart)} for {episode.Name}");
+                    if (!_isDryRun)
+                    {
+                        SaveCreditsChapterMarker(episode, creditsStart);
+                    }
+                    _logger.Info($"[{(_isDryRun ? "DRY RUN" : "")}] Credits detected at {FormatTime(creditsStart)} for {episode.Name}");
 
                     if (Plugin.Instance != null)
                     {

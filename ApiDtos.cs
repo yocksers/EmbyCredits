@@ -40,4 +40,11 @@ namespace EmbyCredits.Api
     {
         public string OcrEndpoint { get; set; } = string.Empty;
     }
+
+    [Route(ApiRoutes.DryRunSeries, "POST", Summary = "Dry run - detect credits without saving markers.")]
+    public class DryRunSeriesRequest : IReturn<object>
+    {
+        public string SeriesId { get; set; } = string.Empty;
+        public string EpisodeId { get; set; } = string.Empty;
+    }
 }

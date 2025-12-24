@@ -240,6 +240,60 @@ namespace EmbyCredits.Services
             }
         }
 
+        public object Post(DryRunSeriesRequest request)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(request.EpisodeId))
+                {
+                    var item = _libraryManager.GetItemById(request.EpisodeId);
+                    if (item is Episode episode)
+                    {
+                        CreditsDetectionService.QueueEpisodeDryRun(episode);
+                        return new { Success = true, Message = $"Dry run queued for episode: {episode.Name}" };
+                    }
+                    return new { Success = false, Message = "Item is not an episode" };
+                }
+                else if (!string.IsNullOrEmpty(request.SeriesId))
+                {
+                    Guid seriesGuid;
+                    if (!Guid.TryParse(request.SeriesId, out seriesGuid))
+                    {
+                        return new { Success = false, Message = "Invalid SeriesId format" };
+                    }
+
+                    var series = _libraryManager.GetItemById(seriesGuid);
+                    if (series == null)
+                    {
+                        return new { Success = false, Message = "Series not found" };
+                    }
+
+                    var seriesInternalId = series.InternalId;
+                    var episodes = _libraryManager.GetItemList(new InternalItemsQuery
+                    {
+                        IncludeItemTypes = new[] { "Episode" },
+                        IsVirtualItem = false,
+                        HasPath = true
+                    }).OfType<Episode>()
+                    .Where(e => e.SeriesId == seriesInternalId)
+                    .ToList();
+
+                    _logger.Info($"Dry run: Found {episodes.Count} episodes for series: {series.Name}");
+
+                    CreditsDetectionService.QueueSeriesDryRun(episodes);
+
+                    return new { Success = true, Message = $"Dry run queued for {episodes.Count} episodes from {series.Name}", EpisodeCount = episodes.Count };
+                }
+                
+                return new { Success = false, Message = "Either SeriesId or EpisodeId is required" };
+            }
+            catch (Exception ex)
+            {
+                _logger.ErrorException("Error in dry run", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
         public async Task<object> Post(TestOcrConnectionRequest request)
         {
             try

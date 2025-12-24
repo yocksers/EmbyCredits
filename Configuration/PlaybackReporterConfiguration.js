@@ -42,7 +42,8 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                         console.error('Error processing episode:', error);
                         toast({ type: 'error', text: 'Failed to process episode. Check server logs.' });
                     });
-                } else if (seriesId) {
+                    return;
+                } else if (!seriesId) {
                     toast({ type: 'error', text: 'Please select a TV show first.' });
                     return;
                 }
@@ -158,6 +159,96 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                         toast({ type: 'error', text: 'Failed to cancel processing.' });
                     });
                 }
+            });
+
+            view.querySelector('#btnDryRun').addEventListener('click', () => {
+                const seriesId = view.querySelector('#selectSeries').value;
+                const episodeId = view.querySelector('#selectEpisode').value;
+                
+                if (episodeId) {
+                    loading.show();
+                    ApiClient.ajax({
+                        type: 'POST',
+                        url: ApiClient.getUrl('CreditsDetector/DryRunSeries'),
+                        data: JSON.stringify({ EpisodeId: episodeId }),
+                        contentType: 'application/json'
+                    }).then(response => {
+                        loading.hide();
+                        toast(response.Message || 'Dry run started for episode.');
+                        view.querySelector('#progressContainer').style.display = 'block';
+                        this.startProgressPolling(view);
+                    }).catch(error => {
+                        loading.hide();
+                        console.error('Error starting dry run:', error);
+                        toast({ type: 'error', text: 'Failed to start dry run. Check server logs.' });
+                    });
+                    return;
+                } else if (!seriesId) {
+                    toast({ type: 'error', text: 'Please select a TV show or episode first.' });
+                    return;
+                }
+
+                loading.show();
+                ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('CreditsDetector/DryRunSeries'),
+                    contentType: 'application/json',
+                    data: JSON.stringify({ SeriesId: seriesId })
+                }).then(response => {
+                    loading.hide();
+                    toast(response.Message || 'Dry run started. No markers will be saved.');
+                    view.querySelector('#progressContainer').style.display = 'block';
+                    this.startProgressPolling(view);
+                }).catch(error => {
+                    loading.hide();
+                    console.error('Error starting dry run:', error);
+                    toast({ type: 'error', text: 'Failed to start dry run. Check server logs.' });
+                });
+            });
+
+            view.querySelector('#btnDryRun').addEventListener('click', () => {
+                const seriesId = view.querySelector('#selectSeries').value;
+                const episodeId = view.querySelector('#selectEpisode').value;
+                
+                if (episodeId) {
+                    loading.show();
+                    ApiClient.ajax({
+                        type: 'POST',
+                        url: ApiClient.getUrl('CreditsDetector/DryRunSeries'),
+                        data: JSON.stringify({ EpisodeId: episodeId }),
+                        contentType: 'application/json'
+                    }).then(response => {
+                        loading.hide();
+                        toast(response.Message || 'Dry run started for episode.');
+                        view.querySelector('#progressContainer').style.display = 'block';
+                        this.startProgressPolling(view);
+                    }).catch(error => {
+                        loading.hide();
+                        console.error('Error starting dry run:', error);
+                        toast({ type: 'error', text: 'Failed to start dry run. Check server logs.' });
+                    });
+                    return;
+                } else if (!seriesId) {
+                    toast({ type: 'error', text: 'Please select a TV show or episode first.' });
+                    return;
+                }
+
+                loading.show();
+                ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('CreditsDetector/DryRunSeries'),
+                    contentType: 'application/json',
+                    data: JSON.stringify({ SeriesId: seriesId })
+                }).then(response => {
+                    loading.hide();
+                    toast(response.Message || 'Dry run started. No markers will be saved.');
+                    view.querySelector('#progressContainer').style.display = 'block';
+                    this.startProgressPolling(view);
+                }).catch(error => {
+                    loading.hide();
+                    console.error('Error starting dry run:', error);
+                    toast({ type: 'error', text: 'Failed to start dry run. Check server logs.' });
+                });
             });
 
             view.querySelector('#btnTestOcrConnection').addEventListener('click', () => {
@@ -286,6 +377,10 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 clearInterval(this.progressInterval);
             }
 
+            // Show the cancel button when starting progress polling
+            const btnCancel = view.querySelector('#btnCancelProcessing');
+            if (btnCancel) btnCancel.style.display = 'inline-block';
+
             this.progressInterval = setInterval(() => {
                 ApiClient.getJSON(ApiClient.getUrl('CreditsDetector/GetProgress')).then(progress => {
                     if (!progress.IsRunning) {
@@ -305,6 +400,8 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
 
                         const message = progress.CurrentItem === 'Cancelled' 
                             ? `Processing cancelled. ${progress.SuccessfulItems} succeeded, ${progress.FailedItems} failed.`
+                            : progress.CurrentItem === 'Dry Run Complete'
+                            ? `Dry run complete! ${progress.SuccessfulItems} detected, ${progress.FailedItems} failed. No markers were saved.`
                             : `Processing complete! ${progress.SuccessfulItems} succeeded, ${progress.FailedItems} failed.`;
                         toast(message);
                         return;
@@ -465,6 +562,45 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             });
         }
 
+        loadLibraries(view, config) {
+            ApiClient.getJSON(ApiClient.getUrl('Library/MediaFolders')).then(response => {
+                const autoDetectionContainer = view.querySelector('#autoDetectionLibraries');
+                const scheduledTaskContainer = view.querySelector('#scheduledTaskLibraries');
+                
+                autoDetectionContainer.innerHTML = '';
+                scheduledTaskContainer.innerHTML = '';
+
+                const autoDetectionIds = config.AutoDetectionLibraryIds || [];
+                const scheduledTaskIds = config.ScheduledTaskLibraryIds || [];
+
+                response.Items.forEach(library => {
+                    // Auto Detection checkbox
+                    const autoDiv = document.createElement('div');
+                    autoDiv.className = 'checkboxContainer';
+                    autoDiv.innerHTML = `
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" class="chkAutoDetectionLibrary" data-library-id="${library.Id}" ${autoDetectionIds.includes(library.Id) ? 'checked' : ''} />
+                            <span>${library.Name}</span>
+                        </label>
+                    `;
+                    autoDetectionContainer.appendChild(autoDiv);
+
+                    // Scheduled Task checkbox
+                    const schedDiv = document.createElement('div');
+                    schedDiv.className = 'checkboxContainer';
+                    schedDiv.innerHTML = `
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" class="chkScheduledTaskLibrary" data-library-id="${library.Id}" ${scheduledTaskIds.includes(library.Id) ? 'checked' : ''} />
+                            <span>${library.Name}</span>
+                        </label>
+                    `;
+                    scheduledTaskContainer.appendChild(schedDiv);
+                });
+            }).catch(error => {
+                console.error('Error loading libraries:', error);
+            });
+        }
+
         loadData(view) {
             loading.show();
             getPluginConfiguration().then(config => {
@@ -495,6 +631,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 view.querySelector('#txtOcrJpegQuality').value = config.OcrJpegQuality || 92;
 
                 this.loadSeriesList(view);
+                this.loadLibraries(view, config);
 
                 // Check if processing is currently running and resume progress display
                 // Also load success/failure data even if processing is complete
@@ -546,6 +683,23 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             this.config.OcrStopSecondsFromEnd = parseFloat(view.querySelector('#txtOcrStopSecondsFromEnd').value) || 20;
             this.config.OcrImageFormat = view.querySelector('#selectOcrImageFormat').value || 'png';
             this.config.OcrJpegQuality = parseInt(view.querySelector('#txtOcrJpegQuality').value) || 92;
+
+            // Library selections
+            const autoDetectionLibraries = [];
+            view.querySelectorAll('.chkAutoDetectionLibrary').forEach(checkbox => {
+                if (checkbox.checked) {
+                    autoDetectionLibraries.push(checkbox.getAttribute('data-library-id'));
+                }
+            });
+            this.config.AutoDetectionLibraryIds = autoDetectionLibraries;
+
+            const scheduledTaskLibraries = [];
+            view.querySelectorAll('.chkScheduledTaskLibrary').forEach(checkbox => {
+                if (checkbox.checked) {
+                    scheduledTaskLibraries.push(checkbox.getAttribute('data-library-id'));
+                }
+            });
+            this.config.ScheduledTaskLibraryIds = scheduledTaskLibraries;
 
             updatePluginConfiguration(this.config).then(result => {
                 loading.hide();
