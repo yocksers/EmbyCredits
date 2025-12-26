@@ -1,7 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<!-- It is recommended to target net8.0 for modern Emby versions, but net6.0 is acceptable for now. -->
 		<TargetFramework>net6.0</TargetFramework>
 		<AssemblyName>EmbyCredits</AssemblyName>
 		<OutputType>Library</OutputType>
@@ -10,22 +9,19 @@
 		<Nullable>enable</Nullable>
 
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-	<AssemblyVersion>1.0.8.0</AssemblyVersion>
-	<FileVersion>1.0.8.0</FileVersion>
-		<!-- THIS IS THE CRITICAL FIX -->
+	<AssemblyVersion>1.0.9.0</AssemblyVersion>
+	<FileVersion>1.0.9.0</FileVersion>
 		<RootNamespace>EmbyCredits</RootNamespace>
 		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**</DefaultItemExcludes>
 		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
 	</PropertyGroup>
 
-	<!-- This section is added for robustness -->
 	<ItemGroup>
 		<None Remove="Configuration\PlaybackReporterConfiguration.html" />
 		<None Remove="Configuration\PlaybackReporterConfiguration.js" />
 		<None Remove="Images\logo.jpg" />
 	</ItemGroup>
 
-	<!-- This section explicitly defines the resource names -->
 	<ItemGroup>
 		<EmbeddedResource Include="Images\logo.jpg" />
 		<EmbeddedResource Include="Configuration\PlaybackReporterConfiguration.html">

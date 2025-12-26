@@ -178,51 +178,6 @@ namespace EmbyCredits.Services
             Utilities.FFmpegHelper.Initialize(ffmpegManager);
         }
 
-        private static string GetFfmpegPath()
-        {
-            if (_ffmpegManager?.FfmpegConfiguration != null)
-            {
-                var config = _ffmpegManager.FfmpegConfiguration;
-                if (!string.IsNullOrEmpty(config.EncoderPath) && File.Exists(config.EncoderPath))
-                {
-                    LogInfo($"Using Emby's ffmpeg from IFfmpegManager: {config.EncoderPath}");
-                    return config.EncoderPath;
-                }
-            }
-
-            LogWarn("IFfmpegManager not available or EncoderPath not set, falling back to system PATH");
-            return "ffmpeg";
-        }
-
-        private static string GetFfprobePath()
-        {
-            if (_ffmpegManager?.FfmpegConfiguration != null)
-            {
-                var config = _ffmpegManager.FfmpegConfiguration;
-                if (!string.IsNullOrEmpty(config.ProbePath) && File.Exists(config.ProbePath))
-                {
-                    LogDebug($"Using Emby's ffprobe from IFfmpegManager: {config.ProbePath}");
-                    return config.ProbePath;
-                }
-            }
-
-            var ffmpegPath = GetFfmpegPath();
-
-            if (ffmpegPath.Contains(Path.DirectorySeparatorChar))
-            {
-                var directory = Path.GetDirectoryName(ffmpegPath);
-                var ffprobeExe = Path.Combine(directory ?? "", "ffprobe.exe");
-                var ffprobe = Path.Combine(directory ?? "", "ffprobe");
-
-                if (File.Exists(ffprobeExe))
-                    return ffprobeExe;
-                if (File.Exists(ffprobe))
-                    return ffprobe;
-            }
-
-            return "ffprobe";
-        }
-
         public static void QueueEpisode(Episode episode)
         {
             if (!_processedEpisodes.ContainsKey(episode.Id.ToString()))
@@ -825,7 +780,7 @@ namespace EmbyCredits.Services
                 {
                     StartInfo = new ProcessStartInfo
                     {
-                        FileName = GetFfprobePath(),
+                        FileName = Utilities.FFmpegHelper.GetFfprobePath(),
                         Arguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{videoPath}\"",
                         UseShellExecute = false,
                         RedirectStandardOutput = true,

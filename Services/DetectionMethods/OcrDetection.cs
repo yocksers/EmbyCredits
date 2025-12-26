@@ -96,7 +96,9 @@ namespace EmbyCredits.Services.DetectionMethods
                     var imageExtension = imageFormat;
                     var qualityParam = imageFormat == "jpg" ? $"-q:v {Math.Max(1, Math.Min(100, Configuration.OcrJpegQuality))}" : "";
 
-                    var extractArgs = $"-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"fps={fps}\" {qualityParam} -f image2 \"{tempDir}\\frame_%04d.{imageExtension}\"";
+                    // Use forward slashes for ffmpeg output path to ensure cross-platform compatibility (Windows/Linux/Docker)
+                    var frameOutputPath = $"{tempDir.Replace("\\", "/")}/frame_%04d.{imageExtension}";
+                    var extractArgs = $"-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"fps={fps}\" {qualityParam} -f image2 \"{frameOutputPath}\"";
 
                     LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps ({imageFormat.ToUpper()}{(imageFormat == "jpg" ? $" Q{Configuration.OcrJpegQuality}" : "")}) for OCR analysis");
                     UpdateProgress(10, "Extracting frames");
