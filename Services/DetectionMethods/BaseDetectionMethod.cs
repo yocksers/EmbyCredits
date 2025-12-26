@@ -9,6 +9,7 @@ namespace EmbyCredits.Services.DetectionMethods
     {
         protected readonly ILogger Logger;
         protected readonly PluginConfiguration Configuration;
+        protected string LastError = string.Empty;
 
         public abstract string MethodName { get; }
         public abstract double Confidence { get; }
@@ -22,6 +23,11 @@ namespace EmbyCredits.Services.DetectionMethods
         }
 
         public abstract Task<double> DetectCredits(string videoPath, double duration);
+        
+        public string GetLastError()
+        {
+            return LastError;
+        }
 
         protected void LogInfo(string message)
         {

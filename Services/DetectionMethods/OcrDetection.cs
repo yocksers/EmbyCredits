@@ -28,10 +28,12 @@ namespace EmbyCredits.Services.DetectionMethods
 
         public override async Task<double> DetectCredits(string videoPath, double duration)
         {
+            LastError = string.Empty; // Clear previous error
             try
             {
                 if (string.IsNullOrWhiteSpace(Configuration.OcrEndpoint))
                 {
+                    LastError = "OCR endpoint not configured";
                     LogWarn("OCR endpoint not configured. Please set the OCR API URL in settings.");
                     return 0;
                 }
@@ -39,6 +41,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 var endpointAvailable = await TestOcrEndpoint().ConfigureAwait(false);
                 if (!endpointAvailable)
                 {
+                    LastError = $"OCR endpoint {Configuration.OcrEndpoint} is not accessible";
                     LogWarn($"OCR endpoint {Configuration.OcrEndpoint} is not accessible. Skipping OCR detection.");
                     return 0;
                 }
@@ -49,6 +52,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 var keywords = ParseKeywords(Configuration.OcrDetectionKeywords);
                 if (keywords.Count == 0)
                 {
+                    LastError = "No OCR keywords configured";
                     LogWarn("No keywords configured for OCR detection");
                     return 0;
                 }
@@ -94,13 +98,20 @@ namespace EmbyCredits.Services.DetectionMethods
                     var fps = Configuration.OcrFrameRate;
                     var imageFormat = Configuration.OcrImageFormat?.ToLower() == "jpg" ? "jpg" : "png";
                     var imageExtension = imageFormat;
-                    var qualityParam = imageFormat == "jpg" ? $"-q:v {Math.Max(1, Math.Min(100, Configuration.OcrJpegQuality))}" : "";
+                    
+                    var qualityParam = "";
+                    if (imageFormat == "jpg")
+                    {
+                        var userQuality = Math.Max(1, Math.Min(100, Configuration.OcrJpegQuality));
+                        var ffmpegQuality = 2 + (int)Math.Round((100 - userQuality) * 29.0 / 99.0);
+                        qualityParam = $"-q:v {ffmpegQuality}";
+                    }
 
-                    // Use forward slashes for ffmpeg output path to ensure cross-platform compatibility (Windows/Linux/Docker)
                     var frameOutputPath = $"{tempDir.Replace("\\", "/")}/frame_%04d.{imageExtension}";
                     var extractArgs = $"-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"fps={fps}\" {qualityParam} -f image2 \"{frameOutputPath}\"";
 
                     LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps ({imageFormat.ToUpper()}{(imageFormat == "jpg" ? $" Q{Configuration.OcrJpegQuality}" : "")}) for OCR analysis");
+                    LogDebug($"FFmpeg command: {FFmpegHelper.GetFfmpegPath()} {extractArgs}");
                     UpdateProgress(10, "Extracting frames");
 
                     var process = new Process
@@ -117,8 +128,24 @@ namespace EmbyCredits.Services.DetectionMethods
                     };
 
                     process.Start();
-                    await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
+                    var ffmpegError = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
                     await process.WaitForExitAsync().ConfigureAwait(false);
+                    
+                    if (process.ExitCode != 0)
+                    {
+                        LastError = $"FFmpeg frame extraction failed (exit code {process.ExitCode})";
+                        LogError($"FFmpeg frame extraction failed with exit code {process.ExitCode}");
+                        if (!string.IsNullOrWhiteSpace(ffmpegError))
+                        {
+                            LogError($"FFmpeg error output: {ffmpegError}");
+                        }
+                        return 0;
+                    }
+                    
+                    if (!string.IsNullOrWhiteSpace(ffmpegError) && (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) || ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        LogDebug($"FFmpeg output: {ffmpegError}");
+                    }
 
                     var frameFiles = Directory.GetFiles(tempDir, $"frame_*.{imageExtension}").OrderBy(f => f).ToList();
 
@@ -133,6 +160,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
                     if (frameFiles.Count == 0)
                     {
+                        LastError = "No frames extracted for OCR analysis";
                         LogWarn("No frames extracted for OCR analysis");
                         return 0;
                     }
@@ -214,6 +242,7 @@ namespace EmbyCredits.Services.DetectionMethods
                         }
                     }
 
+                    LastError = $"No OCR keywords found in {frameFiles.Count} frames analyzed";
                     LogDebug("No sustained keyword matches found for credits");
                     return 0;
                 }
@@ -250,6 +279,7 @@ namespace EmbyCredits.Services.DetectionMethods
             }
             catch (Exception ex)
             {
+                LastError = $"OCR detection error: {ex.Message}";
                 LogError("Error in OCR detection", ex);
                 return 0;
             }

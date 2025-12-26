@@ -35,12 +35,15 @@ namespace EmbyCredits.Services
 
         public async Task<(double timestamp, string failureReason)> DetectCredits(string videoPath, double duration, string episodeId)
         {
-            var detectionResults = await RunAllDetectionMethods(videoPath, duration, episodeId);
+            var (detectionResults, methodErrors) = await RunAllDetectionMethods(videoPath, duration, episodeId);
 
             if (detectionResults.Count == 0)
             {
                 _logger.Info("No credits detected by any method");
-                return (0, "No credits detected by any enabled method");
+                var failureReason = methodErrors.Count > 0 
+                    ? string.Join("; ", methodErrors.Values)
+                    : "No credits detected by any enabled method";
+                return (0, failureReason);
             }
 
             return (SelectByStrategy(detectionResults), string.Empty);
@@ -76,7 +79,7 @@ namespace EmbyCredits.Services
 
                 if (duration <= 0) continue;
 
-                var detectionResults = await RunAllDetectionMethods(episode.Path, duration, episodeId);
+                var (detectionResults, _) = await RunAllDetectionMethods(episode.Path, duration, episodeId);
                 _batchDetectionCache[episodeId] = detectionResults.Select(r => (r.method, r.timestamp)).ToList();
 
                 _logger.Info($"  Cached {detectionResults.Count} detection results for {episode.Name}");
@@ -241,12 +244,13 @@ namespace EmbyCredits.Services
             return medianTimestamp;
         }
 
-        private async Task<List<(string method, double timestamp, double confidence, int priority)>> RunAllDetectionMethods(
+        private async Task<(List<(string method, double timestamp, double confidence, int priority)> results, Dictionary<string, string> errors)> RunAllDetectionMethods(
             string videoPath, 
             double duration, 
             string episodeId)
         {
             var results = new List<(string method, double timestamp, double confidence, int priority)>();
+            var errors = new Dictionary<string, string>();
 
             foreach (var method in _detectionMethods)
             {
@@ -264,14 +268,23 @@ namespace EmbyCredits.Services
                         results.Add((method.MethodName, timestamp, method.Confidence, method.Priority));
                         _logger.Info($"{method.MethodName} detection: {FormatTime(timestamp)}");
                     }
+                    else
+                    {
+                        var errorMsg = method.GetLastError();
+                        if (!string.IsNullOrEmpty(errorMsg))
+                        {
+                            errors[method.MethodName] = errorMsg;
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
                     _logger.ErrorException($"Error running {method.MethodName}", ex);
+                    errors[method.MethodName] = ex.Message;
                 }
             }
 
-            return results;
+            return (results, errors);
         }
 
         private async Task<List<(string method, double timestamp, double confidence, int priority)>> RunCrossEpisodeDetection(
@@ -284,7 +297,8 @@ namespace EmbyCredits.Services
             if (comparisonEpisodes.Count < 2)
             {
                 _logger.Info("Not enough episodes for comparison. Running detection methods independently.");
-                return await RunAllDetectionMethods(episode.Path, duration, episode.Id.ToString());
+                var (detectionResults, _) = await RunAllDetectionMethods(episode.Path, duration, episode.Id.ToString());
+                return detectionResults;
             }
 
             _logger.Info($"Comparing with {comparisonEpisodes.Count} other episodes from the same season");
@@ -292,7 +306,7 @@ namespace EmbyCredits.Services
             var episodeDetectionResults = new Dictionary<string, List<(string method, double timestamp)>>();
             episodeDetectionResults[episode.Id.ToString()] = new List<(string method, double timestamp)>();
 
-            var currentResults = await RunAllDetectionMethods(episode.Path, duration, episode.Id.ToString());
+            var (currentResults, _) = await RunAllDetectionMethods(episode.Path, duration, episode.Id.ToString());
             episodeDetectionResults[episode.Id.ToString()].AddRange(currentResults.Select(r => (r.method, r.timestamp)));
 
             foreach (var compEpisode in comparisonEpisodes)
@@ -312,7 +326,7 @@ namespace EmbyCredits.Services
                 }
 
                 _logger.Debug($"Running detection methods on {compEpisode.Name}");
-                var compResults = await RunAllDetectionMethods(compEpisode.Path, compDuration, compEpisode.Id.ToString());
+                var (compResults, _) = await RunAllDetectionMethods(compEpisode.Path, compDuration, compEpisode.Id.ToString());
                 episodeDetectionResults[compEpisode.Id.ToString()].AddRange(compResults.Select(r => (r.method, r.timestamp)));
             }
 

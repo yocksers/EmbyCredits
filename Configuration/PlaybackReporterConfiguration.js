@@ -462,7 +462,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 Object.entries(progress.FailureReasons).forEach(([episode, reason]) => {
                     const failureItem = document.createElement('div');
                     failureItem.style.cssText = 'padding: 0.5em; margin-bottom: 0.5em; border-left: 3px solid #E5A54A; background: rgba(255,255,255,0.03);';
-                    failureItem.innerHTML = `<strong>${episode}</strong><br/><span style="color: rgba(255,255,255,0.7); font-size: 0.9em;">${reason}</span>`;
+                    failureItem.innerHTML = `<strong style="color: #e0e0e0;">${episode}</strong><br/><span style="color: #E5A54A; font-size: 0.9em;">${reason}</span>`;
                     failureList.appendChild(failureItem);
                 });
             } else {
@@ -505,7 +505,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 Object.entries(progress.FailureReasons).forEach(([episode, reason]) => {
                     const failureItem = document.createElement('div');
                     failureItem.style.cssText = 'padding: 0.5em; margin-bottom: 0.5em; border-left: 3px solid #E5A54A; background: rgba(255,255,255,0.03);';
-                    failureItem.innerHTML = `<strong style="color: #e0e0e0;">${episode}</strong><br/><span style="color: rgba(255,255,255,0.7); font-size: 0.9em;">${reason}</span>`;
+                    failureItem.innerHTML = `<strong style="color: #e0e0e0;">${episode}</strong><br/><span style="color: #E5A54A; font-size: 0.9em;">${reason}</span>`;
                     if (failureList) failureList.appendChild(failureItem);
                 });
             } else {
