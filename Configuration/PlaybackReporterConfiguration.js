@@ -21,6 +21,14 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 return false;
             });
 
+            view.querySelector('#btnResetToDefaults').addEventListener('click', () => {
+                this.resetToDefaults(view);
+            });
+
+            view.querySelector('#btnBrowseTempFolder').addEventListener('click', () => {
+                this.browseTempFolder(view);
+            });
+
             view.querySelector('#btnProcessSeries').addEventListener('click', () => {
                 const seriesId = view.querySelector('#selectSeries').value;
                 const episodeId = view.querySelector('#selectEpisode').value;
@@ -127,6 +135,10 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 });
             });
 
+            view.querySelector('#selectLibraryFilter').addEventListener('change', (e) => {
+                this.loadSeriesList(view, e.target.value);
+            });
+
             view.querySelector('#btnQueueAll').addEventListener('click', () => {
                 loading.show();
                 ApiClient.ajax({
@@ -161,6 +173,25 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 }
             });
 
+            view.querySelector('#btnClearQueue').addEventListener('click', () => {
+                if (confirm('Are you sure you want to clear the processing queue? This will reset all processing state.')) {
+                    loading.show();
+                    ApiClient.ajax({
+                        type: 'POST',
+                        url: ApiClient.getUrl('CreditsDetector/ClearQueue')
+                    }).then(response => {
+                        loading.hide();
+                        const message = response.Message || 'Queue cleared.';
+                        toast(message);
+                        console.log('Clear queue response:', response);
+                    }).catch(error => {
+                        loading.hide();
+                        console.error('Error clearing queue:', error);
+                        toast({ type: 'error', text: 'Failed to clear queue.' });
+                    });
+                }
+            });
+
             view.querySelector('#btnDryRun').addEventListener('click', () => {
                 const seriesId = view.querySelector('#selectSeries').value;
                 const episodeId = view.querySelector('#selectEpisode').value;
@@ -248,6 +279,51 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     loading.hide();
                     console.error('Error starting dry run:', error);
                     toast({ type: 'error', text: 'Failed to start dry run. Check server logs.' });
+                });
+            });
+
+            view.querySelector('#btnDryRunDebug').addEventListener('click', () => {
+                const seriesId = view.querySelector('#selectSeries').value;
+                const episodeId = view.querySelector('#selectEpisode').value;
+
+                if (episodeId) {
+                    loading.show();
+                    ApiClient.ajax({
+                        type: 'POST',
+                        url: ApiClient.getUrl('CreditsDetector/DryRunSeriesDebug'),
+                        data: JSON.stringify({ EpisodeId: episodeId }),
+                        contentType: 'application/json'
+                    }).then(response => {
+                        loading.hide();
+                        toast(response.Message || 'Debug dry run started for episode.');
+                        view.querySelector('#progressContainer').style.display = 'block';
+                        this.startProgressPolling(view, true); // Pass true to indicate debug mode
+                    }).catch(error => {
+                        loading.hide();
+                        console.error('Error starting debug dry run:', error);
+                        toast({ type: 'error', text: 'Failed to start debug dry run. Check server logs.' });
+                    });
+                    return;
+                } else if (!seriesId) {
+                    toast({ type: 'error', text: 'Please select a TV show or episode first.' });
+                    return;
+                }
+
+                loading.show();
+                ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('CreditsDetector/DryRunSeriesDebug'),
+                    contentType: 'application/json',
+                    data: JSON.stringify({ SeriesId: seriesId })
+                }).then(response => {
+                    loading.hide();
+                    toast(response.Message || 'Debug dry run started. Detailed logs will be captured.');
+                    view.querySelector('#progressContainer').style.display = 'block';
+                    this.startProgressPolling(view, true); // Pass true to indicate debug mode
+                }).catch(error => {
+                    loading.hide();
+                    console.error('Error starting debug dry run:', error);
+                    toast({ type: 'error', text: 'Failed to start debug dry run. Check server logs.' });
                 });
             });
 
@@ -299,6 +375,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             });
 
             this.progressInterval = null;
+            this.progressHideTimeout = null;
         }
 
         displayMarkers(view, response) {
@@ -370,10 +447,15 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             markersDisplay.style.display = 'block';
         }
 
-        startProgressPolling(view) {
+        startProgressPolling(view, isDebugMode = false) {
 
             if (this.progressInterval) {
                 clearInterval(this.progressInterval);
+            }
+
+            if (this.progressHideTimeout) {
+                clearTimeout(this.progressHideTimeout);
+                this.progressHideTimeout = null;
             }
 
             const btnCancel = view.querySelector('#btnCancelProcessing');
@@ -391,9 +473,10 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
 
                         this.updateProgressUI(view, progress);
 
-                        setTimeout(() => {
+                        this.progressHideTimeout = setTimeout(() => {
                             const progressContainer = view.querySelector('#progressContainer');
                             if (progressContainer) progressContainer.style.display = 'none';
+                            this.progressHideTimeout = null;
                         }, 10000);
 
                         const message = progress.CurrentItem === 'Cancelled' 
@@ -402,6 +485,13 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                             ? `Dry run complete! ${progress.SuccessfulItems} detected, ${progress.FailedItems} failed. No markers were saved.`
                             : `Processing complete! ${progress.SuccessfulItems} succeeded, ${progress.FailedItems} failed.`;
                         toast(message);
+
+                        // Download debug log if in debug mode
+                        if (isDebugMode && progress.CurrentItem !== 'Cancelled') {
+                            setTimeout(() => {
+                                this.downloadDebugLog();
+                            }, 1000);
+                        }
                         return;
                     }
 
@@ -412,6 +502,41 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     this.progressInterval = null;
                 });
             }, 500);
+        }
+
+        downloadDebugLog() {
+            loading.show();
+            fetch(ApiClient.getUrl('CreditsDetector/GetDebugLog'), {
+                method: 'GET',
+                headers: {
+                    'X-Emby-Token': ApiClient.accessToken()
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to download debug log');
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                loading.hide();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                a.download = `credits-detection-debug-${timestamp}.log`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                toast('Debug log downloaded successfully!');
+            })
+            .catch(error => {
+                loading.hide();
+                console.error('Error downloading debug log:', error);
+                toast({ type: 'error', text: 'Failed to download debug log.' });
+            });
         }
 
         updateProgressUI(view, progress) {
@@ -528,64 +653,96 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             }
         }
 
-        loadSeriesList(view) {
-            ApiClient.getJSON(ApiClient.getUrl('CreditsDetector/GetAllSeries')).then(response => {
-                if (response.Success && response.Series) {
-                    const selectSeries = view.querySelector('#selectSeries');
-                    const selectSeriesForMarkers = view.querySelector('#selectSeriesForMarkers');
+        loadSeriesList(view, libraryId = '') {
+            const query = {
+                IncludeItemTypes: 'Series',
+                Recursive: true,
+                Fields: 'DateCreated,ProductionYear'
+            };
 
-                    selectSeries.innerHTML = '<option value="">-- Select a TV Show --</option>';
-                    selectSeriesForMarkers.innerHTML = '<option value="">-- Select a TV Show --</option>';
+            if (libraryId) {
+                query.ParentId = libraryId;
+            }
 
-                    response.Series.forEach(series => {
-                        const option1 = document.createElement('option');
-                        option1.value = series.Id;
-                        option1.textContent = series.Year ? `${series.Name} (${series.Year})` : series.Name;
-                        selectSeries.appendChild(option1);
+            loading.show();
+            ApiClient.getJSON(ApiClient.getUrl('Items', query)).then(result => {
+                loading.hide();
+                
+                const selectSeries = view.querySelector('#selectSeries');
+                const selectSeriesForMarkers = view.querySelector('#selectSeriesForMarkers');
 
-                        const option2 = document.createElement('option');
-                        option2.value = series.Id;
-                        option2.textContent = series.Year ? `${series.Name} (${series.Year})` : series.Name;
-                        selectSeriesForMarkers.appendChild(option2);
-                    });
-                }
+                selectSeries.innerHTML = '<option value="">-- Select a TV Show --</option>';
+                selectSeriesForMarkers.innerHTML = '<option value="">-- Select a TV Show --</option>';
+
+                // Sort by name
+                const series = result.Items.sort((a, b) => (a.Name || '').localeCompare(b.Name || ''));
+
+                series.forEach(s => {
+                    const option1 = document.createElement('option');
+                    option1.value = s.Id;
+                    option1.textContent = s.ProductionYear ? `${s.Name} (${s.ProductionYear})` : s.Name;
+                    selectSeries.appendChild(option1);
+
+                    const option2 = document.createElement('option');
+                    option2.value = s.Id;
+                    option2.textContent = s.ProductionYear ? `${s.Name} (${s.ProductionYear})` : s.Name;
+                    selectSeriesForMarkers.appendChild(option2);
+                });
             }).catch(error => {
+                loading.hide();
                 console.error('Error loading series list:', error);
+                toast({ type: 'error', text: 'Failed to load TV shows.' });
+            });
+        }
+
+        loadLibraryFilter(view) {
+            ApiClient.getJSON(ApiClient.getUrl('Library/MediaFolders')).then(response => {
+                const selectLibraryFilter = view.querySelector('#selectLibraryFilter');
+                
+                selectLibraryFilter.innerHTML = '<option value="">-- All Libraries --</option>';
+
+                // Filter to only TV Show and Mixed libraries
+                const tvLibraries = response.Items.filter(library => {
+                    return library.CollectionType === 'tvshows' || library.CollectionType === 'mixed' || !library.CollectionType;
+                });
+
+                tvLibraries.forEach(library => {
+                    const option = document.createElement('option');
+                    option.value = library.Id;
+                    option.textContent = library.Name;
+                    selectLibraryFilter.appendChild(option);
+                });
+
+                // Ensure default selection
+                selectLibraryFilter.value = '';
+            }).catch(error => {
+                console.error('Error loading library filter:', error);
             });
         }
 
         loadLibraries(view, config) {
             ApiClient.getJSON(ApiClient.getUrl('Library/MediaFolders')).then(response => {
-                const autoDetectionContainer = view.querySelector('#autoDetectionLibraries');
-                const scheduledTaskContainer = view.querySelector('#scheduledTaskLibraries');
+                const librariesContainer = view.querySelector('#creditsLibraries');
 
-                autoDetectionContainer.innerHTML = '';
-                scheduledTaskContainer.innerHTML = '';
+                librariesContainer.innerHTML = '';
 
-                const autoDetectionIds = config.AutoDetectionLibraryIds || [];
-                const scheduledTaskIds = config.ScheduledTaskLibraryIds || [];
+                const libraryIds = config.LibraryIds || [];
 
-                response.Items.forEach(library => {
+                // Filter to only TV Show and Mixed libraries
+                const tvLibraries = response.Items.filter(library => {
+                    return library.CollectionType === 'tvshows' || library.CollectionType === 'mixed' || !library.CollectionType;
+                });
 
-                    const autoDiv = document.createElement('div');
-                    autoDiv.className = 'checkboxContainer';
-                    autoDiv.innerHTML = `
+                tvLibraries.forEach(library => {
+                    const div = document.createElement('div');
+                    div.className = 'checkboxContainer';
+                    div.innerHTML = `
                         <label>
-                            <input is="emby-checkbox" type="checkbox" class="chkAutoDetectionLibrary" data-library-id="${library.Id}" ${autoDetectionIds.includes(library.Id) ? 'checked' : ''} />
+                            <input is="emby-checkbox" type="checkbox" class="chkLibrary" data-library-id="${library.Id}" ${libraryIds.includes(library.Id) ? 'checked' : ''} />
                             <span>${library.Name}</span>
                         </label>
                     `;
-                    autoDetectionContainer.appendChild(autoDiv);
-
-                    const schedDiv = document.createElement('div');
-                    schedDiv.className = 'checkboxContainer';
-                    schedDiv.innerHTML = `
-                        <label>
-                            <input is="emby-checkbox" type="checkbox" class="chkScheduledTaskLibrary" data-library-id="${library.Id}" ${scheduledTaskIds.includes(library.Id) ? 'checked' : ''} />
-                            <span>${library.Name}</span>
-                        </label>
-                    `;
-                    scheduledTaskContainer.appendChild(schedDiv);
+                    librariesContainer.appendChild(div);
                 });
             }).catch(error => {
                 console.error('Error loading libraries:', error);
@@ -597,28 +754,35 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             getPluginConfiguration().then(config => {
                 this.config = config;
 
-                view.querySelector('#chkEnableAutoDetection').checked = config.EnableAutoDetection !== false;
-                view.querySelector('#chkUseEpisodeComparison').checked = config.UseEpisodeComparison !== false;
+                view.querySelector('#chkEnableAutoDetection').checked = config.EnableAutoDetection || false;
+                view.querySelector('#chkUseEpisodeComparison').checked = config.UseEpisodeComparison || false;
                 view.querySelector('#chkEnableFailedEpisodeFallback').checked = config.EnableFailedEpisodeFallback || false;
                 view.querySelector('#txtMinimumSuccessRateForFallback').value = config.MinimumSuccessRateForFallback || 0.5;
                 view.querySelector('#chkEnableDetailedLogging').checked = config.EnableDetailedLogging || false;
+                view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = config.ScheduledTaskOnlyProcessMissing !== false;
 
                 view.querySelector('#txtTempFolderPath').value = config.TempFolderPath || '';
 
-                view.querySelector('#chkEnableOcrDetection').checked = config.EnableOcrDetection || false;
                 view.querySelector('#txtOcrEndpoint').value = config.OcrEndpoint || 'http://localhost:8884';
                 view.querySelector('#txtOcrDetectionKeywords').value = config.OcrDetectionKeywords || 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine';
-                view.querySelector('#txtOcrMinutesFromEnd').value = config.OcrMinutesFromEnd || 0;
+                view.querySelector('#txtOcrMinutesFromEnd').value = config.OcrMinutesFromEnd || 3;
                 view.querySelector('#txtOcrDetectionSearchStart').value = config.OcrDetectionSearchStart || 0.65;
                 view.querySelector('#txtOcrFrameRate').value = config.OcrFrameRate || 0.5;
-                view.querySelector('#txtOcrMinimumMatches').value = config.OcrMinimumMatches || 2;
+                view.querySelector('#txtOcrMinimumMatches').value = config.OcrMinimumMatches || 1;
                 view.querySelector('#txtOcrMaxFramesToProcess').value = config.OcrMaxFramesToProcess || 0;
                 view.querySelector('#txtOcrMaxAnalysisDuration').value = config.OcrMaxAnalysisDuration || 600;
                 view.querySelector('#txtOcrStopSecondsFromEnd').value = config.OcrStopSecondsFromEnd || 20;
-                view.querySelector('#selectOcrImageFormat').value = config.OcrImageFormat || 'png';
+                view.querySelector('#selectOcrImageFormat').value = config.OcrImageFormat || 'jpg';
                 view.querySelector('#txtOcrJpegQuality').value = config.OcrJpegQuality || 92;
 
+                // Reset Process TV Shows section to default state
+                const selectLibraryFilter = view.querySelector('#selectLibraryFilter');
+                const selectEpisode = view.querySelector('#selectEpisode');
+                if (selectLibraryFilter) selectLibraryFilter.value = '';
+                if (selectEpisode) selectEpisode.innerHTML = '<option value="">-- Select Show First --</option>';
+
                 this.loadSeriesList(view);
+                this.loadLibraryFilter(view);
                 this.loadLibraries(view, config);
 
                 ApiClient.getJSON(ApiClient.getUrl('CreditsDetector/GetProgress')).then(progress => {
@@ -649,39 +813,32 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             this.config.EnableAutoDetection = view.querySelector('#chkEnableAutoDetection').checked;
             this.config.UseEpisodeComparison = view.querySelector('#chkUseEpisodeComparison').checked;
             this.config.EnableFailedEpisodeFallback = view.querySelector('#chkEnableFailedEpisodeFallback').checked;
-            this.config.MinimumSuccessRateForFallback = parseFloat(view.querySelector('#txtMinimumSuccessRateForFallback').value) || 0.5;
+            this.config.MinimumSuccessRateForFallback = Number.parseFloat(view.querySelector('#txtMinimumSuccessRateForFallback').value) || 0.5;
             this.config.EnableDetailedLogging = view.querySelector('#chkEnableDetailedLogging').checked;
+            this.config.ScheduledTaskOnlyProcessMissing = view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked;
 
             this.config.TempFolderPath = view.querySelector('#txtTempFolderPath').value || '';
 
-            this.config.EnableOcrDetection = view.querySelector('#chkEnableOcrDetection').checked;
+            this.config.EnableOcrDetection = true; // Always enabled
             this.config.OcrEndpoint = view.querySelector('#txtOcrEndpoint').value || 'http://localhost:8884';
             this.config.OcrDetectionKeywords = view.querySelector('#txtOcrDetectionKeywords').value || 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine';
-            this.config.OcrMinutesFromEnd = parseFloat(view.querySelector('#txtOcrMinutesFromEnd').value) || 0;
-            this.config.OcrDetectionSearchStart = parseFloat(view.querySelector('#txtOcrDetectionSearchStart').value) || 0.65;
-            this.config.OcrFrameRate = parseFloat(view.querySelector('#txtOcrFrameRate').value) || 0.5;
-            this.config.OcrMinimumMatches = parseInt(view.querySelector('#txtOcrMinimumMatches').value) || 2;
-            this.config.OcrMaxFramesToProcess = parseInt(view.querySelector('#txtOcrMaxFramesToProcess').value) || 0;
-            this.config.OcrMaxAnalysisDuration = parseFloat(view.querySelector('#txtOcrMaxAnalysisDuration').value) || 600;
-            this.config.OcrStopSecondsFromEnd = parseFloat(view.querySelector('#txtOcrStopSecondsFromEnd').value) || 20;
-            this.config.OcrImageFormat = view.querySelector('#selectOcrImageFormat').value || 'png';
-            this.config.OcrJpegQuality = parseInt(view.querySelector('#txtOcrJpegQuality').value) || 92;
+            this.config.OcrMinutesFromEnd = Number.parseFloat(view.querySelector('#txtOcrMinutesFromEnd').value) || 0;
+            this.config.OcrDetectionSearchStart = Number.parseFloat(view.querySelector('#txtOcrDetectionSearchStart').value) || 0.65;
+            this.config.OcrFrameRate = Number.parseFloat(view.querySelector('#txtOcrFrameRate').value) || 0.5;
+            this.config.OcrMinimumMatches = Number.parseInt(view.querySelector('#txtOcrMinimumMatches').value, 10) || 2;
+            this.config.OcrMaxFramesToProcess = Number.parseInt(view.querySelector('#txtOcrMaxFramesToProcess').value, 10) || 0;
+            this.config.OcrMaxAnalysisDuration = Number.parseFloat(view.querySelector('#txtOcrMaxAnalysisDuration').value) || 600;
+            this.config.OcrStopSecondsFromEnd = Number.parseFloat(view.querySelector('#txtOcrStopSecondsFromEnd').value) || 20;
+            this.config.OcrImageFormat = view.querySelector('#selectOcrImageFormat').value || 'jpg';
+            this.config.OcrJpegQuality = Number.parseInt(view.querySelector('#txtOcrJpegQuality').value, 10) || 92;
 
-            const autoDetectionLibraries = [];
-            view.querySelectorAll('.chkAutoDetectionLibrary').forEach(checkbox => {
+            const libraries = [];
+            view.querySelectorAll('.chkLibrary').forEach(checkbox => {
                 if (checkbox.checked) {
-                    autoDetectionLibraries.push(checkbox.getAttribute('data-library-id'));
+                    libraries.push(checkbox.getAttribute('data-library-id'));
                 }
             });
-            this.config.AutoDetectionLibraryIds = autoDetectionLibraries;
-
-            const scheduledTaskLibraries = [];
-            view.querySelectorAll('.chkScheduledTaskLibrary').forEach(checkbox => {
-                if (checkbox.checked) {
-                    scheduledTaskLibraries.push(checkbox.getAttribute('data-library-id'));
-                }
-            });
-            this.config.ScheduledTaskLibraryIds = scheduledTaskLibraries;
+            this.config.LibraryIds = libraries;
 
             updatePluginConfiguration(this.config).then(result => {
                 loading.hide();
@@ -693,9 +850,88 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             });
         }
 
+        browseTempFolder(view) {
+            require(['directorybrowser'], (directoryBrowser) => {
+                const picker = new directoryBrowser();
+                picker.show({
+                    callback: (path) => {
+                        if (path) {
+                            view.querySelector('#txtTempFolderPath').value = path;
+                        }
+                        picker.close();
+                    },
+                    header: 'Select Temp Folder'
+                });
+            });
+        }
+
+        resetToDefaults(view) {
+            if (!confirm('Reset all settings to default values?\n\nNote: Your OCR Endpoint and Temp Folder Path will be preserved.')) {
+                return;
+            }
+
+            loading.show();
+
+            // Preserve these values
+            const preservedOcrEndpoint = view.querySelector('#txtOcrEndpoint').value;
+            const preservedTempFolderPath = view.querySelector('#txtTempFolderPath').value;
+
+            // Default values matching PluginConfiguration.cs
+            const defaultKeywords = 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine,producer,music by,cinematography,editor,editing,production design,costume design,casting,based on,story by,screenplay,associate producer,co-producer,created by,developed by,series producer,composer,director of photography,visual effects,sound,the end,end credits,starring,guest starring,special thanks,production company';
+
+            // Set default values
+            view.querySelector('#chkEnableAutoDetection').checked = false;
+            view.querySelector('#chkUseEpisodeComparison').checked = false;
+            view.querySelector('#chkEnableFailedEpisodeFallback').checked = false;
+            view.querySelector('#txtMinimumSuccessRateForFallback').value = 0.5;
+            view.querySelector('#chkEnableDetailedLogging').checked = false;
+            view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = true;
+
+            // Restore preserved values
+            view.querySelector('#txtTempFolderPath').value = preservedTempFolderPath;
+
+            view.querySelector('#txtOcrEndpoint').value = preservedOcrEndpoint; // Restore preserved value
+            view.querySelector('#txtOcrDetectionKeywords').value = defaultKeywords;
+            view.querySelector('#txtOcrMinutesFromEnd').value = 3;
+            view.querySelector('#txtOcrDetectionSearchStart').value = 0.65;
+            view.querySelector('#txtOcrFrameRate').value = 0.5;
+            view.querySelector('#txtOcrMinimumMatches').value = 1;
+            view.querySelector('#txtOcrMaxFramesToProcess').value = 0;
+            view.querySelector('#txtOcrMaxAnalysisDuration').value = 600;
+            view.querySelector('#txtOcrStopSecondsFromEnd').value = 20;
+            view.querySelector('#selectOcrImageFormat').value = 'jpg';
+            view.querySelector('#txtOcrJpegQuality').value = 92;
+
+            // Uncheck all libraries (default behavior: all libraries enabled when none selected)
+            view.querySelectorAll('.chkLibrary').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+
+            loading.hide();
+            toast('Settings reset to defaults. Click Save to apply changes.');
+        }
+
         onResume(options) {
             super.onResume(options);
             this.loadData(this.view);
+            
+            // Load donate image with authentication
+            const donateImg = this.view.querySelector('#donateImage');
+            if (donateImg && !donateImg.src) {
+                fetch(ApiClient.getUrl('CreditsDetector/Images/donate.png'), {
+                    headers: {
+                        'X-Emby-Token': ApiClient.accessToken()
+                    }
+                })
+                .then(response => response.blob())
+                .then(blob => {
+                    const objectUrl = URL.createObjectURL(blob);
+                    donateImg.src = objectUrl;
+                })
+                .catch(error => {
+                    console.error('Error loading donate image:', error);
+                });
+            }
         }
 
         onPause() {
@@ -703,6 +939,10 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             if (this.progressInterval) {
                 clearInterval(this.progressInterval);
                 this.progressInterval = null;
+            }
+            if (this.progressHideTimeout) {
+                clearTimeout(this.progressHideTimeout);
+                this.progressHideTimeout = null;
             }
         }
     };

@@ -47,35 +47,58 @@ namespace EmbyCredits.ScheduledTasks
             }
 
             var config = Plugin.Instance.Configuration;
-            var libraryIds = config.ScheduledTaskLibraryIds ?? Array.Empty<string>();
-
-            if (libraryIds.Length == 0)
-            {
-                _logger.Info("No libraries configured for scheduled credits detection");
-                return;
-            }
-
-            _logger.Info($"Starting scheduled credits detection for {libraryIds.Length} libraries");
+            var libraryIds = config.LibraryIds ?? Array.Empty<string>();
 
             CreditsDetectionService.SetLibraryManager(_libraryManager);
             CreditsDetectionService.SetItemRepository(_itemRepository);
 
             var allEpisodes = new List<Episode>();
+            List<Folder> librariesToProcess;
 
-            foreach (var libraryId in libraryIds)
+            if (libraryIds.Length == 0)
+            {
+                _logger.Info("No specific libraries configured, processing all TV Show and Mixed libraries");
+                
+                var allLibraries = _libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    IncludeItemTypes = new[] { "CollectionFolder" }
+                }).ToList();
+
+                librariesToProcess = allLibraries
+                    .Where(lib => 
+                    {
+                        var collectionType = lib.GetType().GetProperty("CollectionType")?.GetValue(lib) as string;
+                        return collectionType == "tvshows" || collectionType == "mixed" || string.IsNullOrEmpty(collectionType);
+                    })
+                    .OfType<Folder>()
+                    .ToList();
+            }
+            else
+            {
+                librariesToProcess = new List<Folder>();
+                foreach (var libraryId in libraryIds)
+                {
+                    var library = _libraryManager.GetItemById(libraryId) as Folder;
+                    if (library != null)
+                    {
+                        librariesToProcess.Add(library);
+                    }
+                    else
+                    {
+                        _logger.Warn($"Library not found: {libraryId}");
+                    }
+                }
+            }
+
+            _logger.Info($"Starting scheduled credits detection for {librariesToProcess.Count} libraries");
+
+            foreach (var library in librariesToProcess)
             {
                 if (cancellationToken.IsCancellationRequested)
                     break;
 
                 try
                 {
-                    var library = _libraryManager.GetItemById(libraryId);
-                    if (library == null)
-                    {
-                        _logger.Warn($"Library not found: {libraryId}");
-                        continue;
-                    }
-
                     _logger.Info($"Scanning library: {library.Name}");
 
                     var query = new InternalItemsQuery
@@ -94,7 +117,7 @@ namespace EmbyCredits.ScheduledTasks
                 }
                 catch (Exception ex)
                 {
-                    _logger.ErrorException($"Error processing library {libraryId}", ex);
+                    _logger.ErrorException($"Error processing library {library.Name}", ex);
                 }
             }
 
@@ -104,16 +127,50 @@ namespace EmbyCredits.ScheduledTasks
                 return;
             }
 
-            _logger.Info($"Processing {allEpisodes.Count} total episodes");
+            _logger.Info($"Found {allEpisodes.Count} total episodes");
+
+            var episodesToProcess = new List<Episode>();
+            var skipCount = 0;
+
+            if (config.ScheduledTaskOnlyProcessMissing)
+            {
+                foreach (var episode in allEpisodes)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        break;
+
+                    if (!HasCreditsMarker(episode))
+                    {
+                        episodesToProcess.Add(episode);
+                    }
+                    else
+                    {
+                        skipCount++;
+                    }
+                }
+
+                _logger.Info($"Processing {episodesToProcess.Count} episodes (skipping {skipCount} episodes with existing credits)");
+            }
+            else
+            {
+                episodesToProcess = allEpisodes;
+                _logger.Info($"Processing all {episodesToProcess.Count} episodes (reprocess mode enabled)");
+            }
+
+            if (episodesToProcess.Count == 0)
+            {
+                _logger.Info("All episodes already have credits, nothing to process");
+                return;
+            }
 
             Plugin.Progress.Reset();
-            Plugin.Progress.TotalItems = allEpisodes.Count;
+            Plugin.Progress.TotalItems = episodesToProcess.Count;
             Plugin.Progress.IsRunning = true;
             Plugin.Progress.StartTime = DateTime.Now;
 
             var processedCount = 0;
 
-            foreach (var episode in allEpisodes)
+            foreach (var episode in episodesToProcess)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
@@ -126,7 +183,7 @@ namespace EmbyCredits.ScheduledTasks
                     await CreditsDetectionService.ProcessEpisode(episode);
                     processedCount++;
 
-                    var percentComplete = (double)processedCount / allEpisodes.Count * 100;
+                    var percentComplete = (double)processedCount / episodesToProcess.Count * 100;
                     progress.Report(percentComplete);
                 }
                 catch (Exception ex)
@@ -143,6 +200,54 @@ namespace EmbyCredits.ScheduledTasks
             Plugin.Progress.CurrentItem = "Complete";
 
             _logger.Info($"Credits detection complete. Processed: {Plugin.Progress.SuccessfulItems}, Failed: {Plugin.Progress.FailedItems}");
+        }
+
+        private bool HasCreditsMarker(Episode episode)
+        {
+            try
+            {
+                var chapters = _itemRepository.GetChapters(episode)?.ToList();
+                if (chapters == null || chapters.Count == 0)
+                    return false;
+
+                return chapters.Any(c =>
+                {
+                    var markerType = GetMarkerType(c);
+                    if (markerType == "CreditsStart" || markerType == "Credits")
+                        return true;
+
+                    if (c.Name != null && c.Name.ToLowerInvariant().Contains("credit"))
+                        return true;
+
+                    return false;
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.ErrorException($"Error checking credits marker for {episode.Name}", ex);
+                return false; // Process it if we can't determine
+            }
+        }
+
+        private static string? GetMarkerType(MediaBrowser.Model.Entities.ChapterInfo chapter)
+        {
+            try
+            {
+                var markerTypeProperty = chapter.GetType().GetProperty("MarkerType");
+                if (markerTypeProperty != null)
+                {
+                    var value = markerTypeProperty.GetValue(chapter);
+                    if (value != null)
+                    {
+                        return value.ToString();
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return null;
         }
 
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()

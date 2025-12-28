@@ -96,7 +96,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 try
                 {
                     var fps = Configuration.OcrFrameRate;
-                    var imageFormat = Configuration.OcrImageFormat?.ToLower() == "jpg" ? "jpg" : "png";
+                    var imageFormat = Configuration.OcrImageFormat?.ToLowerInvariant() == "jpg" ? "jpg" : "png";
                     var imageExtension = imageFormat;
                     
                     var qualityParam = "";
@@ -108,11 +108,14 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
 
                     var frameOutputPath = $"{tempDir.Replace("\\", "/")}/frame_%04d.{imageExtension}";
-                    var extractArgs = $"-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"fps={fps.ToString(CultureInfo.InvariantCulture)}\" {qualityParam} -f image2 \"{frameOutputPath}\"";
+                    
+                    var ffmpegTempDir = tempDir.Replace("\\", "/");
+                    var ffmpegFramePath = $"{ffmpegTempDir}/frame_%04d.{imageExtension}";
+                    var extractArgs = $"-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"fps={fps.ToString(CultureInfo.InvariantCulture)}\" {qualityParam} -f image2 \"{ffmpegFramePath}\"";
 
-                    LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps ({imageFormat.ToUpper()}{(imageFormat == "jpg" ? $" Q{Configuration.OcrJpegQuality}" : "")}) for OCR analysis");
+                    LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps ({imageFormat.ToUpperInvariant()}{(imageFormat == "jpg" ? $" Q{Configuration.OcrJpegQuality}" : "")}) for OCR analysis");
                     LogDebug($"FFmpeg command: {FFmpegHelper.GetFfmpegPath()} {extractArgs}");
-                    UpdateProgress(10, "Extracting frames");
+                    UpdateProgress(10, "Starting frame extraction and OCR processing");
 
                     var process = new Process
                     {
@@ -128,10 +131,189 @@ namespace EmbyCredits.Services.DetectionMethods
                     };
 
                     process.Start();
-                    var ffmpegError = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
+
+                    var detectionScores = new List<(double timestamp, int matchCount, string matchedKeywords)>();
+                    bool loggedFirstFrame = false;
+                    int frameIndex = 0;
+                    int maxFramesToProcess = Configuration.OcrMaxFramesToProcess > 0 ? Configuration.OcrMaxFramesToProcess : int.MaxValue;
+                    bool creditsFound = false;
+                    double creditsTimestamp = 0;
+
+                    var ffmpegTask = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var ffmpegError = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
+                            if (!string.IsNullOrWhiteSpace(ffmpegError) && (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) || ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                LogDebug($"FFmpeg output: {ffmpegError}");
+                            }
+                            return ffmpegError;
+                        }
+                        catch (Exception ex)
+                        {
+                            LogWarn($"Error reading FFmpeg output: {ex.Message}");
+                            return string.Empty;
+                        }
+                    });
+
+                    var processingTask = Task.Run(async () =>
+                    {
+                        var lastFrameCount = 0;
+                        var noNewFramesCount = 0;
+                        
+                        while (!creditsFound && frameIndex < maxFramesToProcess)
+                        {
+                            if (!Directory.Exists(tempDir))
+                            {
+                                await Task.Delay(50).ConfigureAwait(false);
+                                continue;
+                            }
+
+                            var currentFrames = Directory.GetFiles(tempDir, $"frame_*.{imageExtension}")
+                                .OrderBy(f => f)
+                                .Skip(frameIndex)
+                                .ToList();
+
+                            if (currentFrames.Count == 0)
+                            {
+                                if (process.HasExited)
+                                {
+                                    break;
+                                }
+                                
+                                if (lastFrameCount == frameIndex)
+                                {
+                                    noNewFramesCount++;
+                                    if (noNewFramesCount > 20) // 1 second without new frames
+                                    {
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    noNewFramesCount = 0;
+                                }
+                                
+                                lastFrameCount = frameIndex;
+                                await Task.Delay(50).ConfigureAwait(false);
+                                continue;
+                            }
+
+                            noNewFramesCount = 0;
+                            
+                            foreach (var frameFile in currentFrames)
+                            {
+                                if (creditsFound || frameIndex >= maxFramesToProcess)
+                                {
+                                    break;
+                                }
+
+                                var timestamp = startTime + (frameIndex / fps);
+
+                                try
+                                {
+                                    var retryCount = 0;
+                                    while (retryCount < 5)
+                                    {
+                                        try
+                                        {
+                                            using (var fs = File.Open(frameFile, FileMode.Open, FileAccess.Read, FileShare.None))
+                                            {
+                                                break;
+                                            }
+                                        }
+                                        catch (IOException)
+                                        {
+                                            retryCount++;
+                                            await Task.Delay(20).ConfigureAwait(false);
+                                        }
+                                    }
+
+                                    if (!loggedFirstFrame)
+                                    {
+                                        LogInfo($"Processing first frame: {frameFile}");
+                                        loggedFirstFrame = true;
+                                    }
+
+                                    var estimatedTotal = Math.Min(maxFramesToProcess, (int)(analysisDuration * fps));
+                                    var ocrProgress = estimatedTotal > 0 ? (double)(frameIndex + 1) / estimatedTotal : 0;
+                                    var overallProgress = 15 + (ocrProgress * 80);
+                                    UpdateProgress(overallProgress, $"OCR: {frameIndex + 1} frames ({ocrProgress:P0})");
+
+                                    if (frameIndex > 0 && frameIndex % 50 == 0)
+                                    {
+                                        LogDebug($"OCR progress: {frameIndex} frames processed");
+                                    }
+
+                                    LogDebug($"Sending frame {frameIndex + 1} to OCR API: {frameFile}");
+                                    var ocrText = await PerformOcr(frameFile).ConfigureAwait(false);
+                                    LogDebug($"OCR response for frame {frameIndex + 1}: {(string.IsNullOrWhiteSpace(ocrText) ? "empty" : $"{ocrText.Length} chars")}");
+
+                                    if (!string.IsNullOrWhiteSpace(ocrText))
+                                    {
+                                        var matchedKeywords = FindKeywordMatches(ocrText, keywords);
+
+                                        if (matchedKeywords.Count > 0)
+                                        {
+                                            var matchedText = string.Join(", ", matchedKeywords);
+                                            detectionScores.Add((timestamp, matchedKeywords.Count, matchedText));
+                                            LogDebug($"Frame at {FormatTime(timestamp)}: Found {matchedKeywords.Count} keyword(s): {matchedText}");
+
+                                            if (detectionScores.Count >= Configuration.OcrMinimumMatches)
+                                            {
+                                                creditsTimestamp = FindCreditsStartFromOcrScores(detectionScores, duration);
+                                                if (creditsTimestamp > 0)
+                                                {
+                                                    creditsFound = true;
+                                                    UpdateProgress(98, $"Credits found! Processed {frameIndex + 1} frames");
+                                                    LogInfo($"Credits detected at {FormatTime(creditsTimestamp)} via OCR keyword matching");
+                                                    LogInfo($"OCR processing stopped early after finding credits (processed {frameIndex + 1} frames, FFmpeg extraction stopped)");
+                                                    
+                                                    try
+                                                    {
+                                                        if (!process.HasExited)
+                                                        {
+                                                            process.Kill();
+                                                            LogDebug("FFmpeg process terminated after credits detected");
+                                                        }
+                                                    }
+                                                    catch (Exception killEx)
+                                                    {
+                                                        LogDebug($"Error killing FFmpeg process: {killEx.Message}");
+                                                    }
+                                                    
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        LogDebug($"Frame at {FormatTime(timestamp)}: No text detected");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogWarn($"Error processing frame {frameFile}: {ex.Message}");
+                                }
+                                
+                                frameIndex++;
+                            }
+                        }
+                    });
+
+                    await processingTask.ConfigureAwait(false);
+                    
+                    if (creditsFound)
+                    {
+                        return creditsTimestamp;
+                    }
+
+                    var ffmpegError = await ffmpegTask.ConfigureAwait(false);
                     await process.WaitForExitAsync().ConfigureAwait(false);
                     
-                    if (process.ExitCode != 0)
+                    if (process.ExitCode != 0 && !creditsFound)
                     {
                         LastError = $"FFmpeg frame extraction failed (exit code {process.ExitCode})";
                         LogError($"FFmpeg frame extraction failed with exit code {process.ExitCode}");
@@ -141,93 +323,18 @@ namespace EmbyCredits.Services.DetectionMethods
                         }
                         return 0;
                     }
-                    
-                    if (!string.IsNullOrWhiteSpace(ffmpegError) && (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) || ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        LogDebug($"FFmpeg output: {ffmpegError}");
-                    }
 
-                    var frameFiles = Directory.GetFiles(tempDir, $"frame_*.{imageExtension}").OrderBy(f => f).ToList();
-
-                    if (Configuration.OcrMaxFramesToProcess > 0 && frameFiles.Count > Configuration.OcrMaxFramesToProcess)
-                    {
-                        frameFiles = frameFiles.Take(Configuration.OcrMaxFramesToProcess).ToList();
-                        LogDebug($"Limited to first {frameFiles.Count} frames (OcrMaxFramesToProcess setting)");
-                    }
-
-                    LogDebug($"Extracted {frameFiles.Count} frames for OCR analysis");
-                    UpdateProgress(15, $"Processing {frameFiles.Count} frames with OCR");
-
-                    if (frameFiles.Count == 0)
+                    if (frameIndex == 0)
                     {
                         LastError = "No frames extracted for OCR analysis";
                         LogWarn("No frames extracted for OCR analysis");
                         return 0;
                     }
 
-                    var detectionScores = new List<(double timestamp, int matchCount, string matchedKeywords)>();
-                    bool loggedFirstFrame = false;
+                    LogDebug($"Extracted and processed {frameIndex} frames for OCR analysis");
 
-                    for (int i = 0; i < frameFiles.Count; i++)
-                    {
-                        var frameFile = frameFiles[i];
-                        var timestamp = startTime + (i / fps);
-
-                        try
-                        {
-                            if (!loggedFirstFrame)
-                            {
-                                LogInfo($"Processing first frame: {frameFile}");
-                                loggedFirstFrame = true;
-                            }
-
-                            var ocrProgress = (double)(i + 1) / frameFiles.Count;
-                            var overallProgress = 15 + (ocrProgress * 80);
-                            UpdateProgress(overallProgress, $"OCR: {i + 1}/{frameFiles.Count} frames ({ocrProgress:P0})");
-
-                            if (i > 0 && i % 50 == 0)
-                            {
-                                LogDebug($"OCR progress: {i}/{frameFiles.Count} frames processed ({(i * 100.0 / frameFiles.Count):F1}%)");
-                            }
-
-                            LogDebug($"Sending frame {i + 1} to OCR API: {frameFile}");
-                            var ocrText = await PerformOcr(frameFile).ConfigureAwait(false);
-                            LogDebug($"OCR response for frame {i + 1}: {(string.IsNullOrWhiteSpace(ocrText) ? "empty" : $"{ocrText.Length} chars")}");
-
-                            if (string.IsNullOrWhiteSpace(ocrText))
-                            {
-                                LogDebug($"Frame at {FormatTime(timestamp)}: No text detected");
-                                continue;
-                            }
-
-                            var matchedKeywords = FindKeywordMatches(ocrText, keywords);
-
-                            if (matchedKeywords.Count > 0)
-                            {
-                                var matchedText = string.Join(", ", matchedKeywords);
-                                detectionScores.Add((timestamp, matchedKeywords.Count, matchedText));
-                                LogDebug($"Frame at {FormatTime(timestamp)}: Found {matchedKeywords.Count} keyword(s): {matchedText}");
-
-                                if (detectionScores.Count >= Configuration.OcrMinimumMatches)
-                                {
-                                    var creditsStart = FindCreditsStartFromOcrScores(detectionScores, duration);
-                                    if (creditsStart > 0)
-                                    {
-                                        UpdateProgress(98, $"Credits found! Processed {i + 1}/{frameFiles.Count} frames");
-                                        LogInfo($"Credits detected at {FormatTime(creditsStart)} via OCR keyword matching");
-                                        LogInfo($"OCR processing stopped early after finding credits (processed {i + 1}/{frameFiles.Count} frames)");
-                                        return creditsStart;
-                                    }
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LogWarn($"Error processing frame {frameFile}: {ex.Message}");
-                        }
-                    }
-
-                    UpdateProgress(95, $"OCR: {frameFiles.Count}/{frameFiles.Count} frames (100%)");
+                    LogDebug($"Extracted and processed {frameIndex} frames for OCR analysis");
+                    UpdateProgress(95, $"OCR: {frameIndex} frames (100%)");
 
                     LogDebug($"OCR analysis complete: Found {detectionScores.Count} frames with keyword matches");
                     UpdateProgress(98, "Analyzing results");
@@ -242,7 +349,7 @@ namespace EmbyCredits.Services.DetectionMethods
                         }
                     }
 
-                    LastError = $"No OCR keywords found in {frameFiles.Count} frames analyzed";
+                    LastError = $"No OCR keywords found in {frameIndex} frames analyzed";
                     LogDebug("No sustained keyword matches found for credits");
                     return 0;
                 }

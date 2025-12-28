@@ -5,7 +5,9 @@ using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Services;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using EmbyCredits.Api;
 using EmbyCredits.Services;
@@ -43,7 +45,7 @@ namespace EmbyCredits.Services
             }
             catch (Exception ex)
             {
-                _logger.ErrorException("Error triggering credits detection", ex);
+                _logger?.ErrorException("Error triggering credits detection", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }
@@ -57,7 +59,28 @@ namespace EmbyCredits.Services
                     return new { Success = false, Message = "ItemId is required" };
                 }
 
-                var item = _libraryManager.GetItemById(request.ItemId);
+                BaseItem? item = null;
+                
+                // Try to parse as GUID first
+                if (Guid.TryParse(request.ItemId, out Guid itemGuid))
+                {
+                    item = _libraryManager.GetItemById(itemGuid);
+                }
+                // If not a GUID, try as InternalId
+                else if (long.TryParse(request.ItemId, out long internalId))
+                {
+                    item = _libraryManager.GetItemById(internalId);
+                }
+                else
+                {
+                    return new { Success = false, Message = "Invalid ItemId format - must be GUID or InternalId" };
+                }
+
+                if (item == null)
+                {
+                    return new { Success = false, Message = "Item not found" };
+                }
+
                 if (item is Episode episode)
                 {
                     CreditsDetectionService.QueueEpisode(episode);
@@ -68,24 +91,49 @@ namespace EmbyCredits.Services
             }
             catch (Exception ex)
             {
-                _logger.ErrorException("Error processing episode", ex);
+                _logger?.ErrorException("Error processing episode", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }
 
         public object Post(ProcessSeriesRequest request)
         {
+            _logger?.Info("=== ProcessSeriesRequest received ===");
+            
             try
             {
-                if (string.IsNullOrEmpty(request.SeriesId))
+                _logger?.Info($"SeriesId: {request?.SeriesId ?? "NULL"}");
+                
+                if (request == null || string.IsNullOrEmpty(request.SeriesId))
                 {
+                    _logger?.Info("Returning error: SeriesId is required");
                     return new { Success = false, Message = "SeriesId is required" };
                 }
 
                 Guid seriesGuid;
                 if (!Guid.TryParse(request.SeriesId, out seriesGuid))
                 {
-                    return new { Success = false, Message = "Invalid SeriesId format" };
+                    _logger?.Info($"SeriesId '{request.SeriesId}' is not a GUID, attempting to parse as InternalId");
+                    
+                    if (long.TryParse(request.SeriesId, out long internalId))
+                    {
+                        var seriesByInternalId = _libraryManager.GetItemById(internalId);
+                        if (seriesByInternalId != null)
+                        {
+                            seriesGuid = seriesByInternalId.Id;
+                            _logger?.Info($"Found series by InternalId: {seriesByInternalId.Name} (Guid: {seriesGuid})");
+                        }
+                        else
+                        {
+                            _logger?.Info($"No series found with InternalId: {internalId}");
+                            return new { Success = false, Message = $"Series not found with InternalId: {internalId}" };
+                        }
+                    }
+                    else
+                    {
+                        _logger?.Info($"SeriesId '{request.SeriesId}' is neither a GUID nor a valid InternalId");
+                        return new { Success = false, Message = "Invalid SeriesId format - must be GUID or InternalId" };
+                    }
                 }
 
                 var series = _libraryManager.GetItemById(seriesGuid);
@@ -94,25 +142,35 @@ namespace EmbyCredits.Services
                     return new { Success = false, Message = "Series not found" };
                 }
 
-                var seriesInternalId = series.InternalId;
-                var episodes = _libraryManager.GetItemList(new InternalItemsQuery
+                _logger?.Info($"Processing series: {series.Name} (Id: {seriesGuid}, InternalId: {series.InternalId})");
+
+                var allEpisodes = _libraryManager.GetItemList(new InternalItemsQuery
                 {
                     IncludeItemTypes = new[] { "Episode" },
                     IsVirtualItem = false,
-                    HasPath = true
-                }).OfType<Episode>()
-                .Where(e => e.SeriesId == seriesInternalId)
-                .ToList();
+                    AncestorIds = new[] { series.InternalId }
+                }).OfType<Episode>().ToList();
 
-                _logger.Info($"Found {episodes.Count} episodes for series: {series.Name} (InternalId: {seriesInternalId})");
+                _logger?.Info($"Found {allEpisodes.Count} total episodes (before path filter)");
 
-                CreditsDetectionService.QueueSeries(episodes);
+                var episodes = allEpisodes.Where(e => !string.IsNullOrEmpty(e.Path) && File.Exists(e.Path)).ToList();
+
+                _logger?.Info($"Found {episodes.Count} episodes with valid paths for series: {series.Name}");
+
+                if (episodes.Count > 0)
+                {
+                    CreditsDetectionService.QueueSeries(episodes);
+                }
+                else if (allEpisodes.Count > 0)
+                {
+                    _logger?.Warn($"Series {series.Name} has {allEpisodes.Count} episodes but none have valid file paths");
+                }
 
                 return new { Success = true, Message = $"Queued {episodes.Count} episodes from {series.Name} for processing", EpisodeCount = episodes.Count };
             }
             catch (Exception ex)
             {
-                _logger.ErrorException("Error processing series", ex);
+                _logger?.ErrorException("Error processing series", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }
@@ -140,7 +198,7 @@ namespace EmbyCredits.Services
             }
             catch (Exception ex)
             {
-                _logger.ErrorException("Error getting series list", ex);
+                _logger?.ErrorException("Error getting series list", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }
@@ -171,7 +229,7 @@ namespace EmbyCredits.Services
             }
             catch (Exception ex)
             {
-                _logger.ErrorException("Error getting progress", ex);
+                _logger?.ErrorException("Error getting progress", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }
@@ -185,7 +243,21 @@ namespace EmbyCredits.Services
             }
             catch (Exception ex)
             {
-                _logger.ErrorException("Error cancelling detection", ex);
+                _logger?.ErrorException("Error cancelling detection", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Post(ClearQueueRequest request)
+        {
+            try
+            {
+                var clearedCount = CreditsDetectionService.ClearQueue();
+                return new { Success = true, Message = $"Queue cleared: {clearedCount} items removed", ClearedCount = clearedCount };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error clearing queue", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }
@@ -202,7 +274,22 @@ namespace EmbyCredits.Services
                 Guid seriesGuid;
                 if (!Guid.TryParse(request.SeriesId, out seriesGuid))
                 {
-                    return new { Success = false, Message = "Invalid SeriesId format" };
+                    if (long.TryParse(request.SeriesId, out long internalId))
+                    {
+                        var seriesByInternalId = _libraryManager.GetItemById(internalId);
+                        if (seriesByInternalId != null)
+                        {
+                            seriesGuid = seriesByInternalId.Id;
+                        }
+                        else
+                        {
+                            return new { Success = false, Message = $"Series not found with InternalId: {internalId}" };
+                        }
+                    }
+                    else
+                    {
+                        return new { Success = false, Message = "Invalid SeriesId format - must be GUID or InternalId" };
+                    }
                 }
 
                 var series = _libraryManager.GetItemById(seriesGuid);
@@ -216,9 +303,9 @@ namespace EmbyCredits.Services
                 {
                     IncludeItemTypes = new[] { "Episode" },
                     IsVirtualItem = false,
-                    HasPath = true
+                    HasPath = true,
+                    AncestorIds = new[] { seriesInternalId }
                 }).OfType<Episode>()
-                .Where(e => e.SeriesId == seriesInternalId)
                 .OrderBy(e => e.ParentIndexNumber)
                 .ThenBy(e => e.IndexNumber)
                 .ToList();
@@ -235,61 +322,101 @@ namespace EmbyCredits.Services
             }
             catch (Exception ex)
             {
-                _logger.ErrorException("Error getting series markers", ex);
+                _logger?.ErrorException("Error getting series markers", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }
 
         public object Post(DryRunSeriesRequest request)
         {
+            _logger?.Info($"=== DryRunSeriesRequest START ===");
+            _logger?.Info($"Request: EpisodeId={request?.EpisodeId ?? "NULL"}, SeriesId={request?.SeriesId ?? "NULL"}");
+            
             try
             {
+                if (request == null)
+                {
+                    _logger?.Info("Request is NULL");
+                    return new { Success = false, Message = "Request is null" };
+                }
+
                 if (!string.IsNullOrEmpty(request.EpisodeId))
                 {
+                    _logger?.Info($"Processing single episode: {request.EpisodeId}");
                     var item = _libraryManager.GetItemById(request.EpisodeId);
                     if (item is Episode episode)
                     {
+                        _logger?.Info($"Episode found: {episode.Name}");
                         CreditsDetectionService.QueueEpisodeDryRun(episode);
                         return new { Success = true, Message = $"Dry run queued for episode: {episode.Name}" };
                     }
+                    _logger?.Info("Item is not an episode");
                     return new { Success = false, Message = "Item is not an episode" };
                 }
                 else if (!string.IsNullOrEmpty(request.SeriesId))
                 {
+                    _logger?.Info($"Processing series: {request.SeriesId}");
+                    
                     Guid seriesGuid;
                     if (!Guid.TryParse(request.SeriesId, out seriesGuid))
                     {
-                        return new { Success = false, Message = "Invalid SeriesId format" };
+                        _logger?.Info($"SeriesId '{request.SeriesId}' is not a GUID, attempting to parse as InternalId");
+                        
+                        if (long.TryParse(request.SeriesId, out long internalId))
+                        {
+                            var seriesByInternalId = _libraryManager.GetItemById(internalId);
+                            if (seriesByInternalId != null)
+                            {
+                                seriesGuid = seriesByInternalId.Id;
+                                _logger?.Info($"Found series via InternalId {internalId}: {seriesByInternalId.Name}");
+                            }
+                            else
+                            {
+                                _logger?.Info($"Series not found with InternalId: {internalId}");
+                                return new { Success = false, Message = $"Series not found with InternalId: {internalId}" };
+                            }
+                        }
+                        else
+                        {
+                            _logger?.Info($"Invalid SeriesId format - must be GUID or InternalId: {request.SeriesId}");
+                            return new { Success = false, Message = "Invalid SeriesId format - must be GUID or InternalId" };
+                        }
                     }
 
+                    _logger?.Info($"Looking up series with GUID: {seriesGuid}");
                     var series = _libraryManager.GetItemById(seriesGuid);
                     if (series == null)
                     {
+                        _logger?.Info($"Series not found for GUID: {seriesGuid}");
                         return new { Success = false, Message = "Series not found" };
                     }
 
+                    _logger?.Info($"Series found: {series.Name}, InternalId: {series.InternalId}");
+                    
                     var seriesInternalId = series.InternalId;
                     var episodes = _libraryManager.GetItemList(new InternalItemsQuery
                     {
                         IncludeItemTypes = new[] { "Episode" },
                         IsVirtualItem = false,
-                        HasPath = true
+                        HasPath = true,
+                        AncestorIds = new[] { seriesInternalId }
                     }).OfType<Episode>()
-                    .Where(e => e.SeriesId == seriesInternalId)
                     .ToList();
 
-                    _logger.Info($"Dry run: Found {episodes.Count} episodes for series: {series.Name}");
+                    _logger?.Info($"Dry run: Found {episodes.Count} episodes for series: {series.Name}");
 
                     CreditsDetectionService.QueueSeriesDryRun(episodes);
 
+                    _logger?.Info($"QueueSeriesDryRun called successfully");
                     return new { Success = true, Message = $"Dry run queued for {episodes.Count} episodes from {series.Name}", EpisodeCount = episodes.Count };
                 }
 
+                _logger?.Info("Neither EpisodeId nor SeriesId provided");
                 return new { Success = false, Message = "Either SeriesId or EpisodeId is required" };
             }
             catch (Exception ex)
             {
-                _logger.ErrorException("Error in dry run", ex);
+                _logger?.ErrorException("Error in dry run", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }
@@ -382,8 +509,157 @@ namespace EmbyCredits.Services
             }
             catch (Exception ex)
             {
-                _logger.ErrorException("Error testing OCR connection", ex);
+                _logger?.ErrorException("Error testing OCR connection", ex);
                 return new { Success = false, Message = $"Error: {ex.Message}" };
+            }
+        }
+
+        public Stream Get(GetImageRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(request.ImageName))
+                {
+                    _logger.Warn("Image request with empty ImageName");
+                    return Stream.Null;
+                }
+
+                var assembly = typeof(Plugin).GetTypeInfo().Assembly;
+                var resourceName = $"EmbyCredits.Images.{request.ImageName}";
+                
+                var stream = assembly.GetManifestResourceStream(resourceName);
+                
+                if (stream == null)
+                {
+                    _logger.Warn($"Image not found: {resourceName}");
+                    return Stream.Null;
+                }
+
+                return stream;
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException($"Error getting image: {request.ImageName}", ex);
+                return Stream.Null;
+            }
+        }
+
+        public object Post(DryRunSeriesDebugRequest request)
+        {
+            _logger?.Info($"=== DryRunSeriesDebugRequest START ===");
+            _logger?.Info($"Request: EpisodeId={request?.EpisodeId ?? "NULL"}, SeriesId={request?.SeriesId ?? "NULL"}");
+            
+            try
+            {
+                if (request == null)
+                {
+                    _logger?.Info("Request is NULL");
+                    return new { Success = false, Message = "Request is null" };
+                }
+
+                if (!string.IsNullOrEmpty(request.EpisodeId))
+                {
+                    _logger?.Info($"Processing single episode with debug: {request.EpisodeId}");
+                    var item = _libraryManager.GetItemById(request.EpisodeId);
+                    if (item is Episode episode)
+                    {
+                        _logger?.Info($"Episode found: {episode.Name}");
+                        CreditsDetectionService.QueueEpisodeDryRunDebug(episode);
+                        return new { Success = true, Message = $"Debug dry run queued for episode: {episode.Name}" };
+                    }
+                    _logger?.Info("Item is not an episode");
+                    return new { Success = false, Message = "Item is not an episode" };
+                }
+                else if (!string.IsNullOrEmpty(request.SeriesId))
+                {
+                    _logger?.Info($"Processing series with debug: {request.SeriesId}");
+                    
+                    Guid seriesGuid;
+                    if (!Guid.TryParse(request.SeriesId, out seriesGuid))
+                    {
+                        _logger?.Info($"SeriesId '{request.SeriesId}' is not a GUID, attempting to parse as InternalId");
+                        
+                        if (long.TryParse(request.SeriesId, out long internalId))
+                        {
+                            var seriesByInternalId = _libraryManager.GetItemById(internalId);
+                            if (seriesByInternalId != null)
+                            {
+                                seriesGuid = seriesByInternalId.Id;
+                                _logger?.Info($"Found series via InternalId {internalId}: {seriesByInternalId.Name}");
+                            }
+                            else
+                            {
+                                _logger?.Info($"Series not found with InternalId: {internalId}");
+                                return new { Success = false, Message = $"Series not found with InternalId: {internalId}" };
+                            }
+                        }
+                        else
+                        {
+                            _logger?.Info($"Invalid SeriesId format - must be GUID or InternalId: {request.SeriesId}");
+                            return new { Success = false, Message = "Invalid SeriesId format - must be GUID or InternalId" };
+                        }
+                    }
+
+                    _logger?.Info($"Looking up series with GUID: {seriesGuid}");
+                    var series = _libraryManager.GetItemById(seriesGuid);
+                    if (series == null)
+                    {
+                        _logger?.Info($"Series not found for GUID: {seriesGuid}");
+                        return new { Success = false, Message = "Series not found" };
+                    }
+
+                    _logger?.Info($"Series found: {series.Name}, InternalId: {series.InternalId}");
+                    
+                    var seriesInternalId = series.InternalId;
+                    var episodes = _libraryManager.GetItemList(new InternalItemsQuery
+                    {
+                        IncludeItemTypes = new[] { "Episode" },
+                        IsVirtualItem = false,
+                        HasPath = true,
+                        AncestorIds = new[] { seriesInternalId }
+                    }).OfType<Episode>()
+                    .ToList();
+
+                    _logger?.Info($"Debug dry run: Found {episodes.Count} episodes for series: {series.Name}");
+
+                    CreditsDetectionService.QueueSeriesDryRunDebug(episodes);
+
+                    _logger?.Info($"QueueSeriesDryRunDebug called successfully");
+                    return new { Success = true, Message = $"Debug dry run queued for {episodes.Count} episodes from {series.Name}", EpisodeCount = episodes.Count };
+                }
+
+                _logger?.Info("Neither EpisodeId nor SeriesId provided");
+                return new { Success = false, Message = "Either SeriesId or EpisodeId is required" };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error in debug dry run", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Get(GetDebugLogRequest request)
+        {
+            try
+            {
+                _logger?.Info("Debug log requested");
+                var debugLog = CreditsDetectionService.GetDebugLog();
+                
+                // Convert to bytes and return MemoryStream
+                // The framework will dispose the stream after sending the response
+                var bytes = System.Text.Encoding.UTF8.GetBytes(debugLog);
+                var stream = new MemoryStream(bytes);
+                stream.Position = 0; // Reset position for reading
+                return stream;
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting debug log", ex);
+                var errorMessage = $"Error retrieving debug log: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}";
+                var errorBytes = System.Text.Encoding.UTF8.GetBytes(errorMessage);
+                var errorStream = new MemoryStream(errorBytes);
+                errorStream.Position = 0;
+                return errorStream;
             }
         }
     }

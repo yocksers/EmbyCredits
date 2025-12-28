@@ -46,22 +46,22 @@ namespace EmbyCredits
         public double SceneChangeSearchStart { get; set; } = 0.7;
         public double SceneChangeMinDeviation { get; set; } = 0.25;
 
-        public string KeywordDetectionKeywords { get; set; } = "directed by,produced by,executive producer,written by,cast,credits,fin,ende,?,?,fim,fine";
+        public string KeywordDetectionKeywords { get; set; } = "directed by,produced by,executive producer,written by,cast,credits,fin,ende,?,?,fim,fine,producer,music by,music,cinematography,editor,editing,production design,costume design,casting,based on,story by,screenplay,associate producer,co-producer,created by,developed by,series producer,composer,director of photography,visual effects,sound,the end,end credits,starring,guest starring,special thanks,production company";
         public double KeywordDetectionSearchStart { get; set; } = 0.65;
         public int KeywordDetectionMinTextScore { get; set; } = 50;
         public int KeywordDetectionRegionHeight { get; set; } = 120;
 
-        public bool EnableOcrDetection { get; set; } = false;
+        public bool EnableOcrDetection { get; set; } = true;
         public string OcrEndpoint { get; set; } = "http://localhost:8884";
-        public string OcrDetectionKeywords { get; set; } = "directed by,produced by,executive producer,written by,cast,credits,fin,ende,?,?,fim,fine";
+        public string OcrDetectionKeywords { get; set; } = "directed by,produced by,executive producer,written by,cast,credits,fin,ende,?,?,fim,fine,producer,music by,music,cinematography,editor,editing,production design,costume design,casting,based on,story by,screenplay,associate producer,co-producer,created by,developed by,series producer,composer,director of photography,visual effects,sound,the end,end credits,starring,guest starring,special thanks,production company";
         public double OcrDetectionSearchStart { get; set; } = 0.65;
-        public double OcrMinutesFromEnd { get; set; } = 0.0;
+        public double OcrMinutesFromEnd { get; set; } = 3.0;
         public double OcrFrameRate { get; set; } = 0.5;
-        public int OcrMinimumMatches { get; set; } = 2;
+        public int OcrMinimumMatches { get; set; } = 1;
         public int OcrMaxFramesToProcess { get; set; } = 0;
         public double OcrMaxAnalysisDuration { get; set; } = 600.0;
         public double OcrStopSecondsFromEnd { get; set; } = 20.0;
-        public string OcrImageFormat { get; set; } = "png";
+        public string OcrImageFormat { get; set; } = "jpg";
         public int OcrJpegQuality { get; set; } = 92;
 
         public bool UseCorrelationScoring { get; set; } = true;
@@ -99,7 +99,7 @@ namespace EmbyCredits
 
         public bool EnableDetailedLogging { get; set; } = false;
 
-        public string[] ScheduledTaskLibraryIds { get; set; } = Array.Empty<string>();
-        public string[] AutoDetectionLibraryIds { get; set; } = Array.Empty<string>();
+        public string[] LibraryIds { get; set; } = Array.Empty<string>();
+        public bool ScheduledTaskOnlyProcessMissing { get; set; } = true;
     }
 }

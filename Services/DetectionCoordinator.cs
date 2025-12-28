@@ -33,20 +33,42 @@ namespace EmbyCredits.Services
             _detectionMethods.Add(new OcrDetection(_logger, _configuration));
         }
 
+        private void LogDebug(string message)
+        {
+            if (CreditsDetectionService.IsDebugMode)
+            {
+                CreditsDetectionService.LogToDebug("DEBUG", $"[DetectionCoordinator] {message}");
+            }
+        }
+
+        private void LogInfo(string message)
+        {
+            if (CreditsDetectionService.IsDebugMode)
+            {
+                CreditsDetectionService.LogToDebug("INFO", $"[DetectionCoordinator] {message}");
+            }
+        }
+
         public async Task<(double timestamp, string failureReason)> DetectCredits(string videoPath, double duration, string episodeId)
         {
+            LogDebug($"DetectCredits called: duration={FormatTime(duration)}");
             var (detectionResults, methodErrors) = await RunAllDetectionMethods(videoPath, duration, episodeId);
 
             if (detectionResults.Count == 0)
             {
                 _logger.Info("No credits detected by any method");
+                LogDebug("No credits detected by any method");
                 var failureReason = methodErrors.Count > 0 
                     ? string.Join("; ", methodErrors.Values)
                     : "No credits detected by any enabled method";
+                LogDebug($"Failure reasons: {failureReason}");
                 return (0, failureReason);
             }
 
-            return (SelectByStrategy(detectionResults), string.Empty);
+            LogDebug($"Found {detectionResults.Count} detection result(s)");
+            var result = SelectByStrategy(detectionResults);
+            LogDebug($"Selected timestamp: {FormatTime(result)}");
+            return (result, string.Empty);
         }
 
         public async Task<(double timestamp, string failureReason)> DetectCreditsWithComparison(
@@ -252,21 +274,27 @@ namespace EmbyCredits.Services
             var results = new List<(string method, double timestamp, double confidence, int priority)>();
             var errors = new Dictionary<string, string>();
 
+            LogDebug($"Running detection methods for video (duration: {FormatTime(duration)})");
+            LogDebug($"Enabled methods: {string.Join(", ", _detectionMethods.Where(m => m.IsEnabled).Select(m => m.MethodName))}");
+
             foreach (var method in _detectionMethods)
             {
                 if (!method.IsEnabled)
                 {
                     _logger.Debug($"Skipping {method.MethodName} (disabled)");
+                    LogDebug($"Skipping {method.MethodName} (disabled)");
                     continue;
                 }
 
                 try
                 {
+                    LogDebug($"Running {method.MethodName}...");
                     var timestamp = await method.DetectCredits(videoPath, duration);
                     if (timestamp > 0)
                     {
                         results.Add((method.MethodName, timestamp, method.Confidence, method.Priority));
                         _logger.Info($"{method.MethodName} detection: {FormatTime(timestamp)}");
+                        LogInfo($"{method.MethodName} detected credits at {FormatTime(timestamp)} (confidence: {method.Confidence}, priority: {method.Priority})");
                     }
                     else
                     {
@@ -274,6 +302,11 @@ namespace EmbyCredits.Services
                         if (!string.IsNullOrEmpty(errorMsg))
                         {
                             errors[method.MethodName] = errorMsg;
+                            LogDebug($"{method.MethodName} failed: {errorMsg}");
+                        }
+                        else
+                        {
+                            LogDebug($"{method.MethodName} returned 0 (no credits detected)");
                         }
                     }
                 }
@@ -281,9 +314,11 @@ namespace EmbyCredits.Services
                 {
                     _logger.ErrorException($"Error running {method.MethodName}", ex);
                     errors[method.MethodName] = ex.Message;
+                    LogDebug($"{method.MethodName} threw exception: {ex.Message}");
                 }
             }
 
+            LogDebug($"Detection complete: {results.Count} successful, {errors.Count} errors");
             return (results, errors);
         }
 

@@ -47,7 +47,12 @@
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="txtTempFolderPath">Custom Temp Folder Path</label>
-                        <input is="emby-input" type="text" id="txtTempFolderPath" data-config-key="TempFolderPath" label="Custom Temp Folder Path" />
+                        <div style="display: flex; gap: 0.5em;">
+                            <input is="emby-input" type="text" id="txtTempFolderPath" data-config-key="TempFolderPath" style="flex: 1;" />
+                            <button is="emby-button" type="button" class="raised button-submit" id="btnBrowseTempFolder" title="Browse for folder">
+                                <i class="md-icon">folder_open</i>
+                            </button>
+                        </div>
                         <div class="fieldDescription"><strong style="color: #E5A54A;">⚠️ CRITICAL FOR DOCKER USERS:</strong> Set this to prevent filling your Docker image! Leave empty only if running Emby natively on host OS. Temp files are automatically cleaned up after processing.</div>
                     </div>
 
@@ -61,37 +66,31 @@
 
                     <div style="margin-top: 1.5em;">
                         <h3 style="color: #52B54B;">Library Selection</h3>
-                        <div class="fieldDescription" style="margin-bottom: 1em;">Choose which libraries these features should work in. If none are selected, all libraries will be used.</div>
+                        <div class="fieldDescription" style="margin-bottom: 1em;">Choose which TV Show or Mixed libraries to enable credits detection. If none are selected, all TV Show and Mixed libraries will be used.</div>
 
                         <div style="margin-bottom: 1em;">
-                            <label style="display: block; font-weight: bold; margin-bottom: 0.5em;">Automatic Detection Libraries:</label>
-                            <div id="autoDetectionLibraries" style="margin-left: 1em;"></div>
-                            <div class="fieldDescription" style="margin-top: 0.5em;">Libraries where new episodes will be automatically detected</div>
+                            <label style="display: block; font-weight: bold; margin-bottom: 0.5em;">Enabled Libraries:</label>
+                            <div id="creditsLibraries" style="margin-left: 1em;"></div>
+                            <div class="fieldDescription" style="margin-top: 0.5em;">Libraries where automatic detection and scheduled tasks will run</div>
                         </div>
 
-                        <div style="margin-bottom: 1em;">
-                            <label style="display: block; font-weight: bold; margin-bottom: 0.5em;">Scheduled Task Libraries:</label>
-                            <div id="scheduledTaskLibraries" style="margin-left: 1em;"></div>
-                            <div class="fieldDescription" style="margin-top: 0.5em;">Libraries that will be processed by the scheduled task</div>
+                        <div class="checkboxContainer" style="margin-top: 1em;">
+                            <label>
+                                <input is="emby-checkbox" type="checkbox" id="chkScheduledTaskOnlyProcessMissing" data-config-key="ScheduledTaskOnlyProcessMissing" />
+                                <span>Smart Processing (Only Process Missing Credits)</span>
+                            </label>
+                            <div class="fieldDescription">When enabled, the scheduled task will skip episodes that already have credits, only processing new episodes or those without credits. This significantly reduces processing time.</div>
                         </div>
                     </div>
                 </div>
 
                 <div class="paper-card" style="padding: 1.5em; margin-top: 2em; border-left: 4px solid #52B54B;">
                     <h2 style="margin-top: 0; color: #52B54B;">OCR Detection Settings</h2>
-                    <p class="fieldDescription">Configure how the OCR detection works</p>
-
-                    <div class="checkboxContainer">
-                        <label>
-                            <input is="emby-checkbox" type="checkbox" id="chkEnableOcrDetection" data-config-key="EnableOcrDetection" />
-                            <span>Enable OCR Detection</span>
-                        </label>
-                        <div class="fieldDescription">Use external OCR service (Tesseract) to read actual text from video frames. Requires Docker container running (see guide above).</div>
-                    </div>
+                    <p class="fieldDescription">OCR detection is always enabled. Configure the settings below. Requires Docker container running (see guide below).</p>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="txtOcrEndpoint">OCR API Endpoint</label>
-                        <input is="emby-input" type="text" id="txtOcrEndpoint" data-config-key="OcrEndpoint" label="OCR Endpoint" />
+                        <input is="emby-input" type="text" id="txtOcrEndpoint" data-config-key="OcrEndpoint" />
                         <div class="fieldDescription">URL of your OCR API (e.g., <code>http://localhost:8884</code> or <code>http://192.168.1.100:8884</code>)</div>
                         <div style="display: flex; align-items: center; gap: 0.5em; margin-top: 0.5em;">
                             <button is="emby-button" type="button" class="raised button-submit" id="btnTestOcrConnection">
@@ -104,55 +103,55 @@
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="txtOcrDetectionKeywords">OCR Keywords (comma-separated)</label>
-                        <input is="emby-input" type="text" id="txtOcrDetectionKeywords" data-config-key="OcrDetectionKeywords" label="OCR Keywords" />
+                        <input is="emby-input" type="text" id="txtOcrDetectionKeywords" data-config-key="OcrDetectionKeywords" />
                         <div class="fieldDescription">Keywords to search for in OCR text. Example: <code>directed by,cast,credits,produced by,executive producer,written by,created by</code></div>
                     </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="txtOcrMinutesFromEnd">Minutes From End</label>
-                        <input is="emby-input" type="number" step="0.5" id="txtOcrMinutesFromEnd" data-config-key="OcrMinutesFromEnd" min="0" max="20" label="Minutes From End" />
-                        <div class="fieldDescription"><strong>Recommended: 2-3 minutes.</strong> Start OCR this many minutes before video end (e.g., 2.0 = start at 48:00 in a 50 min video). If 0, uses Search Start % below.</div>
+                        <input is="emby-input" type="number" step="0.5" id="txtOcrMinutesFromEnd" data-config-key="OcrMinutesFromEnd" min="0" max="20" />
+                        <div class="fieldDescription"><strong>Recommended: 2-3 minutes.</strong> Start OCR this many minutes before video end (e.g., 3.0 = start at 47:00 in a 50 min video). If 0, uses Search Start % below.</div>
                     </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="txtOcrDetectionSearchStart">Search Start Position (% fallback)</label>
-                        <input is="emby-input" type="number" step="0.05" id="txtOcrDetectionSearchStart" data-config-key="OcrDetectionSearchStart" min="0.5" max="0.9" label="OCR Search Start" />
+                        <input is="emby-input" type="number" step="0.05" id="txtOcrDetectionSearchStart" data-config-key="OcrDetectionSearchStart" min="0.5" max="0.9" />
                         <div class="fieldDescription">Used only if Minutes From End = 0. Where to start (0.65=65% into video, default: 0.65)</div>
                     </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="txtOcrFrameRate">Frame Rate (fps)</label>
-                        <input is="emby-input" type="number" step="0.25" id="txtOcrFrameRate" data-config-key="OcrFrameRate" min="0.25" max="3" label="OCR Frame Rate" />
+                        <input is="emby-input" type="number" step="0.25" id="txtOcrFrameRate" data-config-key="OcrFrameRate" min="0.25" max="3" />
                         <div class="fieldDescription"><strong>Recommended: 0.5 fps</strong> (1 frame every 2 seconds - fast & sufficient). Credits are static for several seconds, so no need to check every frame. Lower = faster!</div>
                     </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="txtOcrMinimumMatches">Minimum Keyword Matches</label>
-                        <input is="emby-input" type="number" id="txtOcrMinimumMatches" data-config-key="OcrMinimumMatches" min="1" max="5" label="Min Matches" />
-                        <div class="fieldDescription"><strong>Recommended: 2.</strong> Minimum number of keyword detections within 10 seconds to confirm credits</div>
+                        <input is="emby-input" type="number" id="txtOcrMinimumMatches" data-config-key="OcrMinimumMatches" min="1" max="5" />
+                        <div class="fieldDescription"><strong>Recommended: 1.</strong> Minimum number of keyword detections within 10 seconds to confirm credits</div>
                     </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="txtOcrMaxFramesToProcess">Max Frames to Process (0=unlimited)</label>
-                        <input is="emby-input" type="number" id="txtOcrMaxFramesToProcess" data-config-key="OcrMaxFramesToProcess" min="0" max="1000" label="Max Frames" />
+                        <input is="emby-input" type="number" id="txtOcrMaxFramesToProcess" data-config-key="OcrMaxFramesToProcess" min="0" max="1000" />
                         <div class="fieldDescription">Limit frames for faster testing (0=no limit for production, default: 0)</div>
                     </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="txtOcrMaxAnalysisDuration">Max Analysis Duration (seconds)</label>
-                        <input is="emby-input" type="number" id="txtOcrMaxAnalysisDuration" data-config-key="OcrMaxAnalysisDuration" min="0" step="60" label="Max Duration" />
+                        <input is="emby-input" type="number" id="txtOcrMaxAnalysisDuration" data-config-key="OcrMaxAnalysisDuration" min="0" step="60" />
                         <div class="fieldDescription"><strong>Recommended: 600 seconds (10 minutes).</strong> Maximum seconds of video to analyze. Prevents excessive processing on long videos. Set to 0 for unlimited.</div>
                     </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="txtOcrStopSecondsFromEnd">Stop Seconds Before End</label>
-                        <input is="emby-input" type="number" id="txtOcrStopSecondsFromEnd" data-config-key="OcrStopSecondsFromEnd" min="0" max="120" label="Stop Threshold" />
+                        <input is="emby-input" type="number" id="txtOcrStopSecondsFromEnd" data-config-key="OcrStopSecondsFromEnd" min="0" max="120" />
                         <div class="fieldDescription"><strong>Recommended: 20 seconds.</strong> Stop analyzing when this close to the end of the video. No reason to process the last few seconds where credits rarely start. Set to 0 to disable.</div>
                     </div>
 
                     <div class="selectContainer">
                         <label class="selectLabel" for="selectOcrImageFormat">Image Format</label>
-                        <select is="emby-select" id="selectOcrImageFormat" data-config-key="OcrImageFormat" label="Image Format">
+                        <select is="emby-select" id="selectOcrImageFormat" data-config-key="OcrImageFormat">
                             <option value="png">PNG (Higher quality, slower)</option>
                             <option value="jpg">JPEG (Faster, smaller files)</option>
                         </select>
@@ -161,13 +160,17 @@
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="txtOcrJpegQuality">JPEG Quality (1-100)</label>
-                        <input is="emby-input" type="number" id="txtOcrJpegQuality" data-config-key="OcrJpegQuality" min="1" max="100" label="JPEG Quality" />
+                        <input is="emby-input" type="number" id="txtOcrJpegQuality" data-config-key="OcrJpegQuality" min="1" max="100" />
                         <div class="fieldDescription"><strong>Recommended: 92.</strong> Only used when Image Format is JPEG. Higher = better quality but larger files. 85-95 is ideal for OCR.</div>
                     </div>
 
-                    <div style="margin-top: 2em;">
-                        <button is="emby-button" type="submit" class="raised button-submit block">
+                    <div style="margin-top: 2em; display: flex; gap: 1em;">
+                        <button is="emby-button" type="submit" class="raised button-submit block" style="flex: 1;">
                             <span>Save</span>
+                        </button>
+                        <button is="emby-button" type="button" class="raised block" id="btnResetToDefaults" style="flex: 1; background-color: #e67e22;">
+                            <i class="md-icon">restore</i>
+                            <span>Reset to Defaults</span>
                         </button>
                     </div>
                 </div>
@@ -177,8 +180,16 @@
                     <div class="fieldDescription" style="margin-bottom: 1em;">Manually trigger credits detection for specific TV shows or all shows in your library.</div>
 
                     <div class="selectContainer">
+                        <label class="selectLabel" for="selectLibraryFilter">Filter by Library (Optional)</label>
+                        <select is="emby-select" id="selectLibraryFilter">
+                            <option value="">-- All Libraries --</option>
+                        </select>
+                        <div class="fieldDescription">Filter TV shows by library</div>
+                    </div>
+
+                    <div class="selectContainer">
                         <label class="selectLabel" for="selectSeries">Select a TV Show</label>
-                        <select is="emby-select" id="selectSeries" data-config-key="SelectedSeries" label="TV Show">
+                        <select is="emby-select" id="selectSeries" data-config-key="SelectedSeries">
                             <option value="">-- All TV Shows --</option>
                         </select>
                         <div class="fieldDescription">Choose a specific TV show to process, or leave empty to process all shows</div>
@@ -186,7 +197,7 @@
 
                     <div class="selectContainer">
                         <label class="selectLabel" for="selectEpisode">Select a Single Episode (Optional)</label>
-                        <select is="emby-select" id="selectEpisode" data-config-key="SelectedEpisode" label="Episode">
+                        <select is="emby-select" id="selectEpisode" data-config-key="SelectedEpisode">
                             <option value="">-- Select Show First --</option>
                         </select>
                         <div class="fieldDescription">Choose a specific episode to process, or leave empty to process all episodes in the selected show</div>
@@ -199,12 +210,21 @@
                         <button is="emby-button" type="button" class="raised" id="btnDryRun" style="margin-left: 1em; background-color: #1e88e5;">
                             <span>Dry Run</span>
                         </button>
+                        <button is="emby-button" type="button" class="raised" id="btnDryRunDebug" style="margin-left: 1em; background-color: #9c27b0;">
+                            <i class="md-icon">bug_report</i>
+                            <span>Dry Run with Debug</span>
+                        </button>
                         <button is="emby-button" type="button" class="raised" id="btnQueueAll" style="margin-left: 1em;">
                             <span>Queue All Shows</span>
                         </button>
+                        <button is="emby-button" type="button" class="raised button-cancel" id="btnClearQueue" style="margin-left: 1em; background-color: #E53935;">
+                            <i class="md-icon">clear_all</i>
+                            <span>Clear Queue</span>
+                        </button>
                     </div>
-                    <div class="fieldDescription" style="margin-top: 0.5em; font-size: 0.9em; color: rgba(255,255,255,0.7);">
-                        <strong>Dry Run:</strong> Detects credits without saving chapter markers - useful for testing detection accuracy.
+                    <div style="margin-top: 0.5em; padding: 0.5em; background-color: rgba(245,245,245,0.95); border-radius: 4px; border-left: 3px solid #1e88e5;">
+                        <span style="font-size: 0.9em; color: #333 !important;"><strong style="color: #1e88e5;">Dry Run:</strong> Detects credits without saving chapter markers - useful for testing detection accuracy.</span><br>
+                        <span style="font-size: 0.9em; color: #333 !important;"><strong style="color: #9c27b0;">Dry Run with Debug:</strong> Same as Dry Run but captures detailed debug logs and downloads them for troubleshooting.</span>
                     </div>
 
                     <div id="progressContainer" style="margin-top: 2em; display: none;">
@@ -248,7 +268,7 @@
 
                     <div class="selectContainer">
                         <label class="selectLabel" for="selectSeriesForMarkers">Select a TV Show</label>
-                        <select is="emby-select" id="selectSeriesForMarkers" label="TV Show">
+                        <select is="emby-select" id="selectSeriesForMarkers">
                             <option value="">-- Select a TV Show --</option>
                         </select>
                         <div class="fieldDescription">Choose a TV show to view its episode markers</div>
@@ -264,6 +284,14 @@
                         <h3 id="markersSeriesName" style="color: #52B54B;"></h3>
                         <div id="markersContent" style="max-height: 500px; overflow-y: auto;"></div>
                     </div>
+                </div>
+
+                <div class="paper-card" style="padding: 1.5em; margin-top: 2em; text-align: center; background: linear-gradient(135deg, rgba(255,221,87,0.1) 0%, rgba(255,152,0,0.1) 100%); border-left: 4px solid #FFA726;">
+                    <h3 style="margin-top: 0; color: #F57C00;">☕ Support This Plugin</h3>
+                    <a href="https://buymeacoffee.com/yockser" target="_blank" rel="noopener noreferrer">
+                        <img id="donateImage" alt="Buy Me A Coffee" style="max-width: 200px; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                    </a>
+                    <p style="margin-top: 0.75em; font-size: 0.95em; opacity: 0.85;">If you like this plugin please consider donating a coffee.</p>
                 </div>
 
                 <div class="paper-card" style="padding: 1.5em; margin-top: 2em; background: linear-gradient(135deg, rgba(82,181,75,0.15) 0%, rgba(74,159,229,0.15) 100%); border-left: 4px solid #52B54B;">

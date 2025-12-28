@@ -29,6 +29,9 @@ namespace EmbyCredits.Api
     [Route(ApiRoutes.CancelDetection, "POST", Summary = "Cancels the currently running credits detection.")]
     public class CancelDetectionRequest : IReturn<object> { }
 
+    [Route(ApiRoutes.ClearQueue, "POST", Summary = "Clears the processing queue.")]
+    public class ClearQueueRequest : IReturn<object> { }
+
     [Route(ApiRoutes.GetSeriesMarkers, "GET", Summary = "Gets chapter markers for all episodes in a TV series.")]
     public class GetSeriesMarkersRequest : IReturn<object>
     {
@@ -46,5 +49,21 @@ namespace EmbyCredits.Api
     {
         public string SeriesId { get; set; } = string.Empty;
         public string EpisodeId { get; set; } = string.Empty;
+    }
+
+    [Route(ApiRoutes.DryRunSeriesDebug, "POST", Summary = "Dry run with debug logging - detect credits and capture debug log.")]
+    public class DryRunSeriesDebugRequest : IReturn<object>
+    {
+        public string SeriesId { get; set; } = string.Empty;
+        public string EpisodeId { get; set; } = string.Empty;
+    }
+
+    [Route(ApiRoutes.GetDebugLog, "GET", Summary = "Downloads the debug log from the last debug dry run.")]
+    public class GetDebugLogRequest : IReturn<System.IO.Stream> { }
+
+    [Route(ApiRoutes.GetImage, "GET", Summary = "Gets a plugin image resource.")]
+    public class GetImageRequest : IReturn<System.IO.Stream>
+    {
+        public string ImageName { get; set; } = string.Empty;
     }
 }
