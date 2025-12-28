@@ -32,12 +32,12 @@ docker run -d \
   --name tesseract-ocr \
   -p 8884:8884 \
   --restart unless-stopped \
-  hertzg/tesseract-server:branch-renovate_all-minor-patch
+  yock1/embycreditocr
 ```
 
 **For Unraid users:**
 - Container Name: `tesseract-ocr`
-- Repository: `hertzg/tesseract-server:branch-renovate_all-minor-patch`
+- Repository: `yock1/embycreditocr`
 - Port: `8884:8884`
 - Network: `bridge`
 
@@ -174,12 +174,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [Emby Server](https://emby.media/) - Media server platform
 - [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) - OCR engine
-- [hertzg/tesseract-server](https://github.com/hertzg/tesseract-server) - Docker container
-
-## 📧 Support
-
-- **Issues**: [GitHub Issues](../../issues)
-- **Discussions**: [GitHub Discussions](../../discussions)
+- [yock1/embycreditocr](https://hub.docker.com/r/yock1/embycreditocr) - Docker container
 
 ---
 
