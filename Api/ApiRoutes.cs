@@ -15,6 +15,8 @@ namespace EmbyCredits.Api
         public const string DryRunSeries = "/CreditsDetector/DryRunSeries";
         public const string DryRunSeriesDebug = "/CreditsDetector/DryRunSeriesDebug";
         public const string GetDebugLog = "/CreditsDetector/GetDebugLog";
+        public const string ExportCreditsBackup = "/CreditsDetector/ExportCreditsBackup";
+        public const string ImportCreditsBackup = "/CreditsDetector/ImportCreditsBackup";
         public const string GetImage = "/CreditsDetector/Images/{ImageName}";
     }
 }

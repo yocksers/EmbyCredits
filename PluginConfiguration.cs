@@ -63,6 +63,7 @@ namespace EmbyCredits
         public double OcrStopSecondsFromEnd { get; set; } = 20.0;
         public string OcrImageFormat { get; set; } = "jpg";
         public int OcrJpegQuality { get; set; } = 92;
+        public int OcrDelayBetweenFramesMs { get; set; } = 0;
 
         public bool UseCorrelationScoring { get; set; } = true;
         public int CorrelationWindowSeconds { get; set; } = 5;

@@ -61,12 +61,10 @@ namespace EmbyCredits.Services
 
                 BaseItem? item = null;
                 
-                // Try to parse as GUID first
                 if (Guid.TryParse(request.ItemId, out Guid itemGuid))
                 {
                     item = _libraryManager.GetItemById(itemGuid);
                 }
-                // If not a GUID, try as InternalId
                 else if (long.TryParse(request.ItemId, out long internalId))
                 {
                     item = _libraryManager.GetItemById(internalId);
@@ -645,8 +643,6 @@ namespace EmbyCredits.Services
                 _logger?.Info("Debug log requested");
                 var debugLog = CreditsDetectionService.GetDebugLog();
                 
-                // Convert to bytes and return MemoryStream
-                // The framework will dispose the stream after sending the response
                 var bytes = System.Text.Encoding.UTF8.GetBytes(debugLog);
                 var stream = new MemoryStream(bytes);
                 stream.Position = 0; // Reset position for reading
@@ -660,6 +656,78 @@ namespace EmbyCredits.Services
                 var errorStream = new MemoryStream(errorBytes);
                 errorStream.Position = 0;
                 return errorStream;
+            }
+        }
+
+        public async Task<object> Post(ExportCreditsBackupRequest request)
+        {
+            try
+            {
+                _logger?.Info("Credits backup export requested");
+                
+                var backupService = Plugin.CreditsBackupService;
+                if (backupService == null)
+                {
+                    return new { Success = false, Message = "Backup service not initialized" };
+                }
+
+                var result = await backupService.ExportCreditsMarkers(
+                    request.LibraryIds,
+                    request.SeriesIds
+                );
+
+                if (!result.Success || string.IsNullOrEmpty(result.JsonData))
+                {
+                    return new { Success = false, Message = result.Message };
+                }
+
+                var bytes = System.Text.Encoding.UTF8.GetBytes(result.JsonData);
+                var stream = new MemoryStream(bytes);
+                stream.Position = 0;
+                return stream;
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error exporting credits backup", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public async Task<object> Post(ImportCreditsBackupRequest request)
+        {
+            try
+            {
+                _logger?.Info("Credits backup import requested");
+                
+                if (string.IsNullOrEmpty(request.JsonData))
+                {
+                    return new { Success = false, Message = "No backup data provided" };
+                }
+
+                var backupService = Plugin.CreditsBackupService;
+                if (backupService == null)
+                {
+                    return new { Success = false, Message = "Backup service not initialized" };
+                }
+
+                var result = await backupService.ImportCreditsMarkers(
+                    request.JsonData,
+                    request.OverwriteExisting
+                );
+
+                return new
+                {
+                    Success = result.Success,
+                    Message = result.Message,
+                    ItemsImported = result.ItemsImported,
+                    ItemsSkipped = result.ItemsSkipped,
+                    ItemsNotFound = result.ItemsNotFound
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error importing credits backup", ex);
+                return new { Success = false, Message = ex.Message };
             }
         }
     }

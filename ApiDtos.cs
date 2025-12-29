@@ -1,4 +1,5 @@
 using MediaBrowser.Model.Services;
+using System.Collections.Generic;
 
 namespace EmbyCredits.Api
 {
@@ -60,6 +61,20 @@ namespace EmbyCredits.Api
 
     [Route(ApiRoutes.GetDebugLog, "GET", Summary = "Downloads the debug log from the last debug dry run.")]
     public class GetDebugLogRequest : IReturn<System.IO.Stream> { }
+
+    [Route(ApiRoutes.ExportCreditsBackup, "POST", Summary = "Exports credits markers to JSON for download")]
+    public class ExportCreditsBackupRequest : IReturn<System.IO.Stream>
+    {
+        public List<string>? LibraryIds { get; set; }
+        public List<string>? SeriesIds { get; set; }
+    }
+
+    [Route(ApiRoutes.ImportCreditsBackup, "POST", Summary = "Imports credits markers from JSON backup")]
+    public class ImportCreditsBackupRequest : IReturn<object>
+    {
+        public string JsonData { get; set; } = string.Empty;
+        public bool OverwriteExisting { get; set; }
+    }
 
     [Route(ApiRoutes.GetImage, "GET", Summary = "Gets a plugin image resource.")]
     public class GetImageRequest : IReturn<System.IO.Stream>

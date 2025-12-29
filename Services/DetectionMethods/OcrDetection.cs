@@ -161,6 +161,10 @@ namespace EmbyCredits.Services.DetectionMethods
                     {
                         var lastFrameCount = 0;
                         var noNewFramesCount = 0;
+                        var waitingForFirstFrame = true;
+                        const int maxNoNewFramesIterations = 100; // 5 seconds without new frames (after first frame)
+                        const int maxWaitForFirstFrameIterations = 600; // 30 seconds to wait for first frame
+                        var totalWaitIterations = 0;
                         
                         while (!creditsFound && frameIndex < maxFramesToProcess)
                         {
@@ -179,15 +183,37 @@ namespace EmbyCredits.Services.DetectionMethods
                             {
                                 if (process.HasExited)
                                 {
-                                    break;
+                                    if (frameIndex == 0 || noNewFramesCount > 10)
+                                    {
+                                        break;
+                                    }
                                 }
                                 
                                 if (lastFrameCount == frameIndex)
                                 {
                                     noNewFramesCount++;
-                                    if (noNewFramesCount > 20) // 1 second without new frames
+                                    totalWaitIterations++;
+                                    
+                                    if (waitingForFirstFrame)
                                     {
-                                        break;
+                                        if (totalWaitIterations > maxWaitForFirstFrameIterations)
+                                        {
+                                            LogWarn($"Timeout waiting for first frame after {totalWaitIterations * 50}ms");
+                                            break;
+                                        }
+                                        
+                                        if (totalWaitIterations % 40 == 0) // Every 2 seconds
+                                        {
+                                            LogDebug($"Waiting for FFmpeg to generate first frame... ({totalWaitIterations * 50 / 1000}s elapsed)");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if (noNewFramesCount > maxNoNewFramesIterations)
+                                        {
+                                            LogDebug($"No new frames for {noNewFramesCount * 50}ms, stopping frame processing");
+                                            break;
+                                        }
                                     }
                                 }
                                 else
@@ -200,6 +226,12 @@ namespace EmbyCredits.Services.DetectionMethods
                                 continue;
                             }
 
+                            if (waitingForFirstFrame)
+                            {
+                                LogDebug($"First frame(s) received after {totalWaitIterations * 50}ms, beginning OCR processing");
+                                waitingForFirstFrame = false;
+                            }
+                            
                             noNewFramesCount = 0;
                             
                             foreach (var frameFile in currentFrames)
@@ -299,6 +331,11 @@ namespace EmbyCredits.Services.DetectionMethods
                                 }
                                 
                                 frameIndex++;
+                                
+                                if (Configuration.OcrDelayBetweenFramesMs > 0)
+                                {
+                                    await Task.Delay(Configuration.OcrDelayBetweenFramesMs).ConfigureAwait(false);
+                                }
                             }
                         }
                     });

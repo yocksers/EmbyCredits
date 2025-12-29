@@ -96,6 +96,66 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 });
             });
 
+            view.querySelector('#btnExportCreditsBackup').addEventListener('click', () => {
+                loading.show();
+                fetch(ApiClient.getUrl('CreditsDetector/ExportCreditsBackup'), {
+                    method: 'POST',
+                    headers: {
+                        'X-Emby-Token': ApiClient.accessToken(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                }).then(response => {
+                    if (!response.ok) {
+                        throw new Error('Export failed');
+                    }
+                    return response.blob();
+                }).then(blob => {
+                    loading.hide();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = 'emby-credits-backup-' + new Date().toISOString().replace(/:/g, '-').split('.')[0] + '.json';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    toast('Credits backup exported successfully!');
+                }).catch(error => {
+                    loading.hide();
+                    console.error('Error exporting backup:', error);
+                    toast({ type: 'error', text: 'Failed to export backup. Check server logs.' });
+                });
+            });
+
+            view.querySelector('#btnImportCreditsBackup').addEventListener('click', () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const jsonData = event.target.result;
+                        
+                        require(['confirm'], (confirm) => {
+                            confirm('Import credits markers?\n\nOverwrite existing markers?', 'Import Credits Backup').then(() => {
+                                this.importCreditsBackup(jsonData, true);
+                            }, () => {
+                                confirm('Skip episodes that already have credits markers?', 'Import Credits Backup').then(() => {
+                                    this.importCreditsBackup(jsonData, false);
+                                });
+                            });
+                        });
+                    };
+                    reader.readAsText(file);
+                };
+                input.click();
+            });
+
             view.querySelector('#selectSeries').addEventListener('change', (e) => {
                 const seriesId = e.target.value;
                 const episodeSelect = view.querySelector('#selectEpisode');
@@ -761,6 +821,8 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 view.querySelector('#chkEnableDetailedLogging').checked = config.EnableDetailedLogging || false;
                 view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = config.ScheduledTaskOnlyProcessMissing !== false;
 
+                view.querySelector('#txtDelayBetweenEpisodesMs').value = config.DelayBetweenEpisodesMs || 0;
+
                 view.querySelector('#txtTempFolderPath').value = config.TempFolderPath || '';
 
                 view.querySelector('#txtOcrEndpoint').value = config.OcrEndpoint || 'http://localhost:8884';
@@ -774,8 +836,8 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 view.querySelector('#txtOcrStopSecondsFromEnd').value = config.OcrStopSecondsFromEnd || 20;
                 view.querySelector('#selectOcrImageFormat').value = config.OcrImageFormat || 'jpg';
                 view.querySelector('#txtOcrJpegQuality').value = config.OcrJpegQuality || 92;
+                view.querySelector('#txtOcrDelayBetweenFramesMs').value = config.OcrDelayBetweenFramesMs || 0;
 
-                // Reset Process TV Shows section to default state
                 const selectLibraryFilter = view.querySelector('#selectLibraryFilter');
                 const selectEpisode = view.querySelector('#selectEpisode');
                 if (selectLibraryFilter) selectLibraryFilter.value = '';
@@ -817,6 +879,8 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             this.config.EnableDetailedLogging = view.querySelector('#chkEnableDetailedLogging').checked;
             this.config.ScheduledTaskOnlyProcessMissing = view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked;
 
+            this.config.DelayBetweenEpisodesMs = Number.parseInt(view.querySelector('#txtDelayBetweenEpisodesMs').value, 10) || 0;
+
             this.config.TempFolderPath = view.querySelector('#txtTempFolderPath').value || '';
 
             this.config.EnableOcrDetection = true; // Always enabled
@@ -831,6 +895,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             this.config.OcrStopSecondsFromEnd = Number.parseFloat(view.querySelector('#txtOcrStopSecondsFromEnd').value) || 20;
             this.config.OcrImageFormat = view.querySelector('#selectOcrImageFormat').value || 'jpg';
             this.config.OcrJpegQuality = Number.parseInt(view.querySelector('#txtOcrJpegQuality').value, 10) || 92;
+            this.config.OcrDelayBetweenFramesMs = Number.parseInt(view.querySelector('#txtOcrDelayBetweenFramesMs').value, 10) || 0;
 
             const libraries = [];
             view.querySelectorAll('.chkLibrary').forEach(checkbox => {
@@ -872,14 +937,11 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
 
             loading.show();
 
-            // Preserve these values
             const preservedOcrEndpoint = view.querySelector('#txtOcrEndpoint').value;
             const preservedTempFolderPath = view.querySelector('#txtTempFolderPath').value;
 
-            // Default values matching PluginConfiguration.cs
             const defaultKeywords = 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine,producer,music by,cinematography,editor,editing,production design,costume design,casting,based on,story by,screenplay,associate producer,co-producer,created by,developed by,series producer,composer,director of photography,visual effects,sound,the end,end credits,starring,guest starring,special thanks,production company';
 
-            // Set default values
             view.querySelector('#chkEnableAutoDetection').checked = false;
             view.querySelector('#chkUseEpisodeComparison').checked = false;
             view.querySelector('#chkEnableFailedEpisodeFallback').checked = false;
@@ -887,7 +949,8 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             view.querySelector('#chkEnableDetailedLogging').checked = false;
             view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = true;
 
-            // Restore preserved values
+            view.querySelector('#txtDelayBetweenEpisodesMs').value = 0;
+
             view.querySelector('#txtTempFolderPath').value = preservedTempFolderPath;
 
             view.querySelector('#txtOcrEndpoint').value = preservedOcrEndpoint; // Restore preserved value
@@ -901,8 +964,8 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             view.querySelector('#txtOcrStopSecondsFromEnd').value = 20;
             view.querySelector('#selectOcrImageFormat').value = 'jpg';
             view.querySelector('#txtOcrJpegQuality').value = 92;
+            view.querySelector('#txtOcrDelayBetweenFramesMs').value = 0;
 
-            // Uncheck all libraries (default behavior: all libraries enabled when none selected)
             view.querySelectorAll('.chkLibrary').forEach(checkbox => {
                 checkbox.checked = false;
             });
@@ -911,11 +974,40 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             toast('Settings reset to defaults. Click Save to apply changes.');
         }
 
+        importCreditsBackup(jsonData, overwriteExisting) {
+            loading.show();
+            fetch(ApiClient.getUrl('CreditsDetector/ImportCreditsBackup'), {
+                method: 'POST',
+                headers: {
+                    'X-Emby-Token': ApiClient.accessToken(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    JsonData: jsonData,
+                    OverwriteExisting: overwriteExisting
+                })
+            }).then(response => response.json()).then(result => {
+                loading.hide();
+                if (result.Success) {
+                    const message = `Import complete!\n\n` +
+                        `✓ Imported: ${result.ItemsImported}\n` +
+                        `⊘ Skipped: ${result.ItemsSkipped}\n` +
+                        `✗ Not Found: ${result.ItemsNotFound}`;
+                    Dashboard.alert(message);
+                } else {
+                    toast({ type: 'error', text: result.Message || 'Import failed' });
+                }
+            }).catch(error => {
+                loading.hide();
+                console.error('Error importing backup:', error);
+                toast({ type: 'error', text: 'Failed to import backup. Check server logs.' });
+            });
+        }
+
         onResume(options) {
             super.onResume(options);
             this.loadData(this.view);
             
-            // Load donate image with authentication
             const donateImg = this.view.querySelector('#donateImage');
             if (donateImg && !donateImg.src) {
                 fetch(ApiClient.getUrl('CreditsDetector/Images/donate.png'), {

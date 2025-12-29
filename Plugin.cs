@@ -25,6 +25,7 @@ namespace EmbyCredits
         private readonly IFfmpegManager _ffmpegManager;
         public static Plugin? Instance { get; private set; }
         public static CreditsDetectionProgress Progress { get; } = new CreditsDetectionProgress();
+        public static CreditsBackupService? CreditsBackupService { get; private set; }
 
         public override string Name => "Credits Detector";
         public override string Description => "Automatically detects end credits in TV shows and saves timestamps to files.";
@@ -72,6 +73,8 @@ namespace EmbyCredits
             CreditsDetectionService.SetItemRepository(_itemRepository);
             CreditsDetectionService.SetFfmpegManager(_ffmpegManager);
             Services.Utilities.FFmpegHelper.SetCustomTempPath(Configuration.TempFolderPath);
+
+            CreditsBackupService = new CreditsBackupService(_logger, _libraryManager, _itemRepository);
 
             var cleanedCount = Services.Utilities.FFmpegHelper.CleanupOrphanedTempDirectories();
             if (cleanedCount > 0)

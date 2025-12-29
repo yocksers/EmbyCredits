@@ -84,6 +84,16 @@
                     </div>
                 </div>
 
+                <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
+                    <h2 style="margin-top:0;">Performance & Resource Control</h2>
+                    
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtDelayBetweenEpisodesMs">Delay Between Episodes (ms)</label>
+                        <input is="emby-input" type="number" id="txtDelayBetweenEpisodesMs" data-config-key="DelayBetweenEpisodesMs" min="0" max="60000" step="1000" />
+                        <div class="fieldDescription"><strong>Recommended: 0 (no delay).</strong> Add delay between processing each episode to reduce sustained system load. Use 2000-5000ms on slower machines. This is the delay between episodes, not between frames.</div>
+                    </div>
+                </div>
+
                 <div class="paper-card" style="padding: 1.5em; margin-top: 2em; border-left: 4px solid #52B54B;">
                     <h2 style="margin-top: 0; color: #52B54B;">OCR Detection Settings</h2>
                     <p class="fieldDescription">OCR detection is always enabled. Configure the settings below. Requires Docker container running (see guide below).</p>
@@ -162,6 +172,12 @@
                         <label class="inputLabel inputLabelUnfocused" for="txtOcrJpegQuality">JPEG Quality (1-100)</label>
                         <input is="emby-input" type="number" id="txtOcrJpegQuality" data-config-key="OcrJpegQuality" min="1" max="100" />
                         <div class="fieldDescription"><strong>Recommended: 92.</strong> Only used when Image Format is JPEG. Higher = better quality but larger files. 85-95 is ideal for OCR.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtOcrDelayBetweenFramesMs">Delay Between Frames (ms)</label>
+                        <input is="emby-input" type="number" id="txtOcrDelayBetweenFramesMs" data-config-key="OcrDelayBetweenFramesMs" min="0" max="5000" step="100" />
+                        <div class="fieldDescription"><strong>Recommended: 0 (no delay).</strong> Add delay between processing frames to reduce load on slower machines. Use 500-1000ms on very slow systems. Higher values = slower processing but less resource usage.</div>
                     </div>
 
                     <div style="margin-top: 2em; display: flex; gap: 1em;">
@@ -286,12 +302,34 @@
                     </div>
                 </div>
 
+                <div class="paper-card" style="padding: 1.5em; margin-top: 2em; border-left: 4px solid #4A9FE5;">
+                    <h2 style="margin-top:0; color: #4A9FE5;">💾 Backup & Restore Credits Markers</h2>
+                    <div class="fieldDescription" style="margin-bottom: 1.5em;">Export and import credits markers with TheTVDB IDs for portability between Emby servers. Perfect for backups, server migrations, or sharing detection results.</div>
+
+                    <div style="display: flex; gap: 1em; flex-wrap: wrap; margin-bottom: 1.5em;">
+                        <button is="emby-button" type="button" class="raised button-submit" id="btnExportCreditsBackup" style="flex: 1; min-width: 200px;">
+                            <i class="md-icon">download</i>
+                            <span>Export Credits Backup</span>
+                        </button>
+                        <button is="emby-button" type="button" class="raised" id="btnImportCreditsBackup" style="flex: 1; min-width: 200px;">
+                            <i class="md-icon">upload</i>
+                            <span>Import Credits Backup</span>
+                        </button>
+                    </div>
+
+                    <div class="fieldDescription" style="font-size: 0.9em; opacity: 0.8;">
+                        <strong>Export:</strong> Downloads a JSON file with all detected credits markers, including TheTVDB IDs for portable matching.<br>
+                        <strong>Import:</strong> Restores credits markers from a backup file. Matches episodes by TheTVDB ID, internal ID, file path, or series + season/episode number.
+                    </div>
+                </div>
+
                 <div class="paper-card" style="padding: 1.5em; margin-top: 2em; text-align: center; background: linear-gradient(135deg, rgba(255,221,87,0.1) 0%, rgba(255,152,0,0.1) 100%); border-left: 4px solid #FFA726;">
                     <h3 style="margin-top: 0; color: #F57C00;">☕ Support This Plugin</h3>
                     <a href="https://buymeacoffee.com/yockser" target="_blank" rel="noopener noreferrer">
                         <img id="donateImage" alt="Buy Me A Coffee" style="max-width: 200px; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
                     </a>
                     <p style="margin-top: 0.75em; font-size: 0.95em; opacity: 0.85;">If you like this plugin please consider donating a coffee.</p>
+                    <p style="margin-top: 1em; font-size: 0.9em; color: #52B54B; font-style: italic;">Special thanks to Neminem for the help with this plugin</p>
                 </div>
 
                 <div class="paper-card" style="padding: 1.5em; margin-top: 2em; background: linear-gradient(135deg, rgba(82,181,75,0.15) 0%, rgba(74,159,229,0.15) 100%); border-left: 4px solid #52B54B;">
