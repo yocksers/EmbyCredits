@@ -1,0 +1,87 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net6.0</TargetFramework>
+		<AssemblyName>EmbyCredits</AssemblyName>
+		<OutputType>Library</OutputType>
+
+		<LangVersion>10.0</LangVersion>
+		<Nullable>enable</Nullable>
+
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+	<AssemblyVersion>1.1.9.0</AssemblyVersion>
+	<FileVersion>1.1.9.0</FileVersion>
+		<RootNamespace>EmbyCredits</RootNamespace>
+		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**;credit\**</DefaultItemExcludes>
+		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Include="Images\logo.jpg" />
+		<EmbeddedResource Include="Images\donate.png" />
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.html">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.html</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.Settings.html">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.Settings.html</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.Actions.html">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.Actions.html</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.Guide.html">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.Guide.html</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.API.html">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.API.html</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.Utils.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.Utils.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.Loader.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.Loader.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.Events.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.Events.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.DataManager.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.DataManager.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.SeriesManager.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.SeriesManager.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.ProcessingActions.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.ProcessingActions.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.ProgressMonitor.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.ProgressMonitor.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.MarkersManager.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.MarkersManager.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.BackupManager.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.BackupManager.js</LogicalName>
+		</EmbeddedResource>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MediaBrowser.Server.Core" Version="4.9.1.90">
+			<PrivateAssets>all</PrivateAssets>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</PackageReference>
+		<PackageReference Include="ServiceStack" Version="8.2.2">
+			<PrivateAssets>all</PrivateAssets>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</PackageReference>
+		<PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="plugin.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+</Project>
