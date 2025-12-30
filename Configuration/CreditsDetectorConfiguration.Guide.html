@@ -1,0 +1,84 @@
+<div class="paper-card" style="padding: 1.5em; margin-top: 0; background: linear-gradient(135deg, rgba(82,181,75,0.15) 0%, rgba(74,159,229,0.15) 100%); border-left: 4px solid #52B54B;">
+    <h2 style="margin-top: 0; color: #52B54B;">🐳 Docker Setup Guide</h2>
+
+    <div style="margin-bottom: 1.5em;">
+        <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">What is OCR Detection?</h3>
+        <p class="fieldDescription">
+            This plugin uses <strong>Optical Character Recognition (OCR)</strong> to detect credits by reading text from video frames. 
+            It requires a Tesseract OCR server running in Docker to analyze the video frames.
+        </p>
+    </div>
+
+    <div style="margin-bottom: 1.5em;">
+        <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">Step 1: Install Docker</h3>
+        <p class="fieldDescription">If you don't have Docker installed:</p>
+        <ul class="fieldDescription">
+            <li><strong>Windows:</strong> Download <a href="https://www.docker.com/products/docker-desktop" target="_blank" style="color: #52B54B;">Docker Desktop for Windows</a></li>
+            <li><strong>Linux:</strong> Install Docker Engine from your package manager</li>
+        </ul>
+    </div>
+
+    <div style="margin-bottom: 1.5em;">
+        <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">Step 2: Pull the Tesseract Docker Image</h3>
+        <p class="fieldDescription">Open a terminal/PowerShell and run:</p>
+        <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
+            <code style="color: #52B54B;">docker pull yock1/embycreditocr</code>
+        </div>
+    </div>
+
+    <div style="margin-bottom: 1.5em;">
+        <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">Step 3: Start the Tesseract Container</h3>
+        <p class="fieldDescription"><strong>Option A - Simple Docker Run:</strong></p>
+        <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
+            <code style="color: #52B54B;">docker run -d --name tesseract-ocr -p 8884:8884 --restart unless-stopped yock1/embycreditocr</code>
+        </div>
+
+        <p class="fieldDescription" style="margin-top: 1em;"><strong>Option B - Docker Compose:</strong></p>
+        <p class="fieldDescription">Create a file named <code>docker-compose.yml</code>:</p>
+        <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
+            <pre style="margin: 0; color: #E0E0E0;"><code>version: '3'
+services:
+  tesseract:
+    image: yock1/embycreditocr
+    container_name: tesseract-ocr
+    ports:
+      - "8884:8884"
+    restart: unless-stopped</code></pre>
+        </div>
+        <p class="fieldDescription">Then run: <code style="color: #52B54B;">docker-compose up -d</code></p>
+    </div>
+
+    <div style="margin-bottom: 1.5em;">
+        <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">Step 4: Verify the Container is Running</h3>
+        <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
+            <code style="color: #52B54B;">docker ps</code>
+        </div>
+        <p class="fieldDescription">You should see the <code>tesseract-ocr</code> container running on port 8884.</p>
+    </div>
+
+    <div style="margin-bottom: 1.5em;">
+        <h3 style="color: #4A9FE5; margin-bottom: 0.5em;">Step 5: Configure the Plugin</h3>
+        <ul class="fieldDescription">
+            <li><strong>OCR Endpoint:</strong> <code style="color: #52B54B;">http://localhost:8884</code> (if on same machine) or <code style="color: #52B54B;">http://HOST_IP:8884</code></li>
+            <li><strong>Custom Temp Folder Path:</strong> ⚠️ <strong>CRITICAL for Docker users!</strong> Set a custom temp folder path in Settings tab to prevent filling up Docker images with temp files</li>
+        </ul>
+    </div>
+
+    <div style="background: rgba(229,165,74,0.2); border-left: 3px solid #E5A54A; padding: 1em; border-radius: 4px; margin-top: 1em;">
+        <h4 style="color: #E5A54A; margin-top: 0;">⚡ Recommended Settings for Best Performance</h4>
+        <ul class="fieldDescription" style="margin-bottom: 0;">
+            <li><strong>Search Start Position:</strong> 2-3 minutes from end (skips to near the end for faster processing)</li>
+            <li><strong>Frame Rate:</strong> 0.5 fps (1 frame every 2 seconds - optimal speed/accuracy balance)</li>
+            <li><strong>Max Analysis Duration:</strong> 600 seconds (10 minutes - prevents runaway processing)</li>
+            <li><strong>Minimum Matches:</strong> 2 (requires 2 keyword matches within 10 seconds)</li>
+        </ul>
+    </div>
+
+    <div style="background: rgba(74,159,229,0.2); border-left: 3px solid #4A9FE5; padding: 1em; border-radius: 4px; margin-top: 1em;">
+        <h4 style="color: #4A9FE5; margin-top: 0;">💡 How It Works</h4>
+        <p class="fieldDescription" style="margin-bottom: 0;">
+            The plugin extracts video frames using FFmpeg, sends them to the Tesseract OCR server, and searches for credit keywords 
+            (like "created by", "produced by", "directed by"). When it finds sustained keyword matches, it marks that as the credit start time.
+        </p>
+    </div>
+</div>
