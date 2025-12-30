@@ -26,6 +26,7 @@ namespace EmbyCredits
         public static Plugin? Instance { get; private set; }
         public static CreditsDetectionProgress Progress { get; } = new CreditsDetectionProgress();
         public static CreditsBackupService? CreditsBackupService { get; private set; }
+        public static ChapterMarkerService? ChapterMarkerService { get; private set; }
 
         public override string Name => "Credits Detector";
         public override string Description => "Automatically detects end credits in TV shows and saves timestamps to files.";
@@ -56,13 +57,78 @@ namespace EmbyCredits
             {
                 new PluginPageInfo
                 {
-                    Name = "PlaybackReporterConfiguration",
-                    EmbeddedResourcePath = "EmbyCredits.Configuration.PlaybackReporterConfiguration.html",
+                    Name = "CreditsDetectorConfiguration",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.html",
                 },
                 new PluginPageInfo
                 {
-                    Name = "PlaybackReporterConfigurationjs",
-                    EmbeddedResourcePath = "EmbyCredits.Configuration.PlaybackReporterConfiguration.js"
+                    Name = "CreditsDetectorConfigurationjs",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.js"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfigurationUtils",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Utils.js"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfigurationLoader",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Loader.js"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfigurationEvents",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Events.js"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfigurationDataManager",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.DataManager.js"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfigurationSeriesManager",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.SeriesManager.js"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfigurationProcessingActions",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.ProcessingActions.js"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfigurationProgressMonitor",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.ProgressMonitor.js"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfigurationMarkersManager",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.MarkersManager.js"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfigurationBackupManager",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.BackupManager.js"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfiguration.Settings",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Settings.html"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfiguration.Actions",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Actions.html"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfiguration.Guide",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Guide.html"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfiguration.API",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.API.html"
                 }
             };
         }
@@ -75,6 +141,7 @@ namespace EmbyCredits
             Services.Utilities.FFmpegHelper.SetCustomTempPath(Configuration.TempFolderPath);
 
             CreditsBackupService = new CreditsBackupService(_logger, _libraryManager, _itemRepository);
+            ChapterMarkerService = new ChapterMarkerService(_logger, _itemRepository);
 
             var cleanedCount = Services.Utilities.FFmpegHelper.CleanupOrphanedTempDirectories();
             if (cleanedCount > 0)

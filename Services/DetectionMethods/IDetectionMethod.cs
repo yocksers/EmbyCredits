@@ -1,9 +1,11 @@
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace EmbyCredits.Services.DetectionMethods
 {
 
-    public interface IDetectionMethod
+    public interface IDetectionMethod : IDisposable
     {
 
         string MethodName { get; }
@@ -14,7 +16,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
         bool IsEnabled { get; }
 
-        Task<double> DetectCredits(string videoPath, double duration);
+        Task<double> DetectCredits(string videoPath, double duration, CancellationToken cancellationToken = default);
         
         string GetLastError();
     }

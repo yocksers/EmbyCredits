@@ -52,6 +52,8 @@ namespace EmbyCredits.ScheduledTasks
             CreditsDetectionService.SetLibraryManager(_libraryManager);
             CreditsDetectionService.SetItemRepository(_itemRepository);
 
+            var tracker = new ProcessedFilesTracker(_logger, config.TempFolderPath);
+
             var allEpisodes = new List<Episode>();
             List<Folder> librariesToProcess;
 
@@ -131,6 +133,7 @@ namespace EmbyCredits.ScheduledTasks
 
             var episodesToProcess = new List<Episode>();
             var skipCount = 0;
+            var trackerSkipCount = 0;
 
             if (config.ScheduledTaskOnlyProcessMissing)
             {
@@ -157,9 +160,37 @@ namespace EmbyCredits.ScheduledTasks
                 _logger.Info($"Processing all {episodesToProcess.Count} episodes (reprocess mode enabled)");
             }
 
+            if (config.SkipPreviouslyProcessedFiles && episodesToProcess.Count > 0)
+            {
+                var filteredEpisodes = new List<Episode>();
+                foreach (var episode in episodesToProcess)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        break;
+
+                    var episodeId = episode.Id.ToString();
+                    if (tracker.ShouldSkipFile(episodeId, config.SkipOnlySuccessfulFiles))
+                    {
+                        trackerSkipCount++;
+                        _logger.Debug($"Skipping {episode.Name} - already processed (SkipOnlySuccessful: {config.SkipOnlySuccessfulFiles})");
+                    }
+                    else
+                    {
+                        filteredEpisodes.Add(episode);
+                    }
+                }
+
+                episodesToProcess = filteredEpisodes;
+                
+                if (trackerSkipCount > 0)
+                {
+                    _logger.Info($"Skipped {trackerSkipCount} previously processed files (SkipOnlySuccessful: {config.SkipOnlySuccessfulFiles})");
+                }
+            }
+
             if (episodesToProcess.Count == 0)
             {
-                _logger.Info("All episodes already have credits, nothing to process");
+                _logger.Info("All episodes already have credits or were previously processed, nothing to process");
                 return;
             }
 

@@ -22,7 +22,10 @@ namespace EmbyCredits.Api
     }
 
     [Route(ApiRoutes.GetAllSeries, "GET", Summary = "Gets a list of all TV series in the library.")]
-    public class GetAllSeriesRequest : IReturn<object> { }
+    public class GetAllSeriesRequest : IReturn<object> 
+    {
+        public string LibraryId { get; set; } = string.Empty;
+    }
 
     [Route(ApiRoutes.GetProgress, "GET", Summary = "Gets the current progress of credits detection.")]
     public class GetProgressRequest : IReturn<object> { }
@@ -32,6 +35,9 @@ namespace EmbyCredits.Api
 
     [Route(ApiRoutes.ClearQueue, "POST", Summary = "Clears the processing queue.")]
     public class ClearQueueRequest : IReturn<object> { }
+
+    [Route(ApiRoutes.ClearSeriesAveragingData, "POST", Summary = "Clears the series averaging data.")]
+    public class ClearSeriesAveragingDataRequest : IReturn<object> { }
 
     [Route(ApiRoutes.GetSeriesMarkers, "GET", Summary = "Gets chapter markers for all episodes in a TV series.")]
     public class GetSeriesMarkersRequest : IReturn<object>
@@ -80,5 +86,15 @@ namespace EmbyCredits.Api
     public class GetImageRequest : IReturn<System.IO.Stream>
     {
         public string ImageName { get; set; } = string.Empty;
+    }
+
+    [Route(ApiRoutes.ClearProcessedFiles, "POST", Summary = "Clears the processed files tracking list.")]
+    public class ClearProcessedFilesRequest : IReturn<object> { }
+
+    [Route(ApiRoutes.UpdateCreditsMarker, "POST", Summary = "Updates the credits marker timestamp for an episode.")]
+    public class UpdateCreditsMarkerRequest : IReturn<object>
+    {
+        public string EpisodeId { get; set; } = string.Empty;
+        public double CreditsStartSeconds { get; set; }
     }
 }

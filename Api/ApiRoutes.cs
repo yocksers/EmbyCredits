@@ -10,6 +10,7 @@ namespace EmbyCredits.Api
         public const string GetProgress = "/CreditsDetector/GetProgress";
         public const string CancelDetection = "/CreditsDetector/CancelDetection";
         public const string ClearQueue = "/CreditsDetector/ClearQueue";
+        public const string ClearSeriesAveragingData = "/CreditsDetector/ClearSeriesAveragingData";
         public const string GetSeriesMarkers = "/CreditsDetector/GetSeriesMarkers";
         public const string TestOcrConnection = "/CreditsDetector/TestOcrConnection";
         public const string DryRunSeries = "/CreditsDetector/DryRunSeries";
@@ -17,6 +18,8 @@ namespace EmbyCredits.Api
         public const string GetDebugLog = "/CreditsDetector/GetDebugLog";
         public const string ExportCreditsBackup = "/CreditsDetector/ExportCreditsBackup";
         public const string ImportCreditsBackup = "/CreditsDetector/ImportCreditsBackup";
+        public const string UpdateCreditsMarker = "/CreditsDetector/UpdateCreditsMarker";
         public const string GetImage = "/CreditsDetector/Images/{ImageName}";
+        public const string ClearProcessedFiles = "/CreditsDetector/ClearProcessedFiles";
     }
 }

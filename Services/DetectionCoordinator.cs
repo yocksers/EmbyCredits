@@ -4,17 +4,20 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.Versioning;
+using System.Threading;
 using System.Threading.Tasks;
 using EmbyCredits.Services.DetectionMethods;
 
 namespace EmbyCredits.Services
 {
 
-    public class DetectionCoordinator
+    public class DetectionCoordinator : IDisposable
     {
         private readonly ILogger _logger;
         private readonly PluginConfiguration _configuration;
         private readonly List<IDetectionMethod> _detectionMethods;
+        private bool _disposed = false;
+        private CancellationTokenSource? _cancellationTokenSource;
 
         private readonly Dictionary<string, List<(string method, double timestamp)>> _batchDetectionCache;
 
@@ -24,13 +27,17 @@ namespace EmbyCredits.Services
             _configuration = configuration;
             _detectionMethods = new List<IDetectionMethod>();
             _batchDetectionCache = new Dictionary<string, List<(string method, double timestamp)>>();
+            _cancellationTokenSource = new CancellationTokenSource();
 
             InitializeDetectionMethods();
         }
 
         private void InitializeDetectionMethods()
         {
-            _detectionMethods.Add(new OcrDetection(_logger, _configuration));
+            _logger.Debug($"[DetectionCoordinator] Initializing detection methods");
+            var ocrMethod = new OcrDetection(_logger, _configuration);
+            _detectionMethods.Add(ocrMethod);
+            _logger.Debug($"[DetectionCoordinator] Added OcrDetection. IsEnabled: {ocrMethod.IsEnabled}, Config.EnableOcrDetection: {_configuration.EnableOcrDetection}");
         }
 
         private void LogDebug(string message)
@@ -121,18 +128,6 @@ namespace EmbyCredits.Services
             if (currentResults.Count == 0)
             {
                 _logger.Info("No detections found for episode");
-
-                if (_configuration.EnableFailedEpisodeFallback)
-                {
-                    _logger.Info("Attempting fallback for failed episode in batch mode...");
-                    var fallbackTimestamp = CalculateFallbackTimestampFromCache(episodeId, comparisonEpisodeIds);
-                    if (fallbackTimestamp > 0)
-                    {
-                        _logger.Info($"Using fallback timestamp: {FormatTime(fallbackTimestamp)}");
-                        return fallbackTimestamp;
-                    }
-                }
-
                 return 0;
             }
 
@@ -211,9 +206,9 @@ namespace EmbyCredits.Services
             var successRate = (double)successfulTimestamps.Count / comparisonEpisodeIds.Count;
             _logger.Info($"Cache success rate: {successRate:P0} ({successfulTimestamps.Count}/{comparisonEpisodeIds.Count} episodes)");
 
-            if (successRate < _configuration.MinimumSuccessRateForFallback)
+            if (successRate < 0.5)
             {
-                _logger.Info($"Success rate {successRate:P0} is below minimum threshold {_configuration.MinimumSuccessRateForFallback:P0}");
+                _logger.Info($"Success rate {successRate:P0} is below minimum threshold 50%");
                 return 0;
             }
 
@@ -251,9 +246,9 @@ namespace EmbyCredits.Services
             var successRate = (double)successfulTimestamps.Count / totalComparisonEpisodes;
             _logger.Info($"Success rate: {successRate:P0} ({successfulTimestamps.Count}/{totalComparisonEpisodes} episodes)");
 
-            if (successRate < _configuration.MinimumSuccessRateForFallback)
+            if (successRate < 0.5)
             {
-                _logger.Info($"Success rate {successRate:P0} is below minimum threshold {_configuration.MinimumSuccessRateForFallback:P0}");
+                _logger.Info($"Success rate {successRate:P0} is below minimum threshold 50%");
                 return 0;
             }
 
@@ -275,6 +270,7 @@ namespace EmbyCredits.Services
             var errors = new Dictionary<string, string>();
 
             LogDebug($"Running detection methods for video (duration: {FormatTime(duration)})");
+            LogDebug($"Total detection methods: {_detectionMethods.Count}");
             LogDebug($"Enabled methods: {string.Join(", ", _detectionMethods.Where(m => m.IsEnabled).Select(m => m.MethodName))}");
 
             foreach (var method in _detectionMethods)
@@ -289,7 +285,7 @@ namespace EmbyCredits.Services
                 try
                 {
                     LogDebug($"Running {method.MethodName}...");
-                    var timestamp = await method.DetectCredits(videoPath, duration);
+                    var timestamp = await method.DetectCredits(videoPath, duration, _cancellationTokenSource?.Token ?? default);
                     if (timestamp > 0)
                     {
                         results.Add((method.MethodName, timestamp, method.Confidence, method.Priority));
@@ -369,22 +365,10 @@ namespace EmbyCredits.Services
 
             var currentEpisodeResults = episodeDetectionResults[episode.Id.ToString()];
 
-            if (currentEpisodeResults.Count == 0 && _configuration.EnableFailedEpisodeFallback)
+            if (currentEpisodeResults.Count == 0)
             {
-                _logger.Info("Current episode failed detection. Checking if fallback is possible...");
-                var fallbackTimestamp = CalculateFallbackTimestamp(episodeDetectionResults, episode.Id.ToString(), comparisonEpisodes.Count);
-                if (fallbackTimestamp > 0)
-                {
-                    _logger.Info($"Using fallback timestamp from successful episodes: {FormatTime(fallbackTimestamp)}");
-                    var fallbackConfidence = 0.6;
-                    results.Add(("OCR Detection (Fallback)", fallbackTimestamp, fallbackConfidence, 1));
-                    return results;
-                }
-                else
-                {
-                    _logger.Info("Fallback not possible: insufficient successful episodes");
-                    return results;
-                }
+                _logger.Info("Current episode failed detection.");
+                return results;
             }
 
             foreach (var (method, timestamp) in currentEpisodeResults)
@@ -536,6 +520,29 @@ namespace EmbyCredits.Services
         {
             var ts = TimeSpan.FromSeconds(seconds);
             return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
+        }
+
+        public void CancelDetection()
+        {
+            _cancellationTokenSource?.Cancel();
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = new CancellationTokenSource();
+        }
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _cancellationTokenSource?.Cancel();
+                _cancellationTokenSource?.Dispose();
+                
+                foreach (var method in _detectionMethods)
+                {
+                    method?.Dispose();
+                }
+                _detectionMethods.Clear();
+                _disposed = true;
+            }
         }
     }
 }

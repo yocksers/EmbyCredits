@@ -1,5 +1,6 @@
 using MediaBrowser.Model.Logging;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace EmbyCredits.Services.DetectionMethods
@@ -10,6 +11,7 @@ namespace EmbyCredits.Services.DetectionMethods
         protected readonly ILogger Logger;
         protected readonly PluginConfiguration Configuration;
         protected string LastError = string.Empty;
+        private bool _disposed = false;
 
         public abstract string MethodName { get; }
         public abstract double Confidence { get; }
@@ -22,7 +24,7 @@ namespace EmbyCredits.Services.DetectionMethods
             Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         }
 
-        public abstract Task<double> DetectCredits(string videoPath, double duration);
+        public abstract Task<double> DetectCredits(string videoPath, double duration, CancellationToken cancellationToken = default);
         
         public string GetLastError()
         {
@@ -43,8 +45,8 @@ namespace EmbyCredits.Services.DetectionMethods
 
         protected void LogWarn(string message)
         {
-            if (Configuration.EnableDetailedLogging)
-                Logger.Warn($"[{MethodName}] {message}");
+            // Always log warnings as they indicate issues that need attention
+            Logger.Warn($"[{MethodName}] {message}");
         }
 
         protected void LogError(string message, Exception? ex = null)
@@ -78,6 +80,24 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
                 }
             }
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    // Derived classes can override to dispose managed resources
+                }
+                _disposed = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
     }
 }

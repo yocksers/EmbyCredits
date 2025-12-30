@@ -8,11 +8,8 @@ namespace EmbyCredits
         public string ConfigurationVersion { get; set; } = Guid.NewGuid().ToString();
 
         public bool EnableAutoDetection { get; set; } = false;
-        public bool UseEpisodeComparison { get; set; } = false;
-        public int MinimumEpisodesToCompare { get; set; } = 3;
-        public double SimilarityThreshold { get; set; } = 0.85;
-        public bool EnableFailedEpisodeFallback { get; set; } = false;
-        public double MinimumSuccessRateForFallback { get; set; } = 0.5;
+        public bool UseSeriesAveraging { get; set; } = true;
+        public int MinimumEpisodesForAveraging { get; set; } = 3;
 
         public bool EnableVideoPatternDetection { get; set; } = true;
         public bool EnableBlackScreenDetection { get; set; } = true;
@@ -54,6 +51,12 @@ namespace EmbyCredits
         public bool EnableOcrDetection { get; set; } = true;
         public string OcrEndpoint { get; set; } = "http://localhost:8884";
         public string OcrDetectionKeywords { get; set; } = "directed by,produced by,executive producer,written by,cast,credits,fin,ende,?,?,fim,fine,producer,music by,music,cinematography,editor,editing,production design,costume design,casting,based on,story by,screenplay,associate producer,co-producer,created by,developed by,series producer,composer,director of photography,visual effects,sound,the end,end credits,starring,guest starring,special thanks,production company";
+        
+        // Unified search start setting
+        public string OcrSearchStartUnit { get; set; } = "minutes"; // "minutes" or "percentage"
+        public double OcrSearchStartValue { get; set; } = 3.0;
+        
+        // Legacy properties for backward compatibility
         public double OcrDetectionSearchStart { get; set; } = 0.65;
         public double OcrMinutesFromEnd { get; set; } = 3.0;
         public double OcrFrameRate { get; set; } = 0.5;
@@ -64,6 +67,13 @@ namespace EmbyCredits
         public string OcrImageFormat { get; set; } = "jpg";
         public int OcrJpegQuality { get; set; } = 92;
         public int OcrDelayBetweenFramesMs { get; set; } = 0;
+        
+        // OCR Performance Optimizations
+        public bool OcrEnableParallelProcessing { get; set; } = false;
+        public int OcrParallelBatchSize { get; set; } = 4;
+        public bool OcrEnableSmartFrameSkipping { get; set; } = true;
+        public int OcrConsecutiveMatchesForEarlyStop { get; set; } = 3;
+        public double OcrMinimumConfidence { get; set; } = 0.0;
 
         public bool UseCorrelationScoring { get; set; } = true;
         public int CorrelationWindowSeconds { get; set; } = 5;
@@ -102,5 +112,10 @@ namespace EmbyCredits
 
         public string[] LibraryIds { get; set; } = Array.Empty<string>();
         public bool ScheduledTaskOnlyProcessMissing { get; set; } = true;
+        
+        public bool BackupImportOverwriteExisting { get; set; } = false;
+        
+        public bool SkipPreviouslyProcessedFiles { get; set; } = false;
+        public bool SkipOnlySuccessfulFiles { get; set; } = false;
     }
 }

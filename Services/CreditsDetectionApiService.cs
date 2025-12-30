@@ -151,7 +151,7 @@ namespace EmbyCredits.Services
 
                 _logger?.Info($"Found {allEpisodes.Count} total episodes (before path filter)");
 
-                var episodes = allEpisodes.Where(e => !string.IsNullOrEmpty(e.Path) && File.Exists(e.Path)).ToList();
+                var episodes = allEpisodes.Where(e => !string.IsNullOrEmpty(e.Path) && File.Exists(Utilities.FFmpegHelper.NormalizeFilePath(e.Path))).ToList();
 
                 _logger?.Info($"Found {episodes.Count} episodes with valid paths for series: {series.Name}");
 
@@ -177,12 +177,20 @@ namespace EmbyCredits.Services
         {
             try
             {
-                var series = _libraryManager.GetItemList(new InternalItemsQuery
+                var query = new InternalItemsQuery
                 {
                     IncludeItemTypes = new[] { "Series" },
                     IsVirtualItem = false,
                     Recursive = true
-                }).Select(s => new
+                };
+
+                // Filter by library if specified
+                if (!string.IsNullOrEmpty(request.LibraryId) && long.TryParse(request.LibraryId, out long libraryId))
+                {
+                    query.AncestorIds = new[] { libraryId };
+                }
+
+                var series = _libraryManager.GetItemList(query).Select(s => new
                 {
                     Id = s.Id.ToString(),
                     Name = s.Name,
@@ -218,7 +226,7 @@ namespace EmbyCredits.Services
                     CurrentItem = progress.CurrentItem,
                     CurrentItemProgress = progress.CurrentItemProgress,
                     PercentComplete = progress.PercentComplete,
-                    EstimatedTimeRemaining = progress.EstimatedTimeRemaining?.ToString(@"hh\:mm\:ss"),
+                    EstimatedTimeRemainingSeconds = progress.EstimatedTimeRemaining?.TotalSeconds,
                     StartTime = progress.StartTime,
                     EndTime = progress.EndTime,
                     FailureReasons = progress.FailureReasons,
@@ -256,6 +264,20 @@ namespace EmbyCredits.Services
             catch (Exception ex)
             {
                 _logger?.ErrorException("Error clearing queue", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Post(ClearSeriesAveragingDataRequest request)
+        {
+            try
+            {
+                CreditsDetectionService.ClearSeriesAveragingData();
+                return new { Success = true, Message = "Series averaging data cleared successfully" };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error clearing series averaging data", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }
@@ -727,6 +749,71 @@ namespace EmbyCredits.Services
             catch (Exception ex)
             {
                 _logger?.ErrorException("Error importing credits backup", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Post(ClearProcessedFilesRequest request)
+        {
+            try
+            {
+                _logger?.Info("Clear processed files list requested");
+                CreditsDetectionService.ClearProcessedFiles();
+                return new { Success = true, Message = "Processed files list cleared successfully" };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error clearing processed files", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Post(UpdateCreditsMarkerRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.EpisodeId))
+                {
+                    return new { Success = false, Message = "EpisodeId is required" };
+                }
+
+                if (request.CreditsStartSeconds < 0)
+                {
+                    return new { Success = false, Message = "Credits start time must be positive" };
+                }
+
+                Guid episodeGuid;
+                if (!Guid.TryParse(request.EpisodeId, out episodeGuid))
+                {
+                    return new { Success = false, Message = "Invalid EpisodeId format" };
+                }
+
+                var episode = _libraryManager.GetItemById(episodeGuid) as Episode;
+                if (episode == null)
+                {
+                    return new { Success = false, Message = "Episode not found" };
+                }
+
+                var chapterMarkerService = Plugin.ChapterMarkerService;
+                if (chapterMarkerService == null)
+                {
+                    return new { Success = false, Message = "Chapter marker service not available" };
+                }
+
+                chapterMarkerService.SaveCreditsMarker(episode, request.CreditsStartSeconds);
+                
+                _logger?.Info($"Updated credits marker for episode '{episode.Name}' to {request.CreditsStartSeconds:F1}s");
+                
+                return new { 
+                    Success = true, 
+                    Message = $"Credits marker updated successfully for {episode.Name}",
+                    EpisodeName = episode.Name,
+                    CreditsStartSeconds = request.CreditsStartSeconds
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error updating credits marker", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }
