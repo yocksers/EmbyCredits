@@ -1,25 +1,22 @@
-namespace EmbyCredits.Api
+﻿namespace EmbyIcons.Api
 {
     internal static class ApiRoutes
     {
-
-        public const string TriggerDetection = "/CreditsDetector/TriggerDetection";
-        public const string ProcessEpisode = "/CreditsDetector/ProcessEpisode";
-        public const string ProcessSeries = "/CreditsDetector/ProcessSeries";
-        public const string GetAllSeries = "/CreditsDetector/GetAllSeries";
-        public const string GetProgress = "/CreditsDetector/GetProgress";
-        public const string CancelDetection = "/CreditsDetector/CancelDetection";
-        public const string ClearQueue = "/CreditsDetector/ClearQueue";
-        public const string ClearSeriesAveragingData = "/CreditsDetector/ClearSeriesAveragingData";
-        public const string GetSeriesMarkers = "/CreditsDetector/GetSeriesMarkers";
-        public const string TestOcrConnection = "/CreditsDetector/TestOcrConnection";
-        public const string DryRunSeries = "/CreditsDetector/DryRunSeries";
-        public const string DryRunSeriesDebug = "/CreditsDetector/DryRunSeriesDebug";
-        public const string GetDebugLog = "/CreditsDetector/GetDebugLog";
-        public const string ExportCreditsBackup = "/CreditsDetector/ExportCreditsBackup";
-        public const string ImportCreditsBackup = "/CreditsDetector/ImportCreditsBackup";
-        public const string UpdateCreditsMarker = "/CreditsDetector/UpdateCreditsMarker";
-        public const string GetImage = "/CreditsDetector/Images/{ImageName}";
-        public const string ClearProcessedFiles = "/CreditsDetector/ClearProcessedFiles";
+        public const string DefaultProfile = "/EmbyIcons/DefaultProfile";
+        public const string RefreshCache = "/EmbyIcons/RefreshCache";
+        public const string IconManagerReport = "/EmbyIcons/IconManagerReport";
+        public const string Preview = "/EmbyIcons/Preview";
+        public const string ValidatePath = "/EmbyIcons/ValidatePath";
+        public const string SeriesTroubleshooter = "/EmbyIcons/SeriesTroubleshooter";
+        public const string AspectRatio = "/EmbyIcons/AspectRatio";
+        public const string GetApiRoutes = "/EmbyIcons/ApiRoutes";
+        public const string ScanProgress = "/EmbyIcons/ScanProgress";
+        public const string MemoryUsage = "/EmbyIcons/MemoryUsage";
+        
+        public const string ExportProfiles = "/EmbyIcons/ExportProfiles";
+        public const string ImportProfiles = "/EmbyIcons/ImportProfiles";
+        public const string ValidateProfileImport = "/EmbyIcons/ValidateProfileImport";
+        public const string TemplateCacheStats = "/EmbyIcons/TemplateCacheStats";
+        public const string ClearTemplateCache = "/EmbyIcons/ClearTemplateCache";
     }
 }
