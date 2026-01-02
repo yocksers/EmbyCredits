@@ -11,48 +11,37 @@ namespace EmbyCredits.Services.Utilities
     {
         private static string? _customTempPath;
         private static IFfmpegManager? _ffmpegManager;
-
-        /// <summary>
-        /// Normalizes file paths to handle SMB/network paths correctly across platforms.
-        /// On Windows: Converts smb:// URLs to UNC paths (\\server\share\file).
-        /// On Linux/Docker: Keeps original path or tries to find mounted SMB shares.
-        /// </summary>
         public static string NormalizeFilePath(string path)
         {
             if (string.IsNullOrEmpty(path))
                 return path;
 
-            // Check if it's an SMB URL (smb://server/share/path)
-            if (path.StartsWith("smb://", StringComparison.OrdinalIgnoreCase))
+            if (path.StartsWith("smb://"))
             {
-                // On Windows, convert to UNC path
+
                 if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
                     System.Runtime.InteropServices.OSPlatform.Windows))
                 {
-                    // Remove the smb:// prefix
+
                     var uncPath = path.Substring(6);
-                    
-                    // Replace forward slashes with backslashes
+
                     uncPath = uncPath.Replace('/', '\\');
-                    
-                    // Add the UNC prefix
+
                     uncPath = "\\\\" + uncPath;
-                    
+
                     return uncPath;
                 }
                 else
                 {
-                    // On Linux/Docker, SMB shares are typically mounted to the filesystem
-                    // Try common mount patterns and check if they exist
-                    var smbPath = path.Substring(6); // Remove smb://
+
+                    var smbPath = path.Substring(6);
                     var pathParts = smbPath.Split('/');
-                    
+
                     if (pathParts.Length >= 2)
                     {
                         var server = pathParts[0];
                         var remainingPath = string.Join("/", pathParts.Skip(1));
-                        
-                        // Try common Linux SMB mount points
+
                         var mountPatterns = new[]
                         {
                             $"/mnt/{server}/{remainingPath}",
@@ -62,7 +51,7 @@ namespace EmbyCredits.Services.Utilities
                             $"/mnt/nas/{remainingPath}",
                             $"/media/nas/{remainingPath}"
                         };
-                        
+
                         foreach (var mountPath in mountPatterns)
                         {
                             if (File.Exists(mountPath))
@@ -71,13 +60,11 @@ namespace EmbyCredits.Services.Utilities
                             }
                         }
                     }
-                    
-                    // If no mounted path found, return original - Emby on Linux might handle smb:// directly
+
                     return path;
                 }
             }
-            
-            // Check if it's already a UNC path or local path - return as is
+
             return path;
         }
 

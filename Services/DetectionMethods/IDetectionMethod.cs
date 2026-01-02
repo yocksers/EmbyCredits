@@ -17,7 +17,9 @@ namespace EmbyCredits.Services.DetectionMethods
         bool IsEnabled { get; }
 
         Task<double> DetectCredits(string videoPath, double duration, CancellationToken cancellationToken = default);
-        
+
         string GetLastError();
+
+        string GetDetectionReason();
     }
 }

@@ -8,9 +8,6 @@ using System.Linq;
 
 namespace EmbyCredits.Services
 {
-    /// <summary>
-    /// Handles chapter marker operations for credits detection.
-    /// </summary>
     public class ChapterMarkerService
     {
         private readonly ILogger _logger;
@@ -156,11 +153,11 @@ namespace EmbyCredits.Services
             {
                 if (chapter == null)
                     return null;
-                    
+
                 var chapterType = chapter.GetType();
                 if (chapterType == null)
                     return null;
-                    
+
                 var markerTypeProp = chapterType.GetProperty("MarkerType");
                 if (markerTypeProp != null && markerTypeProp.CanRead)
                 {
@@ -181,11 +178,11 @@ namespace EmbyCredits.Services
             {
                 if (chapter == null)
                     return false;
-                    
+
                 var chapterType = chapter.GetType();
                 if (chapterType == null)
                     return false;
-                    
+
                 var markerTypeProp = chapterType.GetProperty("MarkerType");
                 if (markerTypeProp != null && markerTypeProp.CanWrite)
                 {

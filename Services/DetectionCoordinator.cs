@@ -74,8 +74,9 @@ namespace EmbyCredits.Services
 
             LogDebug($"Found {detectionResults.Count} detection result(s)");
             var result = SelectByStrategy(detectionResults);
-            LogDebug($"Selected timestamp: {FormatTime(result)}");
-            return (result, string.Empty);
+            LogDebug($"Selected timestamp: {FormatTime(result.timestamp)}");
+
+            return (result.timestamp, result.reason);
         }
 
         public async Task<(double timestamp, string failureReason)> DetectCreditsWithComparison(
@@ -84,7 +85,8 @@ namespace EmbyCredits.Services
             List<Episode> comparisonEpisodes)
         {
             var crossEpisodeResults = await RunCrossEpisodeDetection(episode, duration, comparisonEpisodes);
-            return (SelectByStrategy(crossEpisodeResults), string.Empty);
+            var selected = SelectByStrategy(crossEpisodeResults);
+            return (selected.timestamp, selected.reason);
         }
 
         public async Task PreComputeBatchDetections(List<Episode> episodes, Func<double, Task> progressCallback)
@@ -128,12 +130,24 @@ namespace EmbyCredits.Services
             if (currentResults.Count == 0)
             {
                 _logger.Info("No detections found for episode");
+
+                if (_configuration.EnableFailedEpisodeFallback)
+                {
+                    _logger.Info("Attempting fallback for failed episode in batch mode...");
+                    var fallbackTimestamp = CalculateFallbackTimestampFromCache(episodeId, comparisonEpisodeIds);
+                    if (fallbackTimestamp > 0)
+                    {
+                        _logger.Info($"Using fallback timestamp: {FormatTime(fallbackTimestamp)}");
+                        return fallbackTimestamp;
+                    }
+                }
+
                 return 0;
             }
 
             _logger.Info($"Analyzing {currentResults.Count} cached detection(s)");
 
-            var results = new List<(string method, double timestamp, double confidence, int priority)>();
+            var results = new List<(string method, double timestamp, double confidence, int priority, string reason)>();
 
             foreach (var (method, timestamp) in currentResults)
             {
@@ -168,12 +182,13 @@ namespace EmbyCredits.Services
 
                 _logger.Info($"{method} at {FormatTime(timestamp)}: {agreementCount}/{comparisonEpisodeIds.Count} episodes agree (confidence: {totalConfidence:F2}, methods: {string.Join(", ", agreementMethods)})");
 
-                results.Add((method, timestamp, totalConfidence, GetMethodPriority(method)));
+                results.Add((method, timestamp, totalConfidence, GetMethodPriority(method), string.Empty));
             }
 
             if (results.Count > 0)
             {
-                return AnalyzeWithCorrelationScoring(results);
+                var selected = AnalyzeWithCorrelationScoring(results);
+                return selected.timestamp;
             }
 
             return 0;
@@ -206,9 +221,9 @@ namespace EmbyCredits.Services
             var successRate = (double)successfulTimestamps.Count / comparisonEpisodeIds.Count;
             _logger.Info($"Cache success rate: {successRate:P0} ({successfulTimestamps.Count}/{comparisonEpisodeIds.Count} episodes)");
 
-            if (successRate < 0.5)
+            if (successRate < _configuration.MinimumSuccessRateForFallback)
             {
-                _logger.Info($"Success rate {successRate:P0} is below minimum threshold 50%");
+                _logger.Info($"Success rate {successRate:P0} is below minimum threshold {_configuration.MinimumSuccessRateForFallback:P0}");
                 return 0;
             }
 
@@ -246,9 +261,9 @@ namespace EmbyCredits.Services
             var successRate = (double)successfulTimestamps.Count / totalComparisonEpisodes;
             _logger.Info($"Success rate: {successRate:P0} ({successfulTimestamps.Count}/{totalComparisonEpisodes} episodes)");
 
-            if (successRate < 0.5)
+            if (successRate < _configuration.MinimumSuccessRateForFallback)
             {
-                _logger.Info($"Success rate {successRate:P0} is below minimum threshold 50%");
+                _logger.Info($"Success rate {successRate:P0} is below minimum threshold {_configuration.MinimumSuccessRateForFallback:P0}");
                 return 0;
             }
 
@@ -261,12 +276,12 @@ namespace EmbyCredits.Services
             return medianTimestamp;
         }
 
-        private async Task<(List<(string method, double timestamp, double confidence, int priority)> results, Dictionary<string, string> errors)> RunAllDetectionMethods(
+        private async Task<(List<(string method, double timestamp, double confidence, int priority, string reason)> results, Dictionary<string, string> errors)> RunAllDetectionMethods(
             string videoPath, 
-            double duration, 
+            double duration,
             string episodeId)
         {
-            var results = new List<(string method, double timestamp, double confidence, int priority)>();
+            var results = new List<(string method, double timestamp, double confidence, int priority, string reason)>();
             var errors = new Dictionary<string, string>();
 
             LogDebug($"Running detection methods for video (duration: {FormatTime(duration)})");
@@ -288,9 +303,14 @@ namespace EmbyCredits.Services
                     var timestamp = await method.DetectCredits(videoPath, duration, _cancellationTokenSource?.Token ?? default);
                     if (timestamp > 0)
                     {
-                        results.Add((method.MethodName, timestamp, method.Confidence, method.Priority));
+                        var reason = method.GetDetectionReason();
+                        results.Add((method.MethodName, timestamp, method.Confidence, method.Priority, reason));
                         _logger.Info($"{method.MethodName} detection: {FormatTime(timestamp)}");
                         LogInfo($"{method.MethodName} detected credits at {FormatTime(timestamp)} (confidence: {method.Confidence}, priority: {method.Priority})");
+                        if (!string.IsNullOrEmpty(reason))
+                        {
+                            LogInfo($"  Reason: {reason}");
+                        }
                     }
                     else
                     {
@@ -318,12 +338,12 @@ namespace EmbyCredits.Services
             return (results, errors);
         }
 
-        private async Task<List<(string method, double timestamp, double confidence, int priority)>> RunCrossEpisodeDetection(
+        private async Task<List<(string method, double timestamp, double confidence, int priority, string reason)>> RunCrossEpisodeDetection(
             Episode episode,
             double duration,
             List<Episode> comparisonEpisodes)
         {
-            var results = new List<(string method, double timestamp, double confidence, int priority)>();
+            var results = new List<(string method, double timestamp, double confidence, int priority, string reason)>();
 
             if (comparisonEpisodes.Count < 2)
             {
@@ -365,10 +385,22 @@ namespace EmbyCredits.Services
 
             var currentEpisodeResults = episodeDetectionResults[episode.Id.ToString()];
 
-            if (currentEpisodeResults.Count == 0)
+            if (currentEpisodeResults.Count == 0 && _configuration.EnableFailedEpisodeFallback)
             {
-                _logger.Info("Current episode failed detection.");
-                return results;
+                _logger.Info("Current episode failed detection. Checking if fallback is possible...");
+                var fallbackTimestamp = CalculateFallbackTimestamp(episodeDetectionResults, episode.Id.ToString(), comparisonEpisodes.Count);
+                if (fallbackTimestamp > 0)
+                {
+                    _logger.Info($"Using fallback timestamp from successful episodes: {FormatTime(fallbackTimestamp)}");
+                    var fallbackConfidence = 0.6;
+                    results.Add(("OCR Detection (Fallback)", fallbackTimestamp, fallbackConfidence, 1, "Fallback from cross-episode median"));
+                    return results;
+                }
+                else
+                {
+                    _logger.Info("Fallback not possible: insufficient successful episodes");
+                    return results;
+                }
             }
 
             foreach (var (method, timestamp) in currentEpisodeResults)
@@ -405,19 +437,19 @@ namespace EmbyCredits.Services
                 _logger.Info($"{method} at {FormatTime(timestamp)}: {agreementCount}/{comparisonEpisodes.Count} episodes agree " +
                            $"(confidence: {totalConfidence:F2}, methods: {string.Join(", ", agreementMethods)})");
 
-                results.Add((method, timestamp, totalConfidence, GetMethodPriority(method)));
+                results.Add((method, timestamp, totalConfidence, GetMethodPriority(method), string.Empty));
             }
 
             return results;
         }
 
-        private double AnalyzeWithCorrelationScoring(List<(string method, double timestamp, double confidence, int priority)> detectionResults)
+        private (double timestamp, string reason) AnalyzeWithCorrelationScoring(List<(string method, double timestamp, double confidence, int priority, string reason)> detectionResults)
         {
             if (detectionResults.Count == 0)
-                return 0;
+                return (0, string.Empty);
 
             var correlationWindow = _configuration.CorrelationWindowSeconds;
-            var groupedResults = new List<(double timestamp, double combinedScore, List<string> methods)>();
+            var groupedResults = new List<(double timestamp, double combinedScore, List<string> methods, List<string> reasons)>();
 
             foreach (var result in detectionResults)
             {
@@ -428,27 +460,31 @@ namespace EmbyCredits.Services
                     var index = groupedResults.IndexOf(existingGroup);
                     existingGroup.combinedScore += result.confidence;
                     existingGroup.methods.Add(result.method);
+                    if (!string.IsNullOrEmpty(result.reason))
+                        existingGroup.reasons.Add(result.reason);
                     groupedResults[index] = existingGroup;
                 }
                 else
                 {
-                    groupedResults.Add((result.timestamp, result.confidence, new List<string> { result.method }));
+                    var reasons = !string.IsNullOrEmpty(result.reason) ? new List<string> { result.reason } : new List<string>();
+                    groupedResults.Add((result.timestamp, result.confidence, new List<string> { result.method }, reasons));
                 }
             }
 
             var bestGroup = groupedResults.OrderByDescending(g => g.combinedScore).First();
             var creditsStart = bestGroup.timestamp;
+            var combinedReasons = bestGroup.reasons.Count > 0 ? string.Join(" | ", bestGroup.reasons.Distinct()) : string.Empty;
 
             _logger.Info($"Correlation scoring selected {FormatTime(creditsStart)} " +
                        $"(score: {bestGroup.combinedScore:F2}, methods: {string.Join(", ", bestGroup.methods)})");
 
-            return creditsStart;
+            return (creditsStart, combinedReasons);
         }
 
-        private double SelectByStrategy(List<(string method, double timestamp, double confidence, int priority)> detectionResults)
+        private (double timestamp, string reason) SelectByStrategy(List<(string method, double timestamp, double confidence, int priority, string reason)> detectionResults)
         {
             if (detectionResults.Count == 0)
-                return 0;
+                return (0, string.Empty);
 
             var strategy = _configuration.DetectionResultSelection ?? "CorrelationScoring";
 
@@ -457,17 +493,18 @@ namespace EmbyCredits.Services
                 case "Earliest":
                     var earliest = detectionResults.OrderBy(r => r.timestamp).First();
                     _logger.Info($"Earliest mode selected {earliest.method} at {FormatTime(earliest.timestamp)}");
-                    return earliest.timestamp;
+                    return (earliest.timestamp, earliest.reason);
 
                 case "Latest":
                     var latest = detectionResults.OrderByDescending(r => r.timestamp).First();
                     _logger.Info($"Latest mode selected {latest.method} at {FormatTime(latest.timestamp)}");
-                    return latest.timestamp;
+                    return (latest.timestamp, latest.reason);
 
                 case "Average":
                     var average = detectionResults.Average(r => r.timestamp);
                     _logger.Info($"Average mode calculated {FormatTime(average)} from {detectionResults.Count} detections");
-                    return average;
+                    var avgReasons = string.Join(" | ", detectionResults.Select(r => r.reason).Where(r => !string.IsNullOrEmpty(r)));
+                    return (average, avgReasons);
 
                 case "Median":
                     var sorted = detectionResults.OrderBy(r => r.timestamp).ToList();
@@ -475,12 +512,15 @@ namespace EmbyCredits.Services
                         ? (sorted[sorted.Count / 2 - 1].timestamp + sorted[sorted.Count / 2].timestamp) / 2
                         : sorted[sorted.Count / 2].timestamp;
                     _logger.Info($"Median mode calculated {FormatTime(median)} from {detectionResults.Count} detections");
-                    return median;
+                    var medianReason = sorted.Count % 2 == 0 
+                        ? $"{sorted[sorted.Count / 2 - 1].reason} | {sorted[sorted.Count / 2].reason}"
+                        : sorted[sorted.Count / 2].reason;
+                    return (median, medianReason);
 
                 case "Priority":
                     var byPriority = detectionResults.OrderBy(r => r.priority).First();
                     _logger.Info($"Priority mode selected {byPriority.method} at {FormatTime(byPriority.timestamp)} (priority: {byPriority.priority})");
-                    return byPriority.timestamp;
+                    return (byPriority.timestamp, byPriority.reason);
 
                 case "CorrelationScoring":
                 default:
@@ -535,7 +575,7 @@ namespace EmbyCredits.Services
             {
                 _cancellationTokenSource?.Cancel();
                 _cancellationTokenSource?.Dispose();
-                
+
                 foreach (var method in _detectionMethods)
                 {
                     method?.Dispose();

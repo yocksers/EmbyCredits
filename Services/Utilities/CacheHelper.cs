@@ -5,9 +5,6 @@ using System.Linq;
 
 namespace EmbyCredits.Services.Utilities
 {
-    /// <summary>
-    /// Data class for fingerprint cache
-    /// </summary>
     public class FingerprintCache
     {
         public string? EpisodeId { get; set; }
@@ -15,28 +12,16 @@ namespace EmbyCredits.Services.Utilities
         public List<VideoFingerprint>? Fingerprint { get; set; }
         public DateTime Timestamp { get; set; }
     }
-
-    /// <summary>
-    /// Data class for video fingerprint
-    /// </summary>
     public class VideoFingerprint
     {
         public double Timestamp { get; set; }
         public string? Hash { get; set; }
     }
-
-    /// <summary>
-    /// Data class for audio fingerprint
-    /// </summary>
     public class AudioFingerprintFrame
     {
         public double Timestamp { get; set; }
         public string? SpectralHash { get; set; }
     }
-
-    /// <summary>
-    /// Helper class for managing fingerprint and audio caches
-    /// </summary>
     public static class CacheHelper
     {
         private static string? _fingerprintCacheDirectory;

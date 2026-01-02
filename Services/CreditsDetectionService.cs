@@ -20,14 +20,6 @@ using EmbyCredits.Services;
 
 namespace EmbyCredits.Services
 {
-    /// <summary>
-    /// Credits Detection Service - Main service for detecting end credits in video files.
-    /// 
-    /// DESIGN NOTE: This service uses static state for compatibility with Emby's plugin architecture.
-    /// While this makes testing more difficult and requires careful thread synchronization,
-    /// it allows the service to integrate seamlessly with Emby's lifecycle management.
-    /// All mutable static fields are protected with appropriate locks or thread-safe collections.
-    /// </summary>
     public static class CreditsDetectionService
     {
         private static ILogger? _logger;
@@ -45,15 +37,13 @@ namespace EmbyCredits.Services
         private static bool _cancellationRequested = false;
         private static bool _isDryRun = false;
         private static readonly object _timerLock = new object();
-        
+
         private const int MaxQueueSize = 1000;
 
         private static DetectionCoordinator? _detectionCoordinator;
-        private static ProcessedFilesTracker? _processedFilesTracker;
         private static DebugLogger? _debugLogger;
         private static ChapterMarkerService? _chapterMarkerService;
         private static EpisodeProcessor? _episodeProcessor;
-        private static SeriesAveragingService? _seriesAveragingService;
 
         private static readonly ConcurrentDictionary<string, List<(string method, double timestamp)>> _batchDetectionCache = new ConcurrentDictionary<string, List<(string method, double timestamp)>>();
         private static bool _isBatchMode = false;
@@ -78,7 +68,6 @@ namespace EmbyCredits.Services
             _debugLogger?.LogError(message, ex);
         }
 
-        // Public method for DetectionCoordinator and other classes to use debug logging
         public static void LogToDebug(string level, string message)
         {
             _debugLogger?.LogToDebug(level, message);
@@ -95,19 +84,13 @@ namespace EmbyCredits.Services
 
             _detectionCoordinator?.Dispose();
             _detectionCoordinator = new DetectionCoordinator(_logger, _configuration);
-            var trackerPath = string.IsNullOrWhiteSpace(configuration.TempFolderPath) 
-                ? appPaths.PluginConfigurationsPath 
-                : configuration.TempFolderPath;
-            _processedFilesTracker = new ProcessedFilesTracker(_logger, trackerPath);
-            
-            // Initialize new modules
+
             _debugLogger = new DebugLogger(_logger, configuration);
-            _seriesAveragingService = new SeriesAveragingService(_logger, configuration);
             if (_itemRepository != null)
             {
                 _chapterMarkerService = new ChapterMarkerService(_logger, _itemRepository);
                 _episodeProcessor = new EpisodeProcessor(_logger, _libraryManager, _detectionCoordinator, 
-                    _processedFilesTracker, _chapterMarkerService, _debugLogger, configuration, _seriesAveragingService);
+                    _chapterMarkerService, _debugLogger, configuration);
             }
 
             _logger.Info("Credits Detection Service started");
@@ -134,20 +117,13 @@ namespace EmbyCredits.Services
             {
                 _detectionCoordinator?.Dispose();
                 _detectionCoordinator = new DetectionCoordinator(_logger, configuration);
-                var trackerPath = string.IsNullOrWhiteSpace(configuration.TempFolderPath) 
-                    ? _appPaths.PluginConfigurationsPath 
-                    : configuration.TempFolderPath;
-                _processedFilesTracker = new ProcessedFilesTracker(_logger, trackerPath);
-                
-                // Reinitialize new modules
+
                 _debugLogger = new DebugLogger(_logger, configuration);
-                _seriesAveragingService?.Dispose();
-                _seriesAveragingService = new SeriesAveragingService(_logger, configuration);
                 if (_itemRepository != null)
                 {
                     _chapterMarkerService = new ChapterMarkerService(_logger, _itemRepository);
                     _episodeProcessor = new EpisodeProcessor(_logger, _libraryManager, _detectionCoordinator, 
-                        _processedFilesTracker, _chapterMarkerService, _debugLogger, configuration, _seriesAveragingService);
+                        _chapterMarkerService, _debugLogger, configuration);
                 }
             }
         }
@@ -166,25 +142,10 @@ namespace EmbyCredits.Services
             }
         }
 
-        public static void ClearProcessedFiles()
-        {
-            try
-            {
-                _processedFilesTracker?.Clear();
-                _logger?.Info("Cleared processed files tracking list");
-            }
-            catch (Exception ex)
-            {
-                LogError("Error clearing processed files list", ex);
-                throw;
-            }
-        }
-
         public static void Stop()
         {
             _isRunning = false;
-            
-            // Thread-safe timer disposal
+
             Timer? timerToDispose = null;
             lock (_timerLock)
             {
@@ -192,7 +153,7 @@ namespace EmbyCredits.Services
                 _processingTimer = null;
             }
             timerToDispose?.Dispose();
-            
+
             _isProcessing = false;
 
             if (_libraryManager != null)
@@ -202,11 +163,7 @@ namespace EmbyCredits.Services
 
             _detectionCoordinator?.Dispose();
             _detectionCoordinator = null;
-            
-            _seriesAveragingService?.Dispose();
-            _seriesAveragingService = null;
-            
-            // Dispose semaphore
+
             try
             {
                 _processingSemaphore?.Dispose();
@@ -268,52 +225,52 @@ namespace EmbyCredits.Services
             Utilities.FFmpegHelper.Initialize(ffmpegManager);
         }
 
-        public static void QueueEpisode(Episode episode)
+        public static void QueueEpisode(Episode episode, bool isManualDetection = false)
         {
             _cancellationRequested = false;
-            
+
             var episodeId = episode.Id.ToString();
-            LogDebug($"QueueEpisode called for: {episode.Name} (ID: {episodeId})");
+            LogDebug($"QueueEpisode called for: {episode.Name} (ID: {episodeId}), IsManual: {isManualDetection}");
             LogDebug($"Already processed: {_processedEpisodes.ContainsKey(episodeId)}, IsDryRun: {_isDryRun}, IsProcessing: {_isProcessing}");
-            
-            // Check if episode already has credits marker (if ScheduledTaskOnlyProcessMissing is enabled)
-            if (_configuration != null && _itemRepository != null)
+
+            if (!isManualDetection)
             {
-                var chapters = _itemRepository.GetChapters(episode);
-                var hasCreditsMarker = chapters.Any(c => 
+                if (_configuration != null && _itemRepository != null)
                 {
-                    var markerType = GetMarkerType(c);
-                    return markerType != null && markerType.Contains("Credits");
-                });
-                
-                LogDebug($"Episode has existing credits marker: {hasCreditsMarker}, ScheduledTaskOnlyProcessMissing: {_configuration.ScheduledTaskOnlyProcessMissing}");
-                
-                if (hasCreditsMarker && _configuration.ScheduledTaskOnlyProcessMissing)
-                {
-                    LogInfo($"Skipping episode {episode.Name} - already has credits marker (ScheduledTaskOnlyProcessMissing is enabled)");
-                    return;
+                    var chapters = _itemRepository.GetChapters(episode);
+                    var hasCreditsMarker = chapters.Any(c => 
+                    {
+                        var markerType = GetMarkerType(c);
+                        return markerType != null && markerType.Contains("Credits");
+                    });
+
+                    LogDebug($"Episode has existing credits marker: {hasCreditsMarker}, ScheduledTaskOnlyProcessMissing: {_configuration.ScheduledTaskOnlyProcessMissing}");
+
+                    if (hasCreditsMarker && _configuration.ScheduledTaskOnlyProcessMissing)
+                    {
+                        LogInfo($"Skipping episode {episode.Name} - already has credits marker (ScheduledTaskOnlyProcessMissing is enabled)");
+                        return;
+                    }
                 }
             }
-            
-            if (_configuration != null && _configuration.SkipPreviouslyProcessedFiles && _processedFilesTracker != null)
+            else
             {
-                if (_processedFilesTracker.ShouldSkipFile(episodeId, _configuration.SkipOnlySuccessfulFiles))
+                if (_processedEpisodes.ContainsKey(episodeId))
                 {
-                    LogInfo($"Skipping episode {episode.Name} - already processed (SkipOnlySuccessful: {_configuration.SkipOnlySuccessfulFiles})");
-                    return;
+                    _processedEpisodes.TryRemove(episodeId, out _);
+                    LogDebug($"Manual detection: Cleared {episode.Name} from processed episodes cache");
                 }
             }
-            
-            // Allow reprocessing in dry run mode or if not yet processed
-            if (_isDryRun || !_processedEpisodes.ContainsKey(episodeId))
+
+            if (true)
             {
-                // Enforce maximum queue size
+
                 if (_processingQueue.Count >= MaxQueueSize)
                 {
                     LogWarn($"Queue is full ({_processingQueue.Count} episodes). Skipping {episode.Name} to prevent memory issues.");
                     return;
                 }
-                
+
                 _processingQueue.Enqueue(episode);
                 LogInfo($"Queued episode: {episode.Name} (Queue size: {_processingQueue.Count})");
 
@@ -323,7 +280,7 @@ namespace EmbyCredits.Services
                     Plugin.Progress.IsRunning = true;
                     Plugin.Progress.TotalItems = 1;
                     Plugin.Progress.StartTime = DateTime.Now;
-                    
+
                     LogInfo("Starting ProcessQueue task");
                     Task.Run(ProcessQueue);
                 }
@@ -337,10 +294,6 @@ namespace EmbyCredits.Services
                     LogWarn($"Episode queued but not starting processing: isProcessing={_isProcessing}, PluginInstance={Plugin.Instance != null}");
                 }
             }
-            else
-            {
-                LogInfo($"Skipping episode {episode.Name} - already processed");
-            }
         }
 
         public static void QueueSeries(List<Episode> episodes)
@@ -353,7 +306,6 @@ namespace EmbyCredits.Services
             _cancellationRequested = false;
             _isProcessing = false;
 
-            // Ensure detection coordinator is initialized
             if (_detectionCoordinator == null && _logger != null && _configuration != null)
             {
                 LogInfo("Initializing DetectionCoordinator");
@@ -383,7 +335,7 @@ namespace EmbyCredits.Services
             LogInfo($"Queued {queuedCount} episodes for processing (forced reprocess). Queue size: {_processingQueue.Count}");
             LogInfo($"Service running: {_isRunning}, Already processing: {_isProcessing}");
 
-            _isBatchMode = queuedCount >= 3 && _configuration?.UseCorrelationScoring == true;
+            _isBatchMode = queuedCount >= 3 && _configuration?.UseEpisodeComparison == true && _configuration?.UseCorrelationScoring == true;
 
             if (_isBatchMode)
             {
@@ -399,10 +351,9 @@ namespace EmbyCredits.Services
         public static void CancelProcessing()
         {
             LogInfo("Cancellation requested for credits detection");
-            
+
             _cancellationRequested = true;
-            
-            // Cancel ongoing detection operations (this recreates the CancellationTokenSource)
+
             _detectionCoordinator?.CancelDetection();
 
             var clearedCount = 0;
@@ -410,10 +361,9 @@ namespace EmbyCredits.Services
             { 
                 clearedCount++;
             }
-            
-            // Clear processed episodes cache so cancelled episodes can be reprocessed
+
             _processedEpisodes.Clear();
-            
+
             LogInfo($"Queue cleared: {clearedCount} items removed, processed cache cleared");
             ResetProgressToCancelling();
         }
@@ -421,26 +371,19 @@ namespace EmbyCredits.Services
         public static int ClearQueue()
         {
             LogInfo("Clearing processing queue");
-            
+
             var clearedCount = 0;
             while (_processingQueue.TryDequeue(out _)) 
             { 
                 clearedCount++;
             }
-            
+
             _isProcessing = false;
             _cancellationRequested = false;
-            
-            LogInfo($"Queue cleared: {clearedCount} items removed, flags reset");
-            
-            return clearedCount;
-        }
 
-        public static void ClearSeriesAveragingData()
-        {
-            LogInfo("Clearing series averaging data");
-            _seriesAveragingService?.Clear();
-            LogInfo("Series averaging data cleared");
+            LogInfo($"Queue cleared: {clearedCount} items removed, flags reset");
+
+            return clearedCount;
         }
 
         private static void ResetProgressToCancelling()
@@ -451,10 +394,67 @@ namespace EmbyCredits.Services
             }
         }
 
+        public static void QueueEpisodeManual(Episode episode, bool skipExistingMarkers = false)
+        {
+            if (skipExistingMarkers && _itemRepository != null)
+            {
+                var chapters = _itemRepository.GetChapters(episode);
+                var hasCreditsMarker = chapters.Any(c => 
+                {
+                    var markerType = GetMarkerType(c);
+                    return markerType != null && markerType.Contains("Credits");
+                });
+
+                if (hasCreditsMarker)
+                {
+                    LogInfo($"Skipping episode {episode.Name} - already has credits marker (manual skip enabled)");
+                    return;
+                }
+            }
+
+            QueueEpisode(episode, isManualDetection: true);
+        }
+
+        public static void QueueSeriesManual(List<Episode> episodes, bool skipExistingMarkers = false)
+        {
+            if (skipExistingMarkers && _itemRepository != null)
+            {
+                var episodesToQueue = episodes.Where(episode =>
+                {
+                    var chapters = _itemRepository.GetChapters(episode);
+                    var hasCreditsMarker = chapters.Any(c => 
+                    {
+                        var markerType = GetMarkerType(c);
+                        return markerType != null && markerType.Contains("Credits");
+                    });
+
+                    if (hasCreditsMarker)
+                    {
+                        LogInfo($"Skipping episode {episode.Name} - already has credits marker (manual skip enabled)");
+                        return false;
+                    }
+                    return true;
+                }).ToList();
+
+                if (episodesToQueue.Count == 0)
+                {
+                    LogInfo("No episodes to process - all have existing credit markers");
+                    return;
+                }
+
+                QueueSeries(episodesToQueue);
+            }
+            else
+            {
+
+                QueueSeries(episodes);
+            }
+        }
+
         public static void QueueEpisodeDryRun(Episode episode)
         {
             _isDryRun = true;
-            QueueEpisode(episode);
+            QueueEpisode(episode, isManualDetection: true);
         }
 
         public static void QueueSeriesDryRun(List<Episode> episodes)
@@ -467,7 +467,7 @@ namespace EmbyCredits.Services
         {
             _isDryRun = true;
             StartDebugMode();
-            QueueEpisode(episode);
+            QueueEpisode(episode, isManualDetection: true);
         }
 
         public static void QueueSeriesDryRunDebug(List<Episode> episodes)
@@ -559,8 +559,7 @@ namespace EmbyCredits.Services
 
             _isProcessing = true;
             LogInfo("ProcessQueue: acquired semaphore, starting processing");
-            
-            // Clear previous failure reasons to prevent unbounded growth
+
             if (Plugin.Instance != null)
             {
                 Plugin.Progress.FailureReasons?.Clear();
@@ -589,7 +588,7 @@ namespace EmbyCredits.Services
                         Plugin.Progress.IsRunning = false;
                         Plugin.Progress.EndTime = DateTime.Now;
                         Plugin.Progress.CurrentItem = "Cancelled";
-                        // Keep debug log available even when cancelled
+
                         if (IsDebugMode)
                         {
                             ScheduleDebugLogCleanup();
@@ -619,13 +618,13 @@ namespace EmbyCredits.Services
 
         private static void CheckForNewEpisodes(object? state)
         {
-            // Check if service is still running under lock to prevent race with disposal
+
             lock (_timerLock)
             {
                 if (_processingTimer == null)
                     return;
             }
-            
+
             if (!_isRunning || _libraryManager == null || _configuration == null || !_configuration.EnableAutoDetection)
                 return;
 
@@ -706,7 +705,6 @@ namespace EmbyCredits.Services
                         Plugin.Progress.SuccessDetails[episodeKey] = FormatTime(creditsStart);
                     }
 
-                    // Only add to processed episodes if not a dry run
                     if (!_isDryRun)
                     {
                         _processedEpisodes.TryAdd(episodeId, DateTime.UtcNow);
@@ -725,7 +723,6 @@ namespace EmbyCredits.Services
                         Plugin.Progress.FailureReasons[episodeKey] = failureReason;
                     }
 
-                    // Only add to processed episodes if not a dry run
                     if (!_isDryRun)
                     {
                         _processedEpisodes.TryAdd(episodeId, DateTime.UtcNow);

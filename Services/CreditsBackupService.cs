@@ -69,7 +69,7 @@ namespace EmbyCredits.Services
                     if (chapters == null || chapters.Count == 0) continue;
 
                     var creditsMarker = chapters.FirstOrDefault(c => GetMarkerType(c) == "CreditsStart");
-                    
+
                     if (creditsMarker != null)
                     {
                         var series = episode.Series;
@@ -335,10 +335,10 @@ namespace EmbyCredits.Services
         public DateTime BackupDate { get; set; }
         public int TotalEpisodes { get; set; }
         public int EpisodesWithCredits { get; set; }
-        
+
         [JsonIgnore]
         public int TotalSeries => Entries?.GroupBy(e => e.TvdbId ?? e.SeriesId).Count() ?? 0;
-        
+
         public List<CreditsBackupEntry> Entries { get; set; } = new List<CreditsBackupEntry>();
     }
 

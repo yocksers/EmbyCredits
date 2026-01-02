@@ -26,6 +26,14 @@
         <div class="fieldDescription">Choose a specific episode to process, or leave empty to process all episodes in the selected show</div>
     </div>
 
+    <div class="checkboxContainer checkboxContainer-withDescription" style="margin-top: 1em;">
+        <label class="emby-checkbox-label">
+            <input is="emby-checkbox" type="checkbox" id="chkManualSkipExistingMarkers" />
+            <span>Skip episodes with existing credit markers</span>
+        </label>
+        <div class="fieldDescription" style="margin-left: 2em;">When enabled, episodes that already have credit chapter markers will be skipped during manual detection to speed up processing</div>
+    </div>
+
     <div style="margin-top: 1.5em;">
         <button is="emby-button" type="button" class="raised button-submit" id="btnProcessSeries">
             <span>Process Selection</span>

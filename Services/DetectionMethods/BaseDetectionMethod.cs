@@ -11,6 +11,7 @@ namespace EmbyCredits.Services.DetectionMethods
         protected readonly ILogger Logger;
         protected readonly PluginConfiguration Configuration;
         protected string LastError = string.Empty;
+        protected string DetectionReason = string.Empty;
         private bool _disposed = false;
 
         public abstract string MethodName { get; }
@@ -25,10 +26,15 @@ namespace EmbyCredits.Services.DetectionMethods
         }
 
         public abstract Task<double> DetectCredits(string videoPath, double duration, CancellationToken cancellationToken = default);
-        
+
         public string GetLastError()
         {
             return LastError;
+        }
+
+        public string GetDetectionReason()
+        {
+            return DetectionReason;
         }
 
         protected void LogInfo(string message)
@@ -45,7 +51,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
         protected void LogWarn(string message)
         {
-            // Always log warnings as they indicate issues that need attention
+
             Logger.Warn($"[{MethodName}] {message}");
         }
 
@@ -88,7 +94,7 @@ namespace EmbyCredits.Services.DetectionMethods
             {
                 if (disposing)
                 {
-                    // Derived classes can override to dispose managed resources
+
                 }
                 _disposed = true;
             }

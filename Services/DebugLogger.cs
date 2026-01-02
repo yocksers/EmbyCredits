@@ -5,16 +5,13 @@ using System.Threading.Tasks;
 
 namespace EmbyCredits.Services
 {
-    /// <summary>
-    /// Handles debug logging functionality with automatic truncation and cleanup.
-    /// </summary>
     public class DebugLogger
     {
         private readonly ILogger _logger;
         private readonly PluginConfiguration _configuration;
         private StringBuilder? _debugLog;
         private bool _isDebugMode;
-        private const int MaxDebugLogSize = 10 * 1024 * 1024; // 10MB
+        private const int MaxDebugLogSize = 10 * 1024 * 1024;
 
         public DebugLogger(ILogger logger, PluginConfiguration configuration)
         {
@@ -39,8 +36,12 @@ namespace EmbyCredits.Services
                 _debugLog.AppendLine($"  EnableAutoDetection: {_configuration.EnableAutoDetection}");
                 _debugLog.AppendLine($"  EnableOcrDetection: {_configuration.EnableOcrDetection}");
                 _debugLog.AppendLine($"  OcrEndpoint: {_configuration.OcrEndpoint}");
-                _debugLog.AppendLine($"  UseSeriesAveraging: {_configuration.UseSeriesAveraging}");
-                _debugLog.AppendLine($"  MinimumEpisodesForAveraging: {_configuration.MinimumEpisodesForAveraging}");
+                _debugLog.AppendLine($"  OcrEnableCharacterDensityDetection: {_configuration.OcrEnableCharacterDensityDetection}");
+                _debugLog.AppendLine($"  OcrCharacterDensityPrimaryMethod: {_configuration.OcrCharacterDensityPrimaryMethod}");
+                _debugLog.AppendLine($"  OcrCharacterDensityThreshold: {_configuration.OcrCharacterDensityThreshold}");
+                _debugLog.AppendLine($"  OcrCharacterDensityConsecutiveFrames: {_configuration.OcrCharacterDensityConsecutiveFrames}");
+                _debugLog.AppendLine($"  UseEpisodeComparison: {_configuration.UseEpisodeComparison}");
+                _debugLog.AppendLine($"  MinimumEpisodesToCompare: {_configuration.MinimumEpisodesToCompare}");
                 _debugLog.AppendLine();
             }
 
@@ -85,7 +86,7 @@ namespace EmbyCredits.Services
                 _logger.ErrorException(message, ex);
             else
                 _logger.Error(message);
-            
+
             if (_isDebugMode && _debugLog != null)
             {
                 TruncateIfNeeded();
@@ -141,7 +142,7 @@ namespace EmbyCredits.Services
         {
             if (_debugLog != null && _debugLog.Length > MaxDebugLogSize)
             {
-                // Keep the last 80% of the log
+
                 var keepSize = (int)(MaxDebugLogSize * 0.8);
                 var removeSize = _debugLog.Length - keepSize;
                 _debugLog.Remove(0, removeSize);

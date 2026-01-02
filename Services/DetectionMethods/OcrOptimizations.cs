@@ -64,7 +64,7 @@ namespace EmbyCredits.Services.DetectionMethods
             }
 
             var lastMatches = recentMatches.TakeLast(requiredConsecutive).ToList();
-            
+
             if (lastMatches.Any(m => m.matchCount == 0))
             {
                 return false;

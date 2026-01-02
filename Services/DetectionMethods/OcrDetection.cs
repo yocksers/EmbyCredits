@@ -30,7 +30,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
         public override async Task<double> DetectCredits(string videoPath, double duration, CancellationToken cancellationToken = default)
         {
-            LastError = string.Empty; // Clear previous error
+            LastError = string.Empty;
             try
             {
                 if (string.IsNullOrWhiteSpace(Configuration.OcrEndpoint))
@@ -64,7 +64,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 double startTime;
                 var searchUnit = Configuration.OcrSearchStartUnit ?? "minutes";
                 var searchValue = Configuration.OcrSearchStartValue;
-                
+
                 if (searchUnit == "minutes")
                 {
                     startTime = Math.Max(0, duration - (searchValue * 60));
@@ -72,7 +72,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 }
                 else
                 {
-                    // Percentage mode (value should be 50-95, representing 50%-95%)
+
                     var searchStartPercentage = searchValue / 100.0;
                     startTime = duration * searchStartPercentage;
                     LogDebug($"OCR starting at {searchValue}% ({FormatTime(startTime)})");
@@ -104,7 +104,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     var fps = Configuration.OcrFrameRate;
                     var imageFormat = Configuration.OcrImageFormat?.ToLowerInvariant() == "jpg" ? "jpg" : "png";
                     var imageExtension = imageFormat;
-                    
+
                     var qualityParam = "";
                     if (imageFormat == "jpg")
                     {
@@ -114,7 +114,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
 
                     var frameOutputPath = $"{tempDir.Replace("\\", "/")}/frame_%04d.{imageExtension}";
-                    
+
                     var ffmpegTempDir = tempDir.Replace("\\", "/");
                     var ffmpegFramePath = $"{ffmpegTempDir}/frame_%04d.{imageExtension}";
                     var extractArgs = $"-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"fps={fps.ToString(CultureInfo.InvariantCulture)}\" {qualityParam} -f image2 \"{ffmpegFramePath}\"";
@@ -137,16 +137,16 @@ namespace EmbyCredits.Services.DetectionMethods
                     })
                     {
                         process.Start();
-                        
-                        // Create a timeout cancellation token source
+
                         var timeoutMinutes = Configuration.OcrMaxAnalysisDuration > 0 
-                            ? (Configuration.OcrMaxAnalysisDuration / 60) + 5  // Add 5 minutes buffer
-                            : 30;  // Default 30 minute timeout
+                            ? (Configuration.OcrMaxAnalysisDuration / 60) + 5
+                            : 30;
                         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMinutes));
                         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
                         var effectiveToken = linkedCts.Token;
 
                         var detectionScores = new List<(double timestamp, int matchCount, string matchedKeywords)>();
+                        var characterDensityHistory = new List<(double timestamp, int charCount)>();
                         bool loggedFirstFrame = false;
                         int frameIndex = 0;
                         int maxFramesToProcess = Configuration.OcrMaxFramesToProcess > 0 ? Configuration.OcrMaxFramesToProcess : int.MaxValue;
@@ -179,14 +179,14 @@ namespace EmbyCredits.Services.DetectionMethods
                         const int maxNoNewFramesIterations = 100;
                         const int maxWaitForFirstFrameIterations = 600;
                         var totalWaitIterations = 0;
-                        
+
                         var consecutiveMatches = 0;
                         var recentMatches = new List<(double timestamp, int matchCount)>();
                         var frameSkip = 1;
-                        
+
                         while (!creditsFound && frameIndex < maxFramesToProcess)
                         {
-                            // Check for cancellation (including timeout)
+
                             if (effectiveToken.IsCancellationRequested)
                             {
                                 if (timeoutCts.IsCancellationRequested)
@@ -200,7 +200,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                 }
                                 break;
                             }
-                            
+
                             if (!Directory.Exists(tempDir))
                             {
                                 await Task.Delay(50, effectiveToken).ConfigureAwait(false);
@@ -221,12 +221,12 @@ namespace EmbyCredits.Services.DetectionMethods
                                         break;
                                     }
                                 }
-                                
+
                                 if (lastFrameCount == frameIndex)
                                 {
                                     noNewFramesCount++;
                                     totalWaitIterations++;
-                                    
+
                                     if (waitingForFirstFrame)
                                     {
                                         if (totalWaitIterations > maxWaitForFirstFrameIterations)
@@ -234,8 +234,8 @@ namespace EmbyCredits.Services.DetectionMethods
                                             LogWarn($"Timeout waiting for first frame after {totalWaitIterations * 50}ms");
                                             break;
                                         }
-                                        
-                                        if (totalWaitIterations % 40 == 0) // Every 2 seconds
+
+                                        if (totalWaitIterations % 40 == 0)
                                         {
                                             LogDebug($"Waiting for FFmpeg to generate first frame... ({totalWaitIterations * 50 / 1000}s elapsed)");
                                         }
@@ -253,7 +253,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                 {
                                     noNewFramesCount = 0;
                                 }
-                                
+
                                 lastFrameCount = frameIndex;
                                 await Task.Delay(50, effectiveToken).ConfigureAwait(false);
                                 continue;
@@ -264,37 +264,70 @@ namespace EmbyCredits.Services.DetectionMethods
                                 LogDebug($"First frame(s) received after {totalWaitIterations * 50}ms, beginning OCR processing");
                                 waitingForFirstFrame = false;
                             }
-                            
+
                             noNewFramesCount = 0;
-                            
-                            // Parallel processing batch
+
                             if (Configuration.OcrEnableParallelProcessing && currentFrames.Count > 1)
                             {
                                 var batchSize = Math.Min(Configuration.OcrParallelBatchSize, currentFrames.Count);
                                 var frameBatch = currentFrames.Take(batchSize).ToList();
                                 var frameBatchWithTimestamps = frameBatch.Select((f, i) => (f, startTime + ((frameIndex + i) / fps))).ToList();
-                                
+
                                 LogDebug($"Processing {frameBatch.Count} frames in parallel");
-                                
+
                                 var batchResults = await OcrOptimizations.ProcessFramesBatch(
                                     frameBatchWithTimestamps,
                                     async (path) => await PerformOcr(path, effectiveToken).ConfigureAwait(false),
                                     batchSize
                                 ).ConfigureAwait(false);
-                                
+
                                 foreach (var (framePath, ocrText, timestamp) in batchResults)
                                 {
                                     if (!string.IsNullOrWhiteSpace(ocrText))
                                     {
+                                        var charCount = ocrText.Length;
+                                        characterDensityHistory.Add((timestamp, charCount));
+
+                                        var textPreview = ocrText.Length > 100 ? ocrText.Substring(0, 100) + "..." : ocrText;
+                                        var textOneLine = textPreview.Replace("\n", " ").Replace("\r", "");
+                                        LogDebug($"Frame at {FormatTime(timestamp)}: OCR detected {charCount} chars: \"{textOneLine}\"");
+
                                         var matchedKeywords = FindKeywordMatches(ocrText, keywords);
-                                        
-                                        if (matchedKeywords.Count > 0)
+
+                                        var densityDetected = false;
+                                        if (Configuration.OcrEnableCharacterDensityDetection)
                                         {
-                                            var matchedText = string.Join(", ", matchedKeywords);
-                                            detectionScores.Add((timestamp, matchedKeywords.Count, matchedText));
+                                            densityDetected = CheckCharacterDensity(characterDensityHistory, timestamp, charCount);
+                                        }
+
+                                        bool frameIndicatesCredits = false;
+                                        if (Configuration.OcrCharacterDensityPrimaryMethod)
+                                        {
+
+                                            frameIndicatesCredits = densityDetected || matchedKeywords.Count > 0;
+                                            if (densityDetected)
+                                            {
+                                                var keywordBonus = matchedKeywords.Count > 0 ? $" + {matchedKeywords.Count} keyword(s): {string.Join(", ", matchedKeywords)}" : "";
+                                                LogDebug($"Frame at {FormatTime(timestamp)}: ✓ MATCH - High text density ({charCount} chars){keywordBonus}");
+                                            }
+                                        }
+                                        else
+                                        {
+
+                                            frameIndicatesCredits = matchedKeywords.Count > 0;
+                                        }
+
+                                        if (frameIndicatesCredits)
+                                        {
+                                            var matchedText = matchedKeywords.Count > 0 ? string.Join(", ", matchedKeywords) : "density";
+                                            detectionScores.Add((timestamp, matchedKeywords.Count > 0 ? matchedKeywords.Count : 1, matchedText));
                                             consecutiveMatches++;
-                                            recentMatches.Add((timestamp, matchedKeywords.Count));
-                                            LogDebug($"Frame at {FormatTime(timestamp)}: Found {matchedKeywords.Count} keyword(s): {matchedText}");
+                                            recentMatches.Add((timestamp, matchedKeywords.Count > 0 ? matchedKeywords.Count : 1));
+
+                                            if (matchedKeywords.Count > 0 && !densityDetected)
+                                            {
+                                                LogDebug($"Frame at {FormatTime(timestamp)}: ✓ MATCH - Found {matchedKeywords.Count} keyword(s): {string.Join(", ", matchedKeywords)}");
+                                            }
                                         }
                                         else
                                         {
@@ -302,11 +335,14 @@ namespace EmbyCredits.Services.DetectionMethods
                                             recentMatches.Add((timestamp, 0));
                                         }
                                     }
-                                    
+                                    else
+                                    {
+                                        characterDensityHistory.Add((timestamp, 0));
+                                    }
+
                                     frameIndex++;
                                 }
-                                
-                                // Check for early termination based on consecutive matches
+
                                 if (Configuration.OcrConsecutiveMatchesForEarlyStop > 0)
                                 {
                                     if (OcrOptimizations.ShouldTerminateEarly(recentMatches, Configuration.OcrConsecutiveMatchesForEarlyStop))
@@ -314,10 +350,11 @@ namespace EmbyCredits.Services.DetectionMethods
                                         creditsTimestamp = FindCreditsStartFromOcrScores(detectionScores, duration);
                                         if (creditsTimestamp > 0)
                                         {
+                                            DetectionReason = BuildDetectionReason(detectionScores, characterDensityHistory, creditsTimestamp);
                                             creditsFound = true;
                                             UpdateProgress(98, $"Credits found via consecutive matches! Processed {frameIndex} frames");
                                             LogInfo($"Early termination: {Configuration.OcrConsecutiveMatchesForEarlyStop} consecutive matches at {FormatTime(creditsTimestamp)}");
-                                            
+
                                             try
                                             {
                                                 if (!process.HasExited)
@@ -330,13 +367,12 @@ namespace EmbyCredits.Services.DetectionMethods
                                             {
                                                 LogDebug($"Error killing FFmpeg process: {killEx.Message}");
                                             }
-                                            
+
                                             break;
                                         }
                                     }
                                 }
-                                
-                                // Smart frame skipping
+
                                 if (Configuration.OcrEnableSmartFrameSkipping && consecutiveMatches > 0)
                                 {
                                     frameSkip = OcrOptimizations.CalculateSmartSkip(consecutiveMatches);
@@ -346,17 +382,17 @@ namespace EmbyCredits.Services.DetectionMethods
                                         frameIndex += (frameSkip - batchSize);
                                     }
                                 }
-                                
-                                // Check standard OCR minimum matches
+
                                 if (detectionScores.Count >= Configuration.OcrMinimumMatches)
                                 {
                                     creditsTimestamp = FindCreditsStartFromOcrScores(detectionScores, duration);
                                     if (creditsTimestamp > 0)
                                     {
+                                        DetectionReason = BuildDetectionReason(detectionScores, characterDensityHistory, creditsTimestamp);
                                         creditsFound = true;
                                         UpdateProgress(98, $"Credits found! Processed {frameIndex} frames");
                                         LogInfo($"Credits detected at {FormatTime(creditsTimestamp)} via OCR keyword matching");
-                                        
+
                                         try
                                         {
                                             if (!process.HasExited)
@@ -369,15 +405,14 @@ namespace EmbyCredits.Services.DetectionMethods
                                         {
                                             LogDebug($"Error killing FFmpeg process: {killEx.Message}");
                                         }
-                                        
+
                                         break;
                                     }
                                 }
-                                
+
                                 continue;
                             }
-                            
-                            // Sequential processing (original behavior)
+
                             foreach (var frameFile in currentFrames)
                             {
                                 if (creditsFound || frameIndex >= maxFramesToProcess)
@@ -410,17 +445,50 @@ namespace EmbyCredits.Services.DetectionMethods
 
                                     if (!string.IsNullOrWhiteSpace(ocrText))
                                     {
+                                        var charCount = ocrText.Length;
+                                        characterDensityHistory.Add((timestamp, charCount));
+
+                                        var textPreview = ocrText.Length > 100 ? ocrText.Substring(0, 100) + "..." : ocrText;
+                                        var textOneLine = textPreview.Replace("\n", " ").Replace("\r", "");
+                                        LogDebug($"Frame at {FormatTime(timestamp)}: OCR detected {charCount} chars: \"{textOneLine}\"");
+
                                         var matchedKeywords = FindKeywordMatches(ocrText, keywords);
 
-                                        if (matchedKeywords.Count > 0)
+                                        var densityDetected = false;
+                                        if (Configuration.OcrEnableCharacterDensityDetection)
                                         {
-                                            var matchedText = string.Join(", ", matchedKeywords);
-                                            detectionScores.Add((timestamp, matchedKeywords.Count, matchedText));
+                                            densityDetected = CheckCharacterDensity(characterDensityHistory, timestamp, charCount);
+                                        }
+
+                                        bool frameIndicatesCredits = false;
+                                        if (Configuration.OcrCharacterDensityPrimaryMethod)
+                                        {
+
+                                            frameIndicatesCredits = densityDetected || matchedKeywords.Count > 0;
+                                            if (densityDetected)
+                                            {
+                                                var keywordBonus = matchedKeywords.Count > 0 ? $" + {matchedKeywords.Count} keyword(s): {string.Join(", ", matchedKeywords)}" : "";
+                                                LogDebug($"Frame at {FormatTime(timestamp)}: ✓ MATCH - High text density ({charCount} chars){keywordBonus}");
+                                            }
+                                        }
+                                        else
+                                        {
+
+                                            frameIndicatesCredits = matchedKeywords.Count > 0;
+                                        }
+
+                                        if (frameIndicatesCredits)
+                                        {
+                                            var matchedText = matchedKeywords.Count > 0 ? string.Join(", ", matchedKeywords) : "density";
+                                            detectionScores.Add((timestamp, matchedKeywords.Count > 0 ? matchedKeywords.Count : 1, matchedText));
                                             consecutiveMatches++;
-                                            recentMatches.Add((timestamp, matchedKeywords.Count));
-                                            LogDebug($"Frame at {FormatTime(timestamp)}: Found {matchedKeywords.Count} keyword(s): {matchedText}");
-                                            
-                                            // Check for early termination
+                                            recentMatches.Add((timestamp, matchedKeywords.Count > 0 ? matchedKeywords.Count : 1));
+
+                                            if (matchedKeywords.Count > 0 && !densityDetected)
+                                            {
+                                                LogDebug($"Frame at {FormatTime(timestamp)}: ✓ MATCH - Found {matchedKeywords.Count} keyword(s): {string.Join(", ", matchedKeywords)}");
+                                            }
+
                                             if (Configuration.OcrConsecutiveMatchesForEarlyStop > 0)
                                             {
                                                 if (OcrOptimizations.ShouldTerminateEarly(recentMatches, Configuration.OcrConsecutiveMatchesForEarlyStop))
@@ -428,10 +496,11 @@ namespace EmbyCredits.Services.DetectionMethods
                                                     creditsTimestamp = FindCreditsStartFromOcrScores(detectionScores, duration);
                                                     if (creditsTimestamp > 0)
                                                     {
+                                                        DetectionReason = BuildDetectionReason(detectionScores, characterDensityHistory, creditsTimestamp);
                                                         creditsFound = true;
                                                         UpdateProgress(98, $"Credits found via consecutive matches! Processed {frameIndex + 1} frames");
                                                         LogInfo($"Early termination: {Configuration.OcrConsecutiveMatchesForEarlyStop} consecutive matches at {FormatTime(creditsTimestamp)}");
-                                                        
+
                                                         try
                                                         {
                                                             if (!process.HasExited)
@@ -444,7 +513,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                                         {
                                                             LogDebug($"Error killing FFmpeg process: {killEx.Message}");
                                                         }
-                                                        
+
                                                         break;
                                                     }
                                                 }
@@ -455,11 +524,12 @@ namespace EmbyCredits.Services.DetectionMethods
                                                 creditsTimestamp = FindCreditsStartFromOcrScores(detectionScores, duration);
                                                 if (creditsTimestamp > 0)
                                                 {
+                                                    DetectionReason = BuildDetectionReason(detectionScores, characterDensityHistory, creditsTimestamp);
                                                     creditsFound = true;
                                                     UpdateProgress(98, $"Credits found! Processed {frameIndex + 1} frames");
                                                     LogInfo($"Credits detected at {FormatTime(creditsTimestamp)} via OCR keyword matching");
                                                     LogInfo($"OCR processing stopped early after finding credits (processed {frameIndex + 1} frames, FFmpeg extraction stopped)");
-                                                    
+
                                                     try
                                                     {
                                                         if (!process.HasExited)
@@ -472,7 +542,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                                     {
                                                         LogDebug($"Error killing FFmpeg process: {killEx.Message}");
                                                     }
-                                                    
+
                                                     break;
                                                 }
                                             }
@@ -485,15 +555,15 @@ namespace EmbyCredits.Services.DetectionMethods
                                     }
                                     else
                                     {
+                                        characterDensityHistory.Add((timestamp, 0));
                                         consecutiveMatches = 0;
                                         recentMatches.Add((timestamp, 0));
                                         LogDebug($"Frame at {FormatTime(timestamp)}: No text detected");
                                     }
                                 }
-                                
+
                                 frameIndex++;
-                                
-                                // Smart frame skipping
+
                                 if (Configuration.OcrEnableSmartFrameSkipping && consecutiveMatches > 0)
                                 {
                                     frameSkip = OcrOptimizations.CalculateSmartSkip(consecutiveMatches);
@@ -508,7 +578,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                         break;
                                     }
                                 }
-                                
+
                                 if (Configuration.OcrDelayBetweenFramesMs > 0)
                                 {
                                     await Task.Delay(Configuration.OcrDelayBetweenFramesMs, effectiveToken).ConfigureAwait(false);
@@ -518,15 +588,14 @@ namespace EmbyCredits.Services.DetectionMethods
                     });
 
                         await processingTask.ConfigureAwait(false);
-                        
+
                         if (creditsFound)
                         {
                             return creditsTimestamp;
                         }
 
                         var ffmpegError = await ffmpegTask.ConfigureAwait(false);
-                        
-                        // Ensure process is properly terminated before cleanup
+
                         if (!process.HasExited)
                         {
                             try
@@ -539,9 +608,9 @@ namespace EmbyCredits.Services.DetectionMethods
                                 LogWarn($"Error terminating FFmpeg process: {ex.Message}");
                             }
                         }
-                        
+
                         await process.WaitForExitAsync().ConfigureAwait(false);
-                        
+
                         if (process.ExitCode != 0 && !creditsFound)
                         {
                             LastError = $"FFmpeg frame extraction failed (exit code {process.ExitCode})";
@@ -573,6 +642,7 @@ namespace EmbyCredits.Services.DetectionMethods
                             var creditsStart = FindCreditsStartFromOcrScores(detectionScores, duration);
                             if (creditsStart > 0)
                             {
+                                DetectionReason = BuildDetectionReason(detectionScores, characterDensityHistory, creditsStart);
                                 LogInfo($"Credits detected at {FormatTime(creditsStart)} via OCR keyword matching");
                                 return creditsStart;
                             }
@@ -581,11 +651,11 @@ namespace EmbyCredits.Services.DetectionMethods
                         LastError = $"No OCR keywords found in {frameIndex} frames analyzed";
                         LogDebug("No sustained keyword matches found for credits");
                         return 0;
-                    } // End of using (process)
+                    }
                 }
                 finally
                 {
-                    // Ensure directory cleanup after process has been disposed
+
                     var maxRetries = 5;
                     var retryDelay = 200;
 
@@ -595,10 +665,10 @@ namespace EmbyCredits.Services.DetectionMethods
                         {
                             if (Directory.Exists(tempDir))
                             {
-                                // Force release of any file handles
+
                                 GC.Collect();
                                 GC.WaitForPendingFinalizers();
-                                
+
                                 Directory.Delete(tempDir, true);
                                 LogDebug($"Successfully cleaned up temp directory: {tempDir}");
                                 break;
@@ -606,7 +676,7 @@ namespace EmbyCredits.Services.DetectionMethods
                         }
                         catch (IOException) when (attempt < maxRetries - 1)
                         {
-                            // File still locked, wait and retry
+
                             LogDebug($"Temp directory cleanup attempt {attempt + 1} failed (file locked), retrying in {retryDelay}ms...");
                             try
                             {
@@ -614,11 +684,11 @@ namespace EmbyCredits.Services.DetectionMethods
                             }
                             catch (OperationCanceledException)
                             {
-                                // Cancellation during cleanup, log but continue trying
+
                                 LogDebug("Cleanup cancelled, stopping retry attempts");
                                 break;
                             }
-                            retryDelay *= 2; // Exponential backoff
+                            retryDelay *= 2;
                         }
                         catch (Exception ex)
                         {
@@ -755,12 +825,12 @@ namespace EmbyCredits.Services.DetectionMethods
                         var colonIndex = response.IndexOf(":", confidenceStart);
                         var valueStart = colonIndex + 1;
                         var valueEnd = valueStart;
-                        
+
                         while (valueEnd < response.Length && (char.IsDigit(response[valueEnd]) || response[valueEnd] == '.'))
                         {
                             valueEnd++;
                         }
-                        
+
                         if (valueEnd > valueStart)
                         {
                             var confStr = response.Substring(valueStart, valueEnd - valueStart).Trim();
@@ -805,11 +875,10 @@ namespace EmbyCredits.Services.DetectionMethods
                 catch (JsonException ex)
                 {
                     LogWarn($"Failed to parse OCR JSON response: {ex.Message}. Attempting fallback parsing.");
-                    // Fall through to plain text handling
+
                 }
             }
 
-            // Plain text response (fallback)
             return (response.Trim(), 0);
         }
 
@@ -840,6 +909,95 @@ namespace EmbyCredits.Services.DetectionMethods
             }
 
             return matches;
+        }
+
+        private bool CheckCharacterDensity(List<(double timestamp, int charCount)> history, double currentTimestamp, int currentCharCount)
+        {
+            if (!Configuration.OcrEnableCharacterDensityDetection)
+                return false;
+
+            var threshold = Configuration.OcrCharacterDensityThreshold;
+            var consecutiveRequired = Configuration.OcrCharacterDensityConsecutiveFrames;
+
+            if (currentCharCount < threshold)
+                return false;
+
+            var recentFrames = history
+                .Where(h => h.timestamp >= currentTimestamp - 20.0)
+                .OrderBy(h => h.timestamp)
+                .ToList();
+
+            if (recentFrames.Count < consecutiveRequired)
+                return false;
+
+            var consecutiveCount = 0;
+            for (int i = recentFrames.Count - 1; i >= 0; i--)
+            {
+                if (recentFrames[i].charCount >= threshold)
+                {
+                    consecutiveCount++;
+                    if (consecutiveCount >= consecutiveRequired)
+                    {
+                        return true;
+                    }
+                }
+                else
+                {
+
+                    break;
+                }
+            }
+
+            return false;
+        }
+
+        private string BuildDetectionReason(List<(double timestamp, int matchCount, string matchedKeywords)> scores, List<(double timestamp, int charCount)> densityHistory, double detectedTimestamp)
+        {
+            var reasonParts = new List<string>();
+
+            var relevantScores = scores
+                .Where(s => Math.Abs(s.timestamp - detectedTimestamp) <= 10.0)
+                .OrderBy(s => s.timestamp)
+                .ToList();
+
+            var densityMatches = relevantScores.Where(s => s.matchedKeywords == "density").Count();
+            var keywordMatches = relevantScores.Where(s => s.matchedKeywords != "density").Count();
+
+            if (Configuration.OcrEnableCharacterDensityDetection && densityMatches > 0)
+            {
+
+                var densityAtDetection = densityHistory
+                    .Where(d => Math.Abs(d.timestamp - detectedTimestamp) <= 5.0)
+                    .OrderByDescending(d => d.charCount)
+                    .FirstOrDefault();
+
+                if (densityAtDetection.charCount > 0)
+                {
+                    reasonParts.Add($"Character density: {densityAtDetection.charCount} chars/frame (threshold: {Configuration.OcrCharacterDensityThreshold})");
+                }
+            }
+
+            if (keywordMatches > 0)
+            {
+
+                var allKeywords = relevantScores
+                    .Where(s => s.matchedKeywords != "density")
+                    .SelectMany(s => s.matchedKeywords.Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries))
+                    .Distinct()
+                    .ToList();
+
+                if (allKeywords.Count > 0)
+                {
+                    reasonParts.Add($"Keywords: {string.Join(", ", allKeywords)} ({keywordMatches} matches)");
+                }
+            }
+
+            if (reasonParts.Count == 0)
+            {
+                return $"OCR detection ({relevantScores.Count} frames)";
+            }
+
+            return string.Join(" | ", reasonParts);
         }
 
         private double FindCreditsStartFromOcrScores(List<(double timestamp, int matchCount, string matchedKeywords)> scores, double duration)

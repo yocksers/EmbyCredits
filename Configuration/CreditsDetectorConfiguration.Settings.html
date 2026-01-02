@@ -10,18 +10,26 @@
             <div class="fieldDescription">Automatically process new episodes as they are added to the library</div>
         </div>
 
-        <div class="checkboxContainer">
+        <div class="checkboxContainer" style="display: none;">
             <label>
-                <input is="emby-checkbox" type="checkbox" id="chkUseSeriesAveraging" data-config-key="UseSeriesAveraging" />
-                <span>Use Series Averaging</span>
+                <input is="emby-checkbox" type="checkbox" id="chkUseEpisodeComparison" data-config-key="UseEpisodeComparison" />
+                <span>Use Episode Comparison</span>
             </label>
-            <div class="fieldDescription">Remember successful timestamps for each series and apply the average to failed episodes (helps with inconsistent detection)</div>
+            <div class="fieldDescription">Compare multiple episodes from the same season for more accurate detection (processes each episode twice)</div>
         </div>
 
-        <div class="inputContainer">
-            <label class="inputLabel inputLabelUnfocused" for="txtMinimumEpisodesForAveraging">Minimum Episodes for Averaging</label>
-            <input is="emby-input" type="number" id="txtMinimumEpisodesForAveraging" data-config-key="MinimumEpisodesForAveraging" step="1" min="1" max="100" />
-            <div class="fieldDescription">Minimum number of successful episodes needed before applying average to failed episodes (default: 3)</div>
+        <div class="checkboxContainer" style="display: none;">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkEnableFailedEpisodeFallback" data-config-key="EnableFailedEpisodeFallback" />
+                <span>Enable Failed Episode Fallback</span>
+            </label>
+            <div class="fieldDescription">If an episode fails detection, use the median timestamp from successful episodes in the same season (requires Episode Comparison)</div>
+        </div>
+
+        <div class="inputContainer" style="display: none;">
+            <label class="inputLabel inputLabelUnfocused" for="txtMinimumSuccessRateForFallback">Minimum Success Rate for Fallback</label>
+            <input is="emby-input" type="number" id="txtMinimumSuccessRateForFallback" data-config-key="MinimumSuccessRateForFallback" step="0.1" min="0" max="1" />
+            <div class="fieldDescription">Minimum percentage of episodes that must succeed for fallback to work (0.5 = 50%, 0.7 = 70%, etc.)</div>
         </div>
 
         <div class="inputContainer">
@@ -60,30 +68,6 @@
                 </label>
                 <div class="fieldDescription">When enabled, the scheduled task will skip episodes that already have credits, only processing new episodes or those without credits. This significantly reduces processing time.</div>
             </div>
-
-            <div class="checkboxContainer" style="margin-top: 1em;">
-                <label>
-                    <input is="emby-checkbox" type="checkbox" id="chkSkipPreviouslyProcessedFiles" data-config-key="SkipPreviouslyProcessedFiles" />
-                    <span>Skip Previously Processed Files</span>
-                </label>
-                <div class="fieldDescription">Keep track of files that have already been processed for detection and skip them in future runs. The tracking file is saved in the configured temp folder.</div>
-            </div>
-
-            <div class="checkboxContainer" style="margin-top: 1em;">
-                <label>
-                    <input is="emby-checkbox" type="checkbox" id="chkSkipOnlySuccessfulFiles" data-config-key="SkipOnlySuccessfulFiles" />
-                    <span>Skip Only Successful Files</span>
-                </label>
-                <div class="fieldDescription">When enabled along with "Skip Previously Processed Files", only skip files where detection was successful. Failed detections will be retried on future runs.</div>
-            </div>
-
-            <div style="margin-top: 1em;">
-                <button is="emby-button" type="button" class="raised button-cancel" id="btnClearProcessedFiles">
-                    <i class="md-icon">delete</i>
-                    <span>Clear Processed Files List</span>
-                </button>
-                <div class="fieldDescription">Remove all entries from the processed files tracking list. Next run will process all files again.</div>
-            </div>
         </div>
     </div>
 
@@ -115,9 +99,27 @@
         </div>
 
         <div class="inputContainer">
-            <label class="inputLabel inputLabelUnfocused" for="txtOcrDetectionKeywords">OCR Keywords (comma-separated)</label>
-            <input is="emby-input" type="text" id="txtOcrDetectionKeywords" data-config-key="OcrDetectionKeywords" />
-            <div class="fieldDescription">Keywords to search for in OCR text (case insensitive). Example: <code>directed by,cast,credits,produced by,executive producer,written by,created by</code></div>
+            <label class="inputLabel inputLabelUnfocused">OCR Keywords</label>
+            <input type="hidden" id="txtOcrDetectionKeywords" data-config-key="OcrDetectionKeywords" />
+            
+            <div style="margin-bottom: 1em;">
+                <div style="display: flex; gap: 0.5em; margin-bottom: 1em;">
+                    <input is="emby-input" type="text" id="txtNewKeyword" placeholder="Add keyword (e.g., directed by)" style="flex: 1;" />
+                    <button is="emby-button" type="button" class="raised button-submit" id="btnAddKeyword">
+                        <i class="md-icon">add</i>
+                        <span>Add</span>
+                    </button>
+                    <button is="emby-button" type="button" class="raised" id="btnResetKeywords" style="background-color: #e67e22;" title="Reset to defaults">
+                        <i class="md-icon">restore</i>
+                    </button>
+                </div>
+                
+                <div id="keywordDisplayArea" style="padding: 0.75em; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; min-height: 80px; display: flex; flex-wrap: wrap; gap: 0.5em; align-content: flex-start; background: rgba(0,0,0,0.2);">
+                    <!-- Keywords will be displayed here as chips -->
+                </div>
+            </div>
+            
+            <div class="fieldDescription">Keywords to search for in OCR text (case-insensitive). Add keywords above, click the × on any chip to remove it.</div>
         </div>
 
         <div class="inputContainer">
@@ -146,6 +148,40 @@
             <label class="inputLabel inputLabelUnfocused" for="txtOcrMinimumMatches">Minimum Keyword Matches</label>
             <input is="emby-input" type="number" id="txtOcrMinimumMatches" data-config-key="OcrMinimumMatches" min="1" max="5" />
             <div class="fieldDescription"><strong>Recommended: 1.</strong> Minimum number of keyword detections within 10 seconds to confirm credits</div>
+        </div>
+
+        <h3 style="margin-top: 2em; margin-bottom: 1em;">Character Density Detection</h3>
+        <div class="fieldDescription" style="margin-bottom: 1.5em; padding: 1em; background: rgba(82, 181, 75, 0.1); border-left: 3px solid #52B54B;">
+            <strong>Smart Detection:</strong> Instead of relying solely on keywords, this detects credits by identifying frames with high text density. 
+            Credits typically have 50-200+ characters per frame, while regular content has very few. This works regardless of which specific words appear in the credits.
+        </div>
+
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkOcrEnableCharacterDensityDetection" data-config-key="OcrEnableCharacterDensityDetection" />
+                <span>Enable Character Density Detection</span>
+            </label>
+            <div class="fieldDescription">Detect credits based on high text density rather than specific keywords (highly recommended)</div>
+        </div>
+
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkOcrCharacterDensityPrimaryMethod" data-config-key="OcrCharacterDensityPrimaryMethod" />
+                <span>Use as Primary Detection Method</span>
+            </label>
+            <div class="fieldDescription">When enabled, density detection is the main method and keywords are optional. When disabled, keywords are required but density boosts confidence.</div>
+        </div>
+
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtOcrCharacterDensityThreshold">Character Count Threshold</label>
+            <input is="emby-input" type="number" id="txtOcrCharacterDensityThreshold" data-config-key="OcrCharacterDensityThreshold" min="10" max="200" />
+            <div class="fieldDescription"><strong>Recommended: 20.</strong> Frames with this many characters or more are considered potential credits. Typical: Pre-credits ~5 chars, Credits ~100+ chars</div>
+        </div>
+
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtOcrCharacterDensityConsecutiveFrames">Consecutive High-Density Frames</label>
+            <input is="emby-input" type="number" id="txtOcrCharacterDensityConsecutiveFrames" data-config-key="OcrCharacterDensityConsecutiveFrames" min="1" max="10" />
+            <div class="fieldDescription"><strong>Recommended: 3.</strong> How many consecutive frames must exceed the threshold to confirm credits (prevents false positives from occasional text overlays)</div>
         </div>
 
         <div class="inputContainer">

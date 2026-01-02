@@ -14,38 +14,29 @@ using System.Threading.Tasks;
 
 namespace EmbyCredits.Services
 {
-    /// <summary>
-    /// Handles individual episode processing operations including detection and marker saving.
-    /// </summary>
     public class EpisodeProcessor
     {
         private readonly ILogger _logger;
         private readonly ILibraryManager? _libraryManager;
         private readonly DetectionCoordinator _detectionCoordinator;
-        private readonly ProcessedFilesTracker? _processedFilesTracker;
         private readonly ChapterMarkerService _chapterMarkerService;
         private readonly DebugLogger _debugLogger;
         private readonly PluginConfiguration _configuration;
-        private readonly SeriesAveragingService? _seriesAveragingService;
 
         public EpisodeProcessor(
             ILogger logger,
             ILibraryManager? libraryManager,
             DetectionCoordinator detectionCoordinator,
-            ProcessedFilesTracker? processedFilesTracker,
             ChapterMarkerService chapterMarkerService,
             DebugLogger debugLogger,
-            PluginConfiguration configuration,
-            SeriesAveragingService? seriesAveragingService = null)
+            PluginConfiguration configuration)
         {
             _logger = logger;
             _libraryManager = libraryManager;
             _detectionCoordinator = detectionCoordinator;
-            _processedFilesTracker = processedFilesTracker;
             _chapterMarkerService = chapterMarkerService;
             _debugLogger = debugLogger;
             _configuration = configuration;
-            _seriesAveragingService = seriesAveragingService;
         }
 
         public async Task<(bool success, double creditsStart, string failureReason)> ProcessEpisode(
@@ -78,7 +69,6 @@ namespace EmbyCredits.Services
                 _debugLogger.LogDebug($"Episode path: {episode.Path}");
                 _debugLogger.LogDebug($"Episode ID: {episodeId}");
 
-                // Normalize the file path to handle SMB/UNC paths correctly
                 var normalizedPath = Utilities.FFmpegHelper.NormalizeFilePath(episode.Path);
                 if (!string.IsNullOrEmpty(normalizedPath) && normalizedPath != episode.Path)
                 {
@@ -107,22 +97,69 @@ namespace EmbyCredits.Services
                 double creditsStart = 0;
                 string failureReason = string.Empty;
 
-                // Run simple detection
-                _debugLogger.LogInfo("Running credits detection");
-                var result = await _detectionCoordinator.DetectCredits(normalizedPath, duration, episodeId);
-                creditsStart = result.timestamp;
-                failureReason = result.failureReason;
-                _debugLogger.LogDebug($"Detection result: timestamp={creditsStart}, reason={failureReason}");
+                if (_configuration.UseEpisodeComparison && _libraryManager != null && episode.Series != null)
+                {
+                    if (isBatchMode)
+                    {
+                        _debugLogger.LogInfo("Using batch mode with cross-episode analysis");
+
+                        var comparisonEpisodeIds = batchDetectionCache.Keys
+                            .Where(id => id != episodeId)
+                            .ToList();
+
+                        if (comparisonEpisodeIds.Count > 0)
+                        {
+                            _debugLogger.LogInfo($"Analyzing with {comparisonEpisodeIds.Count} comparison episodes from batch cache");
+                            creditsStart = _detectionCoordinator.AnalyzeBatchDetectionResults(episodeId, comparisonEpisodeIds);
+                        }
+                    }
+                    else
+                    {
+                        var comparisonEpisodes = _libraryManager.GetItemList(new InternalItemsQuery
+                        {
+                            IncludeItemTypes = new[] { "Episode" },
+                            IsVirtualItem = false,
+                            HasPath = true,
+                            AncestorIds = new[] { episode.Series.InternalId }
+                        }).OfType<Episode>()
+                        .Where(e => e.ParentIndexNumber == episode.ParentIndexNumber &&
+                                   e.Id != episode.Id &&
+                                   !string.IsNullOrEmpty(e.Path) &&
+                                   File.Exists(Utilities.FFmpegHelper.NormalizeFilePath(e.Path)))
+                        .Take(_configuration.MinimumEpisodesToCompare)
+                        .ToList();
+
+                        if (comparisonEpisodes.Count >= 2)
+                        {
+                            _debugLogger.LogInfo($"Using cross-episode comparison with {comparisonEpisodes.Count} episodes");
+                            _debugLogger.LogDebug($"Comparison episodes: {string.Join(", ", comparisonEpisodes.Select(e => e.Name))}");
+                            var result = await _detectionCoordinator.DetectCreditsWithComparison(
+                                episode, duration, comparisonEpisodes);
+                            creditsStart = result.timestamp;
+                            failureReason = result.failureReason;
+                            _debugLogger.LogDebug($"Comparison result: timestamp={creditsStart}, reason={failureReason}");
+                        }
+                        else
+                        {
+                            _debugLogger.LogInfo($"Not enough comparison episodes (found {comparisonEpisodes.Count}, need 2+), using single-episode detection");
+                            var result = await _detectionCoordinator.DetectCredits(normalizedPath, duration, episodeId);
+                            creditsStart = result.timestamp;
+                            failureReason = result.failureReason;
+                            _debugLogger.LogDebug($"Single detection result: timestamp={creditsStart}, reason={failureReason}");
+                        }
+                    }
+                }
+                else
+                {
+                    _debugLogger.LogInfo("Comparison disabled or no series context");
+                    var result = await _detectionCoordinator.DetectCredits(normalizedPath, duration, episodeId);
+                    creditsStart = result.timestamp;
+                    failureReason = result.failureReason;
+                    _debugLogger.LogDebug($"Detection result: timestamp={creditsStart}, reason={failureReason}");
+                }
 
                 if (creditsStart > 0)
                 {
-                    // Record successful timestamp for series averaging
-                    if (_configuration.UseSeriesAveraging && _seriesAveragingService != null)
-                    {
-                        _seriesAveragingService.RecordSuccessfulTimestamp(episode, creditsStart);
-                        _debugLogger.LogDebug($"Recorded timestamp {FormatTime(creditsStart)} for series averaging");
-                    }
-
                     if (!isDryRun)
                     {
                         _debugLogger.LogDebug($"Saving chapter marker at {FormatTime(creditsStart)}");
@@ -130,47 +167,14 @@ namespace EmbyCredits.Services
                     }
                     _debugLogger.LogInfo($"✓ [{(isDryRun ? "DRY RUN" : "SAVED")}] Credits detected at {FormatTime(creditsStart)} for {episode.Name}");
 
-                    if (!isDryRun && _configuration.SkipPreviouslyProcessedFiles && _processedFilesTracker != null)
-                    {
-                        _processedFilesTracker.MarkFileProcessed(episodeId, true, creditsStart);
-                    }
-
                     return (true, creditsStart, string.Empty);
                 }
                 else
                 {
-                    // Try to apply averaged timestamp for failed episode
-                    if (_configuration.UseSeriesAveraging && _seriesAveragingService != null)
-                    {
-                        double averagedTimestamp = _seriesAveragingService.GetAveragedTimestamp(episode);
-                        if (averagedTimestamp > 0)
-                        {
-                            _debugLogger.LogInfo($"↻ Applying averaged timestamp {FormatTime(averagedTimestamp)} for {episode.Name}");
-                            
-                            if (!isDryRun)
-                            {
-                                _debugLogger.LogDebug($"Saving averaged chapter marker at {FormatTime(averagedTimestamp)}");
-                                _chapterMarkerService.SaveCreditsMarker(episode, averagedTimestamp);
-                            }
-                            
-                            if (!isDryRun && _configuration.SkipPreviouslyProcessedFiles && _processedFilesTracker != null)
-                            {
-                                _processedFilesTracker.MarkFileProcessed(episodeId, true, averagedTimestamp);
-                            }
-                            
-                            return (true, averagedTimestamp, "Applied series average");
-                        }
-                    }
-
                     _debugLogger.LogWarn($"✗ No clear credits detected for {episode.Name}");
                     if (!string.IsNullOrEmpty(failureReason))
                     {
                         _debugLogger.LogDebug($"Failure reason: {failureReason}");
-                    }
-
-                    if (!isDryRun && _configuration.SkipPreviouslyProcessedFiles && _processedFilesTracker != null)
-                    {
-                        _processedFilesTracker.MarkFileProcessed(episodeId, false, null);
                     }
 
                     return (false, 0, failureReason);
@@ -195,7 +199,6 @@ namespace EmbyCredits.Services
                     }
                 }
 
-                // Apply throttling delays
                 if (_configuration?.DelayBetweenEpisodesMs > 0)
                 {
                     _debugLogger.LogDebug($"Applying {_configuration.DelayBetweenEpisodesMs}ms delay before next episode");
@@ -219,7 +222,7 @@ namespace EmbyCredits.Services
             try
             {
                 _debugLogger.LogDebug($"Getting video duration for: {filePath}");
-                
+
                 var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
@@ -243,7 +246,7 @@ namespace EmbyCredits.Services
                     _debugLogger.LogDebug($"Duration result: {duration} seconds");
                     return duration;
                 }
-                
+
                 _debugLogger.LogError("Failed to parse duration output", null);
                 return 0;
             }

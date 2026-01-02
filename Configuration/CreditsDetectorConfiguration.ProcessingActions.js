@@ -2,16 +2,19 @@ define(['loading', 'toast'], function (loading, toast) {
     'use strict';
 
     function processSeries(instance, view) {
+        const libraryId = view.querySelector('#selectLibraryFilter').value;
         const seriesId = view.querySelector('#selectSeries').value;
         const episodeId = view.querySelector('#selectEpisode').value;
+        const skipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers').checked;
 
+        // Priority: Episode > Series > Library
         if (episodeId) {
             loading.show();
             ApiClient.ajax({
                 type: 'POST',
                 url: ApiClient.getUrl('CreditsDetector/ProcessEpisode'),
                 contentType: 'application/json',
-                data: JSON.stringify({ ItemId: episodeId })
+                data: JSON.stringify({ ItemId: episodeId, SkipExistingMarkers: skipExistingMarkers })
             }).then(response => {
                 loading.hide();
                 toast(response.Message || 'Episode queued for processing.');
@@ -27,29 +30,52 @@ define(['loading', 'toast'], function (loading, toast) {
             return;
         }
 
-        if (!seriesId) {
-            toast({ type: 'error', text: 'Please select a TV show first.' });
+        if (seriesId) {
+            loading.show();
+            ApiClient.ajax({
+                type: 'POST',
+                url: ApiClient.getUrl('CreditsDetector/ProcessSeries'),
+                contentType: 'application/json',
+                data: JSON.stringify({ SeriesId: seriesId, SkipExistingMarkers: skipExistingMarkers })
+            }).then(response => {
+                loading.hide();
+                toast(`Episodes queued. They will be processed one at a time.`);
+                view.querySelector('#progressContainer').style.display = 'block';
+                require(['configurationpage?name=CreditsDetectorConfigurationProgressMonitor'], (progressMonitor) => {
+                    progressMonitor.startProgressPolling(instance, view);
+                });
+            }).catch(error => {
+                loading.hide();
+                console.error('Error processing series:', error);
+                toast({ type: 'error', text: 'Failed to start processing. Check server logs.' });
+            });
             return;
         }
 
-        loading.show();
-        ApiClient.ajax({
-            type: 'POST',
-            url: ApiClient.getUrl('CreditsDetector/ProcessSeries'),
-            contentType: 'application/json',
-            data: JSON.stringify({ SeriesId: seriesId })
-        }).then(response => {
-            loading.hide();
-            toast(`Episodes queued. They will be processed one at a time.`);
-            view.querySelector('#progressContainer').style.display = 'block';
-            require(['configurationpage?name=CreditsDetectorConfigurationProgressMonitor'], (progressMonitor) => {
-                progressMonitor.startProgressPolling(instance, view);
+        if (libraryId) {
+            loading.show();
+            ApiClient.ajax({
+                type: 'POST',
+                url: ApiClient.getUrl('CreditsDetector/ProcessLibrary'),
+                contentType: 'application/json',
+                data: JSON.stringify({ LibraryId: libraryId, SkipExistingMarkers: skipExistingMarkers })
+            }).then(response => {
+                loading.hide();
+                const message = response.Message || `Queued ${response.EpisodeCount || 0} episodes from ${response.SeriesCount || 0} TV shows for processing.`;
+                toast(message);
+                view.querySelector('#progressContainer').style.display = 'block';
+                require(['configurationpage?name=CreditsDetectorConfigurationProgressMonitor'], (progressMonitor) => {
+                    progressMonitor.startProgressPolling(instance, view);
+                });
+            }).catch(error => {
+                loading.hide();
+                console.error('Error processing library:', error);
+                toast({ type: 'error', text: 'Failed to start processing. Check server logs.' });
             });
-        }).catch(error => {
-            loading.hide();
-            console.error('Error processing series:', error);
-            toast({ type: 'error', text: 'Failed to start processing. Check server logs.' });
-        });
+            return;
+        }
+
+        toast({ type: 'error', text: 'Please select a library, TV show, or episode first.' });
     }
 
     function queueAllSeries(instance, view) {
@@ -109,18 +135,24 @@ define(['loading', 'toast'], function (loading, toast) {
     }
 
     function startDryRun(instance, view, isDebug = false) {
+        const libraryId = view.querySelector('#selectLibraryFilter').value;
         const seriesId = view.querySelector('#selectSeries').value;
         const episodeId = view.querySelector('#selectEpisode').value;
 
         const endpoint = isDebug ? 'CreditsDetector/DryRunSeriesDebug' : 'CreditsDetector/DryRunSeries';
-        const dataPayload = episodeId 
-            ? { EpisodeId: episodeId }
-            : seriesId 
-                ? { SeriesId: seriesId }
-                : null;
+        
+        // Priority: Episode > Series > Library
+        let dataPayload = null;
+        if (episodeId) {
+            dataPayload = { EpisodeId: episodeId };
+        } else if (seriesId) {
+            dataPayload = { SeriesId: seriesId };
+        } else if (libraryId) {
+            dataPayload = { LibraryId: libraryId };
+        }
 
         if (!dataPayload) {
-            toast({ type: 'error', text: 'Please select a TV show or episode first.' });
+            toast({ type: 'error', text: 'Please select a library, TV show, or episode first.' });
             return;
         }
 

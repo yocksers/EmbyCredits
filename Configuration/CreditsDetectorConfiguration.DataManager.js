@@ -9,12 +9,12 @@ define(['loading', 'toast'], function (loading, toast) {
             instance.config = config;
 
             view.querySelector('#chkEnableAutoDetection').checked = config.EnableAutoDetection || false;
-            view.querySelector('#chkUseSeriesAveraging').checked = config.UseSeriesAveraging !== false;
-            view.querySelector('#txtMinimumEpisodesForAveraging').value = config.MinimumEpisodesForAveraging || 3;
+            view.querySelector('#chkUseEpisodeComparison').checked = config.UseEpisodeComparison || false;
+            view.querySelector('#chkEnableFailedEpisodeFallback').checked = config.EnableFailedEpisodeFallback || false;
+            view.querySelector('#txtMinimumSuccessRateForFallback').value = config.MinimumSuccessRateForFallback || 0.5;
             view.querySelector('#chkEnableDetailedLogging').checked = config.EnableDetailedLogging || false;
             view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = config.ScheduledTaskOnlyProcessMissing !== false;
-            view.querySelector('#chkSkipPreviouslyProcessedFiles').checked = config.SkipPreviouslyProcessedFiles || false;
-            view.querySelector('#chkSkipOnlySuccessfulFiles').checked = config.SkipOnlySuccessfulFiles || false;
+            view.querySelector('#chkManualSkipExistingMarkers').checked = config.ManualSkipExistingMarkers || false;
 
             view.querySelector('#txtDelayBetweenEpisodesMs').value = config.DelayBetweenEpisodesMs || 0;
             view.querySelector('#txtTempFolderPath').value = config.TempFolderPath || '';
@@ -54,6 +54,12 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtOcrConsecutiveMatchesForEarlyStop').value = config.OcrConsecutiveMatchesForEarlyStop || 3;
             view.querySelector('#txtOcrMinimumConfidence').value = config.OcrMinimumConfidence || 0;
 
+            // Character Density Detection settings
+            view.querySelector('#chkOcrEnableCharacterDensityDetection').checked = config.OcrEnableCharacterDensityDetection !== false;
+            view.querySelector('#txtOcrCharacterDensityThreshold').value = config.OcrCharacterDensityThreshold || 20;
+            view.querySelector('#txtOcrCharacterDensityConsecutiveFrames').value = config.OcrCharacterDensityConsecutiveFrames || 3;
+            view.querySelector('#chkOcrCharacterDensityPrimaryMethod').checked = config.OcrCharacterDensityPrimaryMethod !== false;
+
             view.querySelector('#chkBackupImportOverwriteExisting').checked = config.BackupImportOverwriteExisting || false;
 
             // Load libraries and series/episode dropdowns
@@ -65,6 +71,12 @@ define(['loading', 'toast'], function (loading, toast) {
             
             // Setup unit change listener for search start
             setupUnitChangeListener(view);
+
+            // Trigger keyword display update on main page
+            setTimeout(() => {
+                const event = new CustomEvent('keywordsLoaded');
+                view.dispatchEvent(event);
+            }, 100);
 
             return ApiClient.getJSON(ApiClient.getUrl('CreditsDetector/GetProgress')).catch(err => {
                 console.warn('Progress endpoint not available:', err);
@@ -89,12 +101,12 @@ define(['loading', 'toast'], function (loading, toast) {
         loading.show();
 
         instance.config.EnableAutoDetection = view.querySelector('#chkEnableAutoDetection').checked;
-        instance.config.UseSeriesAveraging = view.querySelector('#chkUseSeriesAveraging').checked;
-        instance.config.MinimumEpisodesForAveraging = Number.parseInt(view.querySelector('#txtMinimumEpisodesForAveraging').value, 10) || 3;
+        instance.config.UseEpisodeComparison = view.querySelector('#chkUseEpisodeComparison').checked;
+        instance.config.EnableFailedEpisodeFallback = view.querySelector('#chkEnableFailedEpisodeFallback').checked;
+        instance.config.MinimumSuccessRateForFallback = Number.parseFloat(view.querySelector('#txtMinimumSuccessRateForFallback').value) || 0.5;
         instance.config.EnableDetailedLogging = view.querySelector('#chkEnableDetailedLogging').checked;
         instance.config.ScheduledTaskOnlyProcessMissing = view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked;
-        instance.config.SkipPreviouslyProcessedFiles = view.querySelector('#chkSkipPreviouslyProcessedFiles').checked;
-        instance.config.SkipOnlySuccessfulFiles = view.querySelector('#chkSkipOnlySuccessfulFiles').checked;
+        instance.config.ManualSkipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers').checked;
 
         instance.config.DelayBetweenEpisodesMs = Number.parseInt(view.querySelector('#txtDelayBetweenEpisodesMs').value, 10) || 0;
         instance.config.TempFolderPath = view.querySelector('#txtTempFolderPath').value || '';
@@ -131,6 +143,12 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrConsecutiveMatchesForEarlyStop = Number.parseInt(view.querySelector('#txtOcrConsecutiveMatchesForEarlyStop').value, 10) || 3;
         instance.config.OcrMinimumConfidence = Number.parseFloat(view.querySelector('#txtOcrMinimumConfidence').value) || 0;
 
+        // Character Density Detection settings
+        instance.config.OcrEnableCharacterDensityDetection = view.querySelector('#chkOcrEnableCharacterDensityDetection').checked;
+        instance.config.OcrCharacterDensityThreshold = Number.parseInt(view.querySelector('#txtOcrCharacterDensityThreshold').value, 10) || 20;
+        instance.config.OcrCharacterDensityConsecutiveFrames = Number.parseInt(view.querySelector('#txtOcrCharacterDensityConsecutiveFrames').value, 10) || 3;
+        instance.config.OcrCharacterDensityPrimaryMethod = view.querySelector('#chkOcrCharacterDensityPrimaryMethod').checked;
+
         instance.config.BackupImportOverwriteExisting = view.querySelector('#chkBackupImportOverwriteExisting').checked;
 
         const checkboxes = view.querySelectorAll('.chkLibrary');
@@ -161,8 +179,6 @@ define(['loading', 'toast'], function (loading, toast) {
         view.querySelector('#txtMinimumSuccessRateForFallback').value = 0.5;
         view.querySelector('#chkEnableDetailedLogging').checked = false;
         view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = true;
-        view.querySelector('#chkSkipPreviouslyProcessedFiles').checked = false;
-        view.querySelector('#chkSkipOnlySuccessfulFiles').checked = false;
 
         view.querySelector('#txtDelayBetweenEpisodesMs').value = 0;
 
