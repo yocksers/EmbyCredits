@@ -101,8 +101,11 @@ define(['loading', 'toast'], function (loading, toast) {
         })).then(response => {
             const episodes = response.Items || [];
             
+            // Filter out TV specials (Season 0)
+            const filteredEpisodes = episodes.filter(ep => ep.ParentIndexNumber && ep.ParentIndexNumber !== 0);
+            
             // Sort episodes by season number, then episode number
-            episodes.sort((a, b) => {
+            filteredEpisodes.sort((a, b) => {
                 const seasonA = a.ParentIndexNumber || 0;
                 const seasonB = b.ParentIndexNumber || 0;
                 if (seasonA !== seasonB) {
@@ -111,17 +114,47 @@ define(['loading', 'toast'], function (loading, toast) {
                 return (a.IndexNumber || 0) - (b.IndexNumber || 0);
             });
             
+            // Group episodes by season
+            const episodesBySeason = {};
+            filteredEpisodes.forEach(ep => {
+                const season = ep.ParentIndexNumber || 0;
+                if (!episodesBySeason[season]) {
+                    episodesBySeason[season] = [];
+                }
+                episodesBySeason[season].push(ep);
+            });
+            
             const selectEpisode = view.querySelector('#selectEpisode');
             selectEpisode.innerHTML = '<option value="">-- All Episodes --</option>';
             
-            episodes.forEach(ep => {
-                const option = document.createElement('option');
-                option.value = ep.Id;
-                const seasonNum = (ep.ParentIndexNumber || 0).toString().padStart(2, '0');
-                const episodeNum = (ep.IndexNumber || 0).toString().padStart(2, '0');
-                option.textContent = `S${seasonNum}E${episodeNum} - ${ep.Name}`;
-                selectEpisode.appendChild(option);
+            // Get sorted season numbers
+            const seasons = Object.keys(episodesBySeason).map(s => parseInt(s)).sort((a, b) => a - b);
+            
+            // Add each season with optgroup
+            seasons.forEach(seasonNum => {
+                // Add season option to select entire season
+                const seasonOption = document.createElement('option');
+                seasonOption.value = `season:${seasonNum}`;
+                seasonOption.textContent = `Season ${seasonNum}`;
+                seasonOption.style.fontWeight = 'bold';
+                selectEpisode.appendChild(seasonOption);
+                
+                // Create optgroup for episodes in this season
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = `Season ${seasonNum} Episodes`;
+                
+                episodesBySeason[seasonNum].forEach(ep => {
+                    const option = document.createElement('option');
+                    option.value = ep.Id;
+                    const seasonStr = (ep.ParentIndexNumber || 0).toString().padStart(2, '0');
+                    const episodeStr = (ep.IndexNumber || 0).toString().padStart(2, '0');
+                    option.textContent = `  S${seasonStr}E${episodeStr} - ${ep.Name}`;
+                    optgroup.appendChild(option);
+                });
+                
+                selectEpisode.appendChild(optgroup);
             });
+            
             loading.hide();
         }).catch(error => {
             loading.hide();

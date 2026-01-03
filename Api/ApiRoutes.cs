@@ -6,6 +6,7 @@ namespace EmbyCredits.Api
         public const string TriggerDetection = "/CreditsDetector/TriggerDetection";
         public const string ProcessEpisode = "/CreditsDetector/ProcessEpisode";
         public const string ProcessSeries = "/CreditsDetector/ProcessSeries";
+        public const string ProcessSeason = "/CreditsDetector/ProcessSeason";
         public const string ProcessLibrary = "/CreditsDetector/ProcessLibrary";
         public const string GetAllSeries = "/CreditsDetector/GetAllSeries";
         public const string GetProgress = "/CreditsDetector/GetProgress";

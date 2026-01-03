@@ -186,6 +186,12 @@ namespace EmbyCredits.Services
             {
                 if (e.Item is Episode episode)
                 {
+                    // Skip TV specials (Season 0 or no season)
+                    if (episode.ParentIndexNumber == null || episode.ParentIndexNumber == 0)
+                    {
+                        LogDebug($"Skipping TV special: {episode.SeriesName} - {episode.Name} (Season {episode.ParentIndexNumber})");
+                        return;
+                    }
 
                     var libraryIds = _configuration.LibraryIds ?? Array.Empty<string>();
                     if (libraryIds.Length > 0)

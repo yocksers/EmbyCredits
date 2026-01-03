@@ -283,6 +283,22 @@ namespace EmbyCredits.Services.DetectionMethods
 
                                 foreach (var (framePath, ocrText, timestamp) in batchResults)
                                 {
+                                    if (!loggedFirstFrame)
+                                    {
+                                        LogInfo($"Processing first frame: {framePath}");
+                                        loggedFirstFrame = true;
+                                    }
+
+                                    var estimatedTotal = Math.Min(maxFramesToProcess, (int)(analysisDuration * fps));
+                                    var ocrProgress = estimatedTotal > 0 ? (double)(frameIndex + 1) / estimatedTotal : 0;
+                                    var overallProgress = 15 + (ocrProgress * 80);
+                                    UpdateProgress(overallProgress, $"OCR: {frameIndex + 1} frames ({ocrProgress:P0})");
+
+                                    if (frameIndex > 0 && frameIndex % 50 == 0)
+                                    {
+                                        LogDebug($"OCR progress: {frameIndex} frames processed");
+                                    }
+
                                     if (!string.IsNullOrWhiteSpace(ocrText))
                                     {
                                         var charCount = CountMeaningfulCharacters(ocrText);

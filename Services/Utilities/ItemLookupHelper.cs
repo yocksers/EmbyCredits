@@ -10,6 +10,15 @@ namespace EmbyCredits.Services.Utilities
 {
     public static class ItemLookupHelper
     {
+        /// <summary>
+        /// Determines if an episode is a TV special (Season 0 or no season).
+        /// TV specials are excluded from credits detection.
+        /// </summary>
+        public static bool IsSpecialEpisode(Episode episode)
+        {
+            return episode.ParentIndexNumber == null || episode.ParentIndexNumber == 0;
+        }
+
         public static BaseItem? GetItemById(ILibraryManager libraryManager, string itemId, ILogger? logger = null)
         {
             if (string.IsNullOrEmpty(itemId))
@@ -32,7 +41,7 @@ namespace EmbyCredits.Services.Utilities
         }
         public static List<Episode> GetSeriesEpisodes(ILibraryManager libraryManager, long seriesInternalId, ILogger? logger = null)
         {
-            var episodes = libraryManager.GetItemList(new InternalItemsQuery
+            var allEpisodes = libraryManager.GetItemList(new InternalItemsQuery
             {
                 IncludeItemTypes = new[] { "Episode" },
                 IsVirtualItem = false,
@@ -40,12 +49,15 @@ namespace EmbyCredits.Services.Utilities
                 AncestorIds = new[] { seriesInternalId }
             }).OfType<Episode>().ToList();
 
-            logger?.Info($"Found {episodes.Count} episodes for series InternalId: {seriesInternalId}");
+            var episodes = allEpisodes.Where(e => !IsSpecialEpisode(e)).ToList();
+            var specialCount = allEpisodes.Count - episodes.Count;
+            
+            logger?.Info($"Found {episodes.Count} episodes for series InternalId: {seriesInternalId} (excluded {specialCount} specials)");
             return episodes;
         }
         public static List<Episode> GetLibraryEpisodes(ILibraryManager libraryManager, long libraryId, ILogger? logger = null)
         {
-            var episodes = libraryManager.GetItemList(new InternalItemsQuery
+            var allEpisodes = libraryManager.GetItemList(new InternalItemsQuery
             {
                 IncludeItemTypes = new[] { "Episode" },
                 IsVirtualItem = false,
@@ -53,7 +65,10 @@ namespace EmbyCredits.Services.Utilities
                 AncestorIds = new[] { libraryId }
             }).OfType<Episode>().ToList();
 
-            logger?.Info($"Found {episodes.Count} episodes for library InternalId: {libraryId}");
+            var episodes = allEpisodes.Where(e => !IsSpecialEpisode(e)).ToList();
+            var specialCount = allEpisodes.Count - episodes.Count;
+            
+            logger?.Info($"Found {episodes.Count} episodes for library InternalId: {libraryId} (excluded {specialCount} specials)");
             return episodes;
         }
         public static BaseItem? ResolveSeries(ILibraryManager libraryManager, string seriesId, ILogger? logger = null)

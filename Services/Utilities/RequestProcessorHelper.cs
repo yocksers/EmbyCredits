@@ -67,6 +67,15 @@ namespace EmbyCredits.Services.Utilities
                 return new ProcessResult { Success = false, Message = "Item is not an episode" };
             }
 
+            if (ItemLookupHelper.IsSpecialEpisode(episode))
+            {
+                return new ProcessResult 
+                { 
+                    Success = false, 
+                    Message = $"Episode '{episode.Name}' is a TV special (Season 0) and will not be processed" 
+                };
+            }
+
             logger?.Info($"Episode found: {episode.Name}");
             processEpisode(episode);
 

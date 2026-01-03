@@ -7,8 +7,33 @@ define(['loading', 'toast'], function (loading, toast) {
         const episodeId = view.querySelector('#selectEpisode').value;
         const skipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers').checked;
 
-        // Priority: Episode > Series > Library
+        // Priority: Episode > Season > Series > Library
         if (episodeId) {
+            // Check if it's a season selection (format: "season:N")
+            if (episodeId.startsWith('season:')) {
+                const seasonNumber = parseInt(episodeId.split(':')[1]);
+                loading.show();
+                ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('CreditsDetector/ProcessSeason'),
+                    contentType: 'application/json',
+                    data: JSON.stringify({ SeriesId: seriesId, SeasonNumber: seasonNumber, SkipExistingMarkers: skipExistingMarkers })
+                }).then(response => {
+                    loading.hide();
+                    toast(response.Message || `Season ${seasonNumber} queued for processing.`);
+                    view.querySelector('#progressContainer').style.display = 'block';
+                    require(['configurationpage?name=CreditsDetectorConfigurationProgressMonitor'], (progressMonitor) => {
+                        progressMonitor.startProgressPolling(instance, view);
+                    });
+                }).catch(error => {
+                    loading.hide();
+                    console.error('Error processing season:', error);
+                    toast({ type: 'error', text: 'Failed to process season. Check server logs.' });
+                });
+                return;
+            }
+            
+            // Process single episode
             loading.show();
             ApiClient.ajax({
                 type: 'POST',
@@ -142,10 +167,16 @@ define(['loading', 'toast'], function (loading, toast) {
 
         const endpoint = isDebug ? 'CreditsDetector/DryRunSeriesDebug' : 'CreditsDetector/DryRunSeries';
         
-        // Priority: Episode > Series > Library
+        // Priority: Episode > Season > Series > Library
         let dataPayload = null;
         if (episodeId) {
-            dataPayload = { EpisodeId: episodeId, SkipExistingMarkers: skipExistingMarkers };
+            // Check if it's a season selection (format: "season:N")
+            if (episodeId.startsWith('season:')) {
+                const seasonNumber = parseInt(episodeId.split(':')[1]);
+                dataPayload = { SeriesId: seriesId, SeasonNumber: seasonNumber, SkipExistingMarkers: skipExistingMarkers };
+            } else {
+                dataPayload = { EpisodeId: episodeId, SkipExistingMarkers: skipExistingMarkers };
+            }
         } else if (seriesId) {
             dataPayload = { SeriesId: seriesId, SkipExistingMarkers: skipExistingMarkers };
         } else if (libraryId) {

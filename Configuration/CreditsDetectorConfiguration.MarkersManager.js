@@ -38,10 +38,13 @@ define(['loading', 'toast'], function (loading, toast) {
                     return;
                 }
                 
-                // Group by season (show all episodes)
+                // Group by season (exclude Season 0 specials)
                 const episodesBySeason = {};
                 response.Episodes.forEach(ep => {
                     const season = ep.Season || 0;
+                    // Skip TV specials (Season 0)
+                    if (season === 0) return;
+                    
                     if (!episodesBySeason[season]) {
                         episodesBySeason[season] = [];
                     }

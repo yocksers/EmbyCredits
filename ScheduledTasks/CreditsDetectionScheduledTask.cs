@@ -110,10 +110,12 @@ namespace EmbyCredits.ScheduledTasks
                         Parent = library
                     };
 
-                    var episodes = _libraryManager.GetItemList(query).OfType<Episode>().ToList();
+                    var allLibraryEpisodes = _libraryManager.GetItemList(query).OfType<Episode>().ToList();
+                    var episodes = allLibraryEpisodes.Where(e => e.ParentIndexNumber != null && e.ParentIndexNumber != 0).ToList();
+                    var specialCount = allLibraryEpisodes.Count - episodes.Count;
                     allEpisodes.AddRange(episodes);
 
-                    _logger.Info($"Found {episodes.Count} episodes in {library.Name}");
+                    _logger.Info($"Found {episodes.Count} episodes in {library.Name} (excluded {specialCount} specials)");
                 }
                 catch (Exception ex)
                 {

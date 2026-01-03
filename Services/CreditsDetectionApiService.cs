@@ -32,7 +32,7 @@ namespace EmbyCredits.Services
             {
                 _logger.Info("Manual credits detection triggered");
 
-                var episodes = _libraryManager.GetItemList(new InternalItemsQuery
+                var allEpisodes = _libraryManager.GetItemList(new InternalItemsQuery
                 {
                     IncludeItemTypes = new[] { "Episode" },
                     IsVirtualItem = false,
@@ -40,9 +40,12 @@ namespace EmbyCredits.Services
                     Limit = request.Limit > 0 ? request.Limit : null
                 }).OfType<Episode>().ToList();
 
+                var episodes = allEpisodes.Where(e => e.ParentIndexNumber != null && e.ParentIndexNumber != 0).ToList();
+                var specialCount = allEpisodes.Count - episodes.Count;
+
                 CreditsDetectionService.QueueSeries(episodes);
 
-                return new { Success = true, Message = $"Queued {episodes.Count} episodes for processing" };
+                return new { Success = true, Message = $"Queued {episodes.Count} episodes for processing (excluded {specialCount} specials)" };
             }
             catch (Exception ex)
             {
@@ -79,6 +82,52 @@ namespace EmbyCredits.Services
                 _logger);
 
             return new { result.Success, result.Message, EpisodeCount = result.ItemCount };
+        }
+
+        public object Post(ProcessSeasonRequest request)
+        {
+            _logger?.Info($"=== ProcessSeasonRequest received for Season {request.SeasonNumber} ===");
+
+            try
+            {
+                if (string.IsNullOrEmpty(request.SeriesId))
+                {
+                    return new { Success = false, Message = "SeriesId is required" };
+                }
+
+                var series = ItemLookupHelper.ResolveSeries(_libraryManager, request.SeriesId, _logger);
+                if (series == null)
+                {
+                    return new { Success = false, Message = "Series not found" };
+                }
+
+                var allEpisodes = ItemLookupHelper.GetSeriesEpisodes(_libraryManager, series.InternalId, _logger);
+                var seasonEpisodes = allEpisodes.Where(e => e.ParentIndexNumber == request.SeasonNumber).ToList();
+
+                if (seasonEpisodes.Count == 0)
+                {
+                    return new
+                    {
+                        Success = true,
+                        Message = $"No episodes found for Season {request.SeasonNumber}",
+                        EpisodeCount = 0
+                    };
+                }
+
+                CreditsDetectionService.QueueSeriesManual(seasonEpisodes, request.SkipExistingMarkers);
+
+                return new
+                {
+                    Success = true,
+                    Message = $"Queued {seasonEpisodes.Count} episodes from Season {request.SeasonNumber}",
+                    EpisodeCount = seasonEpisodes.Count
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException($"Error processing season {request.SeasonNumber}", ex);
+                return new { Success = false, Message = ex.Message };
+            }
         }
 
         public object Post(ProcessLibraryRequest request)
@@ -228,18 +277,19 @@ namespace EmbyCredits.Services
                 }
 
                 var seriesInternalId = series.InternalId;
-                var episodes = _libraryManager.GetItemList(new InternalItemsQuery
+                var allEpisodes = _libraryManager.GetItemList(new InternalItemsQuery
                 {
                     IncludeItemTypes = new[] { "Episode" },
                     IsVirtualItem = false,
                     HasPath = true,
                     AncestorIds = new[] { seriesInternalId }
                 }).OfType<Episode>()
+                .Where(e => e.ParentIndexNumber != null && e.ParentIndexNumber != 0) // Exclude specials
                 .OrderBy(e => e.ParentIndexNumber)
                 .ThenBy(e => e.IndexNumber)
                 .ToList();
 
-                var episodeMarkers = CreditsDetectionService.GetSeriesMarkers(episodes);
+                var episodeMarkers = CreditsDetectionService.GetSeriesMarkers(allEpisodes);
 
                 return new 
                 { 
@@ -259,6 +309,35 @@ namespace EmbyCredits.Services
         public object Post(DryRunSeriesRequest request)
         {
             _logger?.Info("=== DryRunSeriesRequest START ===");
+
+            // Handle season-specific dry run
+            if (request?.SeasonNumber.HasValue == true && !string.IsNullOrEmpty(request.SeriesId))
+            {
+                try
+                {
+                    var series = ItemLookupHelper.ResolveSeries(_libraryManager, request.SeriesId, _logger);
+                    if (series == null)
+                    {
+                        return new { Success = false, Message = "Series not found" };
+                    }
+
+                    var allEpisodes = ItemLookupHelper.GetSeriesEpisodes(_libraryManager, series.InternalId, _logger);
+                    var seasonEpisodes = allEpisodes.Where(e => e.ParentIndexNumber == request.SeasonNumber.Value).ToList();
+
+                    if (seasonEpisodes.Count == 0)
+                    {
+                        return new { Success = true, Message = $"No episodes found for Season {request.SeasonNumber.Value}", EpisodeCount = 0 };
+                    }
+
+                    CreditsDetectionService.QueueSeriesDryRun(seasonEpisodes, request.SkipExistingMarkers);
+                    return new { Success = true, Message = $"Dry run started for {seasonEpisodes.Count} episodes from Season {request.SeasonNumber.Value}", EpisodeCount = seasonEpisodes.Count };
+                }
+                catch (Exception ex)
+                {
+                    _logger?.ErrorException($"Error starting dry run for season {request.SeasonNumber.Value}", ex);
+                    return new { Success = false, Message = ex.Message };
+                }
+            }
 
             var result = RequestProcessorHelper.ProcessDetectionRequest(
                 _libraryManager,
@@ -398,6 +477,35 @@ namespace EmbyCredits.Services
         public object Post(DryRunSeriesDebugRequest request)
         {
             _logger?.Info("=== DryRunSeriesDebugRequest START ===");
+
+            // Handle season-specific debug dry run
+            if (request?.SeasonNumber.HasValue == true && !string.IsNullOrEmpty(request.SeriesId))
+            {
+                try
+                {
+                    var series = ItemLookupHelper.ResolveSeries(_libraryManager, request.SeriesId, _logger);
+                    if (series == null)
+                    {
+                        return new { Success = false, Message = "Series not found" };
+                    }
+
+                    var allEpisodes = ItemLookupHelper.GetSeriesEpisodes(_libraryManager, series.InternalId, _logger);
+                    var seasonEpisodes = allEpisodes.Where(e => e.ParentIndexNumber == request.SeasonNumber.Value).ToList();
+
+                    if (seasonEpisodes.Count == 0)
+                    {
+                        return new { Success = true, Message = $"No episodes found for Season {request.SeasonNumber.Value}", EpisodeCount = 0 };
+                    }
+
+                    CreditsDetectionService.QueueSeriesDryRunDebug(seasonEpisodes, request.SkipExistingMarkers);
+                    return new { Success = true, Message = $"Debug dry run started for {seasonEpisodes.Count} episodes from Season {request.SeasonNumber.Value}", EpisodeCount = seasonEpisodes.Count };
+                }
+                catch (Exception ex)
+                {
+                    _logger?.ErrorException($"Error starting debug dry run for season {request.SeasonNumber.Value}", ex);
+                    return new { Success = false, Message = ex.Message };
+                }
+            }
 
             var result = RequestProcessorHelper.ProcessDetectionRequest(
                 _libraryManager,

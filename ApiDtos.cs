@@ -23,6 +23,14 @@ namespace EmbyCredits.Api
         public bool SkipExistingMarkers { get; set; } = false;
     }
 
+    [Route(ApiRoutes.ProcessSeason, "POST", Summary = "Process all episodes in a specific season for credits detection.")]
+    public class ProcessSeasonRequest : IReturn<object>
+    {
+        public string SeriesId { get; set; } = string.Empty;
+        public int SeasonNumber { get; set; }
+        public bool SkipExistingMarkers { get; set; } = false;
+    }
+
     [Route(ApiRoutes.ProcessLibrary, "POST", Summary = "Process all TV shows in a library for credits detection.")]
     public class ProcessLibraryRequest : IReturn<object>
     {
@@ -63,6 +71,7 @@ namespace EmbyCredits.Api
         public string SeriesId { get; set; } = string.Empty;
         public string EpisodeId { get; set; } = string.Empty;
         public string LibraryId { get; set; } = string.Empty;
+        public int? SeasonNumber { get; set; }
         public bool SkipExistingMarkers { get; set; } = false;
     }
 
@@ -72,6 +81,7 @@ namespace EmbyCredits.Api
         public string SeriesId { get; set; } = string.Empty;
         public string EpisodeId { get; set; } = string.Empty;
         public string LibraryId { get; set; } = string.Empty;
+        public int? SeasonNumber { get; set; }
         public bool SkipExistingMarkers { get; set; } = false;
     }
 
