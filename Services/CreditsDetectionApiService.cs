@@ -265,8 +265,8 @@ namespace EmbyCredits.Services
                 episodeId: request?.EpisodeId,
                 seriesId: request?.SeriesId,
                 libraryId: request?.LibraryId,
-                processEpisode: CreditsDetectionService.QueueEpisodeDryRun,
-                processSeries: CreditsDetectionService.QueueSeriesDryRun,
+                processEpisode: episode => CreditsDetectionService.QueueEpisodeDryRun(episode, request?.SkipExistingMarkers ?? false),
+                processSeries: episodes => CreditsDetectionService.QueueSeriesDryRun(episodes, request?.SkipExistingMarkers ?? false),
                 _logger);
 
             return new { result.Success, result.Message, EpisodeCount = result.ItemCount };
@@ -404,8 +404,8 @@ namespace EmbyCredits.Services
                 episodeId: request?.EpisodeId,
                 seriesId: request?.SeriesId,
                 libraryId: request?.LibraryId,
-                processEpisode: CreditsDetectionService.QueueEpisodeDryRunDebug,
-                processSeries: CreditsDetectionService.QueueSeriesDryRunDebug,
+                processEpisode: episode => CreditsDetectionService.QueueEpisodeDryRunDebug(episode, request?.SkipExistingMarkers ?? false),
+                processSeries: episodes => CreditsDetectionService.QueueSeriesDryRunDebug(episodes, request?.SkipExistingMarkers ?? false),
                 _logger);
 
             return new { result.Success, result.Message, EpisodeCount = result.ItemCount };

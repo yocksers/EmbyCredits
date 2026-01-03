@@ -79,6 +79,18 @@ namespace EmbyCredits
         public int OcrCharacterDensityThreshold { get; set; } = 20;
         public int OcrCharacterDensityConsecutiveFrames { get; set; } = 3;
         public bool OcrCharacterDensityPrimaryMethod { get; set; } = true;
+        
+        // Keyword requirement for density detection
+        public bool OcrDensityRequireKeyword { get; set; } = true;
+        public double OcrDensityKeywordWindowSeconds { get; set; } = 10.0;
+        
+        // Temporal consistency for density detection
+        public bool OcrDensityRequireTemporalConsistency { get; set; } = true;
+        public double OcrDensityMinimumDurationSeconds { get; set; } = 15.0;
+        
+        // Text style consistency for density detection
+        public bool OcrDensityRequireStyleConsistency { get; set; } = true;
+        public double OcrDensityStyleConsistencyThreshold { get; set; } = 0.7;
 
         public bool UseCorrelationScoring { get; set; } = true;
         public int CorrelationWindowSeconds { get; set; } = 5;

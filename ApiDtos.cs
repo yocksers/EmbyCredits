@@ -63,6 +63,7 @@ namespace EmbyCredits.Api
         public string SeriesId { get; set; } = string.Empty;
         public string EpisodeId { get; set; } = string.Empty;
         public string LibraryId { get; set; } = string.Empty;
+        public bool SkipExistingMarkers { get; set; } = false;
     }
 
     [Route(ApiRoutes.DryRunSeriesDebug, "POST", Summary = "Dry run with debug logging - detect credits and capture debug log.")]
@@ -71,6 +72,7 @@ namespace EmbyCredits.Api
         public string SeriesId { get; set; } = string.Empty;
         public string EpisodeId { get; set; } = string.Empty;
         public string LibraryId { get; set; } = string.Empty;
+        public bool SkipExistingMarkers { get; set; } = false;
     }
 
     [Route(ApiRoutes.GetDebugLog, "GET", Summary = "Downloads the debug log from the last debug dry run.")]

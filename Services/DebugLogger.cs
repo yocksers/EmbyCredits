@@ -40,6 +40,12 @@ namespace EmbyCredits.Services
                 _debugLog.AppendLine($"  OcrCharacterDensityPrimaryMethod: {_configuration.OcrCharacterDensityPrimaryMethod}");
                 _debugLog.AppendLine($"  OcrCharacterDensityThreshold: {_configuration.OcrCharacterDensityThreshold}");
                 _debugLog.AppendLine($"  OcrCharacterDensityConsecutiveFrames: {_configuration.OcrCharacterDensityConsecutiveFrames}");
+                _debugLog.AppendLine($"  OcrDensityRequireKeyword: {_configuration.OcrDensityRequireKeyword}");
+                _debugLog.AppendLine($"  OcrDensityKeywordWindowSeconds: {_configuration.OcrDensityKeywordWindowSeconds}");
+                _debugLog.AppendLine($"  OcrDensityRequireTemporalConsistency: {_configuration.OcrDensityRequireTemporalConsistency}");
+                _debugLog.AppendLine($"  OcrDensityMinimumDurationSeconds: {_configuration.OcrDensityMinimumDurationSeconds}");
+                _debugLog.AppendLine($"  OcrDensityRequireStyleConsistency: {_configuration.OcrDensityRequireStyleConsistency}");
+                _debugLog.AppendLine($"  OcrDensityStyleConsistencyThreshold: {_configuration.OcrDensityStyleConsistencyThreshold}");
                 _debugLog.AppendLine($"  UseEpisodeComparison: {_configuration.UseEpisodeComparison}");
                 _debugLog.AppendLine($"  MinimumEpisodesToCompare: {_configuration.MinimumEpisodesToCompare}");
                 _debugLog.AppendLine();

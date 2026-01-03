@@ -285,7 +285,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                 {
                                     if (!string.IsNullOrWhiteSpace(ocrText))
                                     {
-                                        var charCount = ocrText.Length;
+                                        var charCount = CountMeaningfulCharacters(ocrText);
                                         characterDensityHistory.Add((timestamp, charCount));
 
                                         var textPreview = ocrText.Length > 100 ? ocrText.Substring(0, 100) + "..." : ocrText;
@@ -297,7 +297,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                         var densityDetected = false;
                                         if (Configuration.OcrEnableCharacterDensityDetection)
                                         {
-                                            densityDetected = CheckCharacterDensity(characterDensityHistory, timestamp, charCount);
+                                            densityDetected = CheckCharacterDensity(characterDensityHistory, detectionScores, timestamp, charCount, ocrText);
                                         }
 
                                         bool frameIndicatesCredits = false;
@@ -445,7 +445,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
                                     if (!string.IsNullOrWhiteSpace(ocrText))
                                     {
-                                        var charCount = ocrText.Length;
+                                        var charCount = CountMeaningfulCharacters(ocrText);
                                         characterDensityHistory.Add((timestamp, charCount));
 
                                         var textPreview = ocrText.Length > 100 ? ocrText.Substring(0, 100) + "..." : ocrText;
@@ -457,7 +457,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                         var densityDetected = false;
                                         if (Configuration.OcrEnableCharacterDensityDetection)
                                         {
-                                            densityDetected = CheckCharacterDensity(characterDensityHistory, timestamp, charCount);
+                                            densityDetected = CheckCharacterDensity(characterDensityHistory, detectionScores, timestamp, charCount, ocrText);
                                         }
 
                                         bool frameIndicatesCredits = false;
@@ -867,6 +867,7 @@ namespace EmbyCredits.Services.DetectionMethods
                             {
                                 var text = response.Substring(quoteStart + 1, quoteEnd - quoteStart - 1);
                                 text = text.Replace("\\n", "\n").Replace("\\r", "\r").Replace("\\t", "\t").Replace("\\\"", "\"").Replace("\\\\", "\\");
+                                text = SanitizeOcrText(text);
                                 return (text, confidence);
                             }
                         }
@@ -879,7 +880,35 @@ namespace EmbyCredits.Services.DetectionMethods
                 }
             }
 
-            return (response.Trim(), 0);
+            var sanitized = SanitizeOcrText(response.Trim());
+            return (sanitized, 0);
+        }
+        
+        private string SanitizeOcrText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return string.Empty;
+            
+            // Remove form feed and other control characters (except newline, carriage return, and tab which may be meaningful)
+            var cleaned = new System.Text.StringBuilder(text.Length);
+            foreach (char c in text)
+            {
+                // Keep printable characters and meaningful whitespace (newline, carriage return, tab, space)
+                if (!char.IsControl(c) || c == '\n' || c == '\r' || c == '\t' || c == ' ')
+                {
+                    cleaned.Append(c);
+                }
+            }
+            
+            return cleaned.ToString().Trim();
+        }
+        
+        private int CountMeaningfulCharacters(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return 0;
+            
+            return text.Count(c => !char.IsWhiteSpace(c));
         }
 
         private List<string> ParseKeywords(string keywordString)
@@ -911,7 +940,7 @@ namespace EmbyCredits.Services.DetectionMethods
             return matches;
         }
 
-        private bool CheckCharacterDensity(List<(double timestamp, int charCount)> history, double currentTimestamp, int currentCharCount)
+        private bool CheckCharacterDensity(List<(double timestamp, int charCount)> history, List<(double timestamp, int matchCount, string matchedKeywords)> detectionScores, double currentTimestamp, int currentCharCount, string currentText)
         {
             if (!Configuration.OcrEnableCharacterDensityDetection)
                 return false;
@@ -938,6 +967,29 @@ namespace EmbyCredits.Services.DetectionMethods
                     consecutiveCount++;
                     if (consecutiveCount >= consecutiveRequired)
                     {
+                        // Basic density check passed, now apply additional filters
+                        
+                        // Filter 1: Keyword Requirement
+                        if (Configuration.OcrDensityRequireKeyword && !CheckKeywordRequirement(detectionScores, currentTimestamp))
+                        {
+                            LogDebug($"Density detected at {FormatTime(currentTimestamp)} but no keywords found within {Configuration.OcrDensityKeywordWindowSeconds}s window - rejected");
+                            return false;
+                        }
+                        
+                        // Filter 2: Temporal Consistency Check
+                        if (Configuration.OcrDensityRequireTemporalConsistency && !CheckTemporalConsistency(history, currentTimestamp))
+                        {
+                            LogDebug($"Density detected at {FormatTime(currentTimestamp)} but temporal consistency requirement not met (need {Configuration.OcrDensityMinimumDurationSeconds}s sustained) - rejected");
+                            return false;
+                        }
+                        
+                        // Filter 3: Text Style Consistency
+                        if (Configuration.OcrDensityRequireStyleConsistency && !CheckStyleConsistency(history, currentTimestamp, currentCharCount))
+                        {
+                            LogDebug($"Density detected at {FormatTime(currentTimestamp)} but style consistency check failed - rejected");
+                            return false;
+                        }
+                        
                         return true;
                     }
                 }
@@ -949,6 +1001,86 @@ namespace EmbyCredits.Services.DetectionMethods
             }
 
             return false;
+        }
+        
+        private bool CheckKeywordRequirement(List<(double timestamp, int matchCount, string matchedKeywords)> detectionScores, double currentTimestamp)
+        {
+            // Check if there are any keyword matches within the specified time window
+            var windowSeconds = Configuration.OcrDensityKeywordWindowSeconds;
+            var keywordMatches = detectionScores
+                .Where(s => Math.Abs(s.timestamp - currentTimestamp) <= windowSeconds && 
+                           s.matchedKeywords != "density" && 
+                           !string.IsNullOrEmpty(s.matchedKeywords))
+                .ToList();
+            
+            return keywordMatches.Count > 0;
+        }
+        
+        private bool CheckTemporalConsistency(List<(double timestamp, int charCount)> history, double currentTimestamp)
+        {
+            // Check if we have sustained high density for the minimum required duration
+            var minDuration = Configuration.OcrDensityMinimumDurationSeconds;
+            var threshold = Configuration.OcrCharacterDensityThreshold;
+            
+            // Get frames within the lookback window
+            var relevantFrames = history
+                .Where(h => h.timestamp <= currentTimestamp && h.timestamp >= currentTimestamp - minDuration)
+                .OrderBy(h => h.timestamp)
+                .ToList();
+            
+            if (relevantFrames.Count == 0)
+                return false;
+            
+            // Calculate the actual time span covered
+            var timeSpan = currentTimestamp - relevantFrames.First().timestamp;
+            
+            // Must have frames spanning at least the minimum duration
+            if (timeSpan < minDuration * 0.8) // Allow 20% tolerance
+                return false;
+            
+            // Count how many frames meet the threshold
+            var framesAboveThreshold = relevantFrames.Count(f => f.charCount >= threshold);
+            
+            // Require at least 60% of frames to be above threshold (allows for some variation)
+            var requiredRatio = 0.6;
+            var actualRatio = (double)framesAboveThreshold / relevantFrames.Count;
+            
+            return actualRatio >= requiredRatio;
+        }
+        
+        private bool CheckStyleConsistency(List<(double timestamp, int charCount)> history, double currentTimestamp, int currentCharCount)
+        {
+            // Check if character counts are relatively consistent (indicates credits-style text)
+            // Credits typically have similar amounts of text per frame, unlike random documents
+            var lookbackSeconds = 10.0;
+            var threshold = Configuration.OcrCharacterDensityThreshold;
+            
+            var recentFrames = history
+                .Where(h => h.timestamp <= currentTimestamp && 
+                           h.timestamp >= currentTimestamp - lookbackSeconds &&
+                           h.charCount >= threshold)
+                .ToList();
+            
+            if (recentFrames.Count < 3)
+                return false;
+            
+            // Calculate coefficient of variation (standard deviation / mean)
+            // Lower values indicate more consistent text amounts (typical for credits)
+            var charCounts = recentFrames.Select(f => (double)f.charCount).ToList();
+            var mean = charCounts.Average();
+            
+            if (mean == 0)
+                return false;
+            
+            var variance = charCounts.Select(x => Math.Pow(x - mean, 2)).Average();
+            var stdDev = Math.Sqrt(variance);
+            var coefficientOfVariation = stdDev / mean;
+            
+            // Credits typically have CV < 0.5, random text/documents have higher variation
+            // User configurable threshold (default 0.7 is lenient)
+            var maxAllowedCV = Configuration.OcrDensityStyleConsistencyThreshold;
+            
+            return coefficientOfVariation <= maxAllowedCV;
         }
 
         private string BuildDetectionReason(List<(double timestamp, int matchCount, string matchedKeywords)> scores, List<(double timestamp, int charCount)> densityHistory, double detectedTimestamp)

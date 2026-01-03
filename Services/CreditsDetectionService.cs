@@ -241,7 +241,13 @@ namespace EmbyCredits.Services
                     var hasCreditsMarker = chapters.Any(c => 
                     {
                         var markerType = GetMarkerType(c);
-                        return markerType != null && markerType.Contains("Credits");
+                        if (markerType != null && markerType.Contains("Credits"))
+                            return true;
+                        
+                        if (c.Name != null && c.Name.ToLowerInvariant().Contains("credit"))
+                            return true;
+                        
+                        return false;
                     });
 
                     LogDebug($"Episode has existing credits marker: {hasCreditsMarker}, ScheduledTaskOnlyProcessMissing: {_configuration.ScheduledTaskOnlyProcessMissing}");
@@ -249,6 +255,17 @@ namespace EmbyCredits.Services
                     if (hasCreditsMarker && _configuration.ScheduledTaskOnlyProcessMissing)
                     {
                         LogInfo($"Skipping episode {episode.Name} - already has credits marker (ScheduledTaskOnlyProcessMissing is enabled)");
+                        
+                        if (Plugin.Instance != null)
+                        {
+                            var series = episode.Series;
+                            var episodeKey = series != null
+                                ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
+                                : episode.Name;
+                            Plugin.Progress.SuccessDetails[episodeKey] = "(already exists)";
+                            Plugin.Progress.SuccessfulItems++;
+                        }
+                        
                         return;
                     }
                 }
@@ -402,12 +419,29 @@ namespace EmbyCredits.Services
                 var hasCreditsMarker = chapters.Any(c => 
                 {
                     var markerType = GetMarkerType(c);
-                    return markerType != null && markerType.Contains("Credits");
+                    if (markerType != null && markerType.Contains("Credits"))
+                        return true;
+                    
+                    if (c.Name != null && c.Name.ToLowerInvariant().Contains("credit"))
+                        return true;
+                    
+                    return false;
                 });
 
                 if (hasCreditsMarker)
                 {
                     LogInfo($"Skipping episode {episode.Name} - already has credits marker (manual skip enabled)");
+                    
+                    if (Plugin.Instance != null)
+                    {
+                        var series = episode.Series;
+                        var episodeKey = series != null
+                            ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
+                            : episode.Name;
+                        Plugin.Progress.SuccessDetails[episodeKey] = "(already exists)";
+                        Plugin.Progress.SuccessfulItems++;
+                    }
+                    
                     return;
                 }
             }
@@ -425,12 +459,29 @@ namespace EmbyCredits.Services
                     var hasCreditsMarker = chapters.Any(c => 
                     {
                         var markerType = GetMarkerType(c);
-                        return markerType != null && markerType.Contains("Credits");
+                        if (markerType != null && markerType.Contains("Credits"))
+                            return true;
+                        
+                        if (c.Name != null && c.Name.ToLowerInvariant().Contains("credit"))
+                            return true;
+                        
+                        return false;
                     });
 
                     if (hasCreditsMarker)
                     {
                         LogInfo($"Skipping episode {episode.Name} - already has credits marker (manual skip enabled)");
+                        
+                        if (Plugin.Instance != null)
+                        {
+                            var series = episode.Series;
+                            var episodeKey = series != null
+                                ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
+                                : episode.Name;
+                            Plugin.Progress.SuccessDetails[episodeKey] = "(already exists)";
+                            Plugin.Progress.SuccessfulItems++;
+                        }
+                        
                         return false;
                     }
                     return true;
@@ -451,30 +502,58 @@ namespace EmbyCredits.Services
             }
         }
 
-        public static void QueueEpisodeDryRun(Episode episode)
+        public static void QueueEpisodeDryRun(Episode episode, bool skipExistingMarkers = false)
         {
             _isDryRun = true;
-            QueueEpisode(episode, isManualDetection: true);
+            if (skipExistingMarkers)
+            {
+                QueueEpisodeManual(episode, skipExistingMarkers: true);
+            }
+            else
+            {
+                QueueEpisode(episode, isManualDetection: true);
+            }
         }
 
-        public static void QueueSeriesDryRun(List<Episode> episodes)
+        public static void QueueSeriesDryRun(List<Episode> episodes, bool skipExistingMarkers = false)
         {
             _isDryRun = true;
-            QueueSeries(episodes);
+            if (skipExistingMarkers)
+            {
+                QueueSeriesManual(episodes, skipExistingMarkers: true);
+            }
+            else
+            {
+                QueueSeries(episodes);
+            }
         }
 
-        public static void QueueEpisodeDryRunDebug(Episode episode)
+        public static void QueueEpisodeDryRunDebug(Episode episode, bool skipExistingMarkers = false)
         {
             _isDryRun = true;
             StartDebugMode();
-            QueueEpisode(episode, isManualDetection: true);
+            if (skipExistingMarkers)
+            {
+                QueueEpisodeManual(episode, skipExistingMarkers: true);
+            }
+            else
+            {
+                QueueEpisode(episode, isManualDetection: true);
+            }
         }
 
-        public static void QueueSeriesDryRunDebug(List<Episode> episodes)
+        public static void QueueSeriesDryRunDebug(List<Episode> episodes, bool skipExistingMarkers = false)
         {
             _isDryRun = true;
             StartDebugMode();
-            QueueSeries(episodes);
+            if (skipExistingMarkers)
+            {
+                QueueSeriesManual(episodes, skipExistingMarkers: true);
+            }
+            else
+            {
+                QueueSeries(episodes);
+            }
         }
 
         private static void StartDebugMode()

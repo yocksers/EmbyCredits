@@ -138,17 +138,18 @@ define(['loading', 'toast'], function (loading, toast) {
         const libraryId = view.querySelector('#selectLibraryFilter').value;
         const seriesId = view.querySelector('#selectSeries').value;
         const episodeId = view.querySelector('#selectEpisode').value;
+        const skipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers').checked;
 
         const endpoint = isDebug ? 'CreditsDetector/DryRunSeriesDebug' : 'CreditsDetector/DryRunSeries';
         
         // Priority: Episode > Series > Library
         let dataPayload = null;
         if (episodeId) {
-            dataPayload = { EpisodeId: episodeId };
+            dataPayload = { EpisodeId: episodeId, SkipExistingMarkers: skipExistingMarkers };
         } else if (seriesId) {
-            dataPayload = { SeriesId: seriesId };
+            dataPayload = { SeriesId: seriesId, SkipExistingMarkers: skipExistingMarkers };
         } else if (libraryId) {
-            dataPayload = { LibraryId: libraryId };
+            dataPayload = { LibraryId: libraryId, SkipExistingMarkers: skipExistingMarkers };
         }
 
         if (!dataPayload) {

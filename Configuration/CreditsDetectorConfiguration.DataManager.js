@@ -59,6 +59,14 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtOcrCharacterDensityThreshold').value = config.OcrCharacterDensityThreshold || 20;
             view.querySelector('#txtOcrCharacterDensityConsecutiveFrames').value = config.OcrCharacterDensityConsecutiveFrames || 3;
             view.querySelector('#chkOcrCharacterDensityPrimaryMethod').checked = config.OcrCharacterDensityPrimaryMethod !== false;
+            
+            // Density Detection Filters
+            view.querySelector('#chkOcrDensityRequireKeyword').checked = config.OcrDensityRequireKeyword !== false;
+            view.querySelector('#txtOcrDensityKeywordWindowSeconds').value = config.OcrDensityKeywordWindowSeconds || 10;
+            view.querySelector('#chkOcrDensityRequireTemporalConsistency').checked = config.OcrDensityRequireTemporalConsistency !== false;
+            view.querySelector('#txtOcrDensityMinimumDurationSeconds').value = config.OcrDensityMinimumDurationSeconds || 15;
+            view.querySelector('#chkOcrDensityRequireStyleConsistency').checked = config.OcrDensityRequireStyleConsistency !== false;
+            view.querySelector('#txtOcrDensityStyleConsistencyThreshold').value = config.OcrDensityStyleConsistencyThreshold || 0.7;
 
             view.querySelector('#chkBackupImportOverwriteExisting').checked = config.BackupImportOverwriteExisting || false;
 
@@ -148,6 +156,14 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrCharacterDensityThreshold = Number.parseInt(view.querySelector('#txtOcrCharacterDensityThreshold').value, 10) || 20;
         instance.config.OcrCharacterDensityConsecutiveFrames = Number.parseInt(view.querySelector('#txtOcrCharacterDensityConsecutiveFrames').value, 10) || 3;
         instance.config.OcrCharacterDensityPrimaryMethod = view.querySelector('#chkOcrCharacterDensityPrimaryMethod').checked;
+        
+        // Density Detection Filters
+        instance.config.OcrDensityRequireKeyword = view.querySelector('#chkOcrDensityRequireKeyword').checked;
+        instance.config.OcrDensityKeywordWindowSeconds = Number.parseFloat(view.querySelector('#txtOcrDensityKeywordWindowSeconds').value) || 10;
+        instance.config.OcrDensityRequireTemporalConsistency = view.querySelector('#chkOcrDensityRequireTemporalConsistency').checked;
+        instance.config.OcrDensityMinimumDurationSeconds = Number.parseFloat(view.querySelector('#txtOcrDensityMinimumDurationSeconds').value) || 15;
+        instance.config.OcrDensityRequireStyleConsistency = view.querySelector('#chkOcrDensityRequireStyleConsistency').checked;
+        instance.config.OcrDensityStyleConsistencyThreshold = Number.parseFloat(view.querySelector('#txtOcrDensityStyleConsistencyThreshold').value) || 0.7;
 
         instance.config.BackupImportOverwriteExisting = view.querySelector('#chkBackupImportOverwriteExisting').checked;
 
@@ -205,6 +221,18 @@ define(['loading', 'toast'], function (loading, toast) {
         view.querySelector('#chkOcrEnableSmartFrameSkipping').checked = true;
         view.querySelector('#txtOcrConsecutiveMatchesForEarlyStop').value = 3;
         view.querySelector('#txtOcrMinimumConfidence').value = 0;
+        
+        view.querySelector('#chkOcrEnableCharacterDensityDetection').checked = true;
+        view.querySelector('#txtOcrCharacterDensityThreshold').value = 20;
+        view.querySelector('#txtOcrCharacterDensityConsecutiveFrames').value = 3;
+        view.querySelector('#chkOcrCharacterDensityPrimaryMethod').checked = true;
+        
+        view.querySelector('#chkOcrDensityRequireKeyword').checked = true;
+        view.querySelector('#txtOcrDensityKeywordWindowSeconds').value = 10;
+        view.querySelector('#chkOcrDensityRequireTemporalConsistency').checked = true;
+        view.querySelector('#txtOcrDensityMinimumDurationSeconds').value = 15;
+        view.querySelector('#chkOcrDensityRequireStyleConsistency').checked = true;
+        view.querySelector('#txtOcrDensityStyleConsistencyThreshold').value = 0.7;
 
         toast('Settings reset to defaults (OCR endpoint and temp folder preserved)');
     }

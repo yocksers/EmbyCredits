@@ -184,6 +184,51 @@
             <div class="fieldDescription"><strong>Recommended: 3.</strong> How many consecutive frames must exceed the threshold to confirm credits (prevents false positives from occasional text overlays)</div>
         </div>
 
+        <h3 style="margin-top: 2em; color: #52B54B;">Density Detection Filters (False Positive Prevention)</h3>
+        <p class="fieldDescription">These filters help prevent false positives from phone books, documents, or other dense text shown in videos.</p>
+
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkOcrDensityRequireKeyword" data-config-key="OcrDensityRequireKeyword" />
+                <span>Require Keyword Near Density Detection</span>
+            </label>
+            <div class="fieldDescription">When enabled, density-based detections must have at least one keyword match within the time window. Helps filter out non-credits dense text like documents or phone books.</div>
+        </div>
+
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtOcrDensityKeywordWindowSeconds">Keyword Window (seconds)</label>
+            <input is="emby-input" type="number" id="txtOcrDensityKeywordWindowSeconds" data-config-key="OcrDensityKeywordWindowSeconds" min="1" max="30" step="1" />
+            <div class="fieldDescription"><strong>Recommended: 10.</strong> How many seconds before/after a density detection to search for keyword matches.</div>
+        </div>
+
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkOcrDensityRequireTemporalConsistency" data-config-key="OcrDensityRequireTemporalConsistency" />
+                <span>Require Temporal Consistency</span>
+            </label>
+            <div class="fieldDescription">When enabled, requires sustained high text density over time. Credits last 30+ seconds, while phone books shown briefly are filtered out.</div>
+        </div>
+
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtOcrDensityMinimumDurationSeconds">Minimum Sustained Duration (seconds)</label>
+            <input is="emby-input" type="number" id="txtOcrDensityMinimumDurationSeconds" data-config-key="OcrDensityMinimumDurationSeconds" min="5" max="60" step="5" />
+            <div class="fieldDescription"><strong>Recommended: 15.</strong> Minimum duration of sustained text density required. Credits typically last 30+ seconds.</div>
+        </div>
+
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkOcrDensityRequireStyleConsistency" data-config-key="OcrDensityRequireStyleConsistency" />
+                <span>Require Style Consistency</span>
+            </label>
+            <div class="fieldDescription">When enabled, checks if text amounts are consistent across frames (typical of credits). Helps filter out varied dense text like documents.</div>
+        </div>
+
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtOcrDensityStyleConsistencyThreshold">Style Consistency Threshold</label>
+            <input is="emby-input" type="number" id="txtOcrDensityStyleConsistencyThreshold" data-config-key="OcrDensityStyleConsistencyThreshold" min="0.1" max="2.0" step="0.1" />
+            <div class="fieldDescription"><strong>Recommended: 0.7.</strong> Maximum variation allowed (coefficient of variation). Lower = stricter. Credits typically have consistent text amounts per frame.</div>
+        </div>
+
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrMaxFramesToProcess">Max Frames to Process (0=unlimited)</label>
             <input is="emby-input" type="number" id="txtOcrMaxFramesToProcess" data-config-key="OcrMaxFramesToProcess" min="0" max="1000" />

@@ -76,8 +76,19 @@ namespace EmbyCredits.Services
                     _logger.Info($"Verified MarkerType value: {verifyType}");
                 }
 
-                chapters.Add(creditsMarker);
-                _logger.Info($"Added new CreditsStart marker at {FormatTime(creditsStartSeconds)}");
+                // Insert the credits marker at the correct chronological position
+                int insertIndex = chapters.FindIndex(c => c.StartPositionTicks > creditsMarker.StartPositionTicks);
+                if (insertIndex == -1)
+                {
+                    // No chapter found after credits, add at the end
+                    chapters.Add(creditsMarker);
+                }
+                else
+                {
+                    // Insert before the first chapter that comes after the credits
+                    chapters.Insert(insertIndex, creditsMarker);
+                }
+                _logger.Info($"Added new CreditsStart marker at {FormatTime(creditsStartSeconds)} at index {(insertIndex == -1 ? chapters.Count - 1 : insertIndex)}");
 
                 try
                 {
