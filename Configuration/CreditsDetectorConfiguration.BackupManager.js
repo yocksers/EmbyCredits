@@ -1,19 +1,16 @@
 define(['loading', 'toast'], function (loading, toast) {
     'use strict';
     
-    function exportBackup() {
+    function exportBackup(view) {
         loading.show();
         
-        // Create a download link for the backup file
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
         const filename = `credits-backup-${timestamp}.json`;
         
-        // Build the URL with proper query params
         const url = ApiClient.getUrl('CreditsDetector/ExportCreditsBackup', {
             'X-Emby-Token': ApiClient.accessToken()
         });
         
-        // Use fetch to download the file
         fetch(url, {
             method: 'POST',
             headers: {
@@ -34,7 +31,6 @@ define(['loading', 'toast'], function (loading, toast) {
         .then(blob => {
             loading.hide();
             
-            // Create download link
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.style.display = 'none';
@@ -55,7 +51,6 @@ define(['loading', 'toast'], function (loading, toast) {
     }
     
     function importBackup(view) {
-        // Create a temporary file input
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.accept = '.json';
@@ -73,7 +68,6 @@ define(['loading', 'toast'], function (loading, toast) {
                 try {
                     const jsonData = e.target.result;
                     
-                    // Validate JSON
                     const backupData = JSON.parse(jsonData);
                     if (!backupData.Version || !backupData.Entries) {
                         throw new Error('Invalid backup file format');
@@ -81,10 +75,8 @@ define(['loading', 'toast'], function (loading, toast) {
                     
                     loading.show();
                     
-                    // Get the overwrite setting
                     const overwriteExisting = view.querySelector('#chkBackupImportOverwriteExisting')?.checked || false;
                     
-                    // Send to API
                     const url = ApiClient.getUrl('CreditsDetector/ImportCreditsBackup');
                     fetch(url, {
                         method: 'POST',
@@ -106,9 +98,7 @@ define(['loading', 'toast'], function (loading, toast) {
                     .then(result => {
                         loading.hide();
                         if (result.Success) {
-                            const message = `Imported ${result.ItemsImported} markers` +
-                                (result.ItemsSkipped > 0 ? `, skipped ${result.ItemsSkipped}` : '') +
-                                (result.ItemsNotFound > 0 ? `, ${result.ItemsNotFound} not found` : '');
+                            const message = `Import complete! ${result.ItemsImported} imported, ${result.ItemsSkipped} skipped, ${result.ItemsNotFound} not found.`;
                             toast({ type: 'success', text: message });
                         } else {
                             toast({ type: 'error', text: result.Message || 'Import failed' });

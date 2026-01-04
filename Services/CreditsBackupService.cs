@@ -61,17 +61,38 @@ namespace EmbyCredits.Services
                 var episodesList = allEpisodes.ToList();
                 _logger.Info($"Scanning {episodesList.Count} episodes for credits markers");
 
+                var progress = Plugin.Instance?.GetType().GetProperty("BackupExportProgress")?.GetValue(null) as CreditsDetectionProgress;
+                if (progress != null)
+                {
+                    progress.Reset();
+                    progress.IsRunning = true;
+                    progress.TotalItems = episodesList.Count;
+                    progress.StartTime = DateTime.Now;
+                }
+
+                int processed = 0;
                 foreach (var episode in episodesList)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
                     var chapters = _itemRepository.GetChapters(episode);
-                    if (chapters == null || chapters.Count == 0) continue;
+                    if (chapters == null || chapters.Count == 0)
+                    {
+                        processed++;
+                        if (progress != null && processed % 10 == 0)
+                            progress.ProcessedItems = processed;
+                        continue;
+                    }
 
                     var creditsMarker = chapters.FirstOrDefault(c => GetMarkerType(c) == "CreditsStart");
 
                     if (creditsMarker != null)
                     {
+                        if (progress != null)
+                        {
+                            progress.CurrentItem = $"{episode.Series?.Name ?? "Unknown"} - S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2}";
+                        }
+
                         var series = episode.Series;
                         var entry = new CreditsBackupEntry
                         {
@@ -90,8 +111,16 @@ namespace EmbyCredits.Services
                         };
 
                         backupData.Add(entry);
+                        if (progress != null) progress.SuccessfulItems++;
                     }
+                    
+                    processed++;
+                    if (progress != null && processed % 10 == 0)
+                        progress.ProcessedItems = processed;
                 }
+                
+                if (progress != null)
+                    progress.ProcessedItems = processed;
 
                 var backup = new CreditsBackup
                 {
@@ -118,6 +147,13 @@ namespace EmbyCredits.Services
 
                 _logger.Info(result.Message);
 
+                if (progress != null)
+                {
+                    progress.IsRunning = false;
+                    progress.EndTime = DateTime.Now;
+                    progress.CurrentItem = "Export Complete";
+                }
+
                 return Task.FromResult(result);
             }
             catch (Exception ex)
@@ -125,6 +161,15 @@ namespace EmbyCredits.Services
                 result.Success = false;
                 result.Message = $"Export failed: {ex.Message}";
                 _logger.ErrorException("Error during credits markers export", ex);
+                
+                var progress = Plugin.Instance?.GetType().GetProperty("BackupExportProgress")?.GetValue(null) as CreditsDetectionProgress;
+                if (progress != null)
+                {
+                    progress.IsRunning = false;
+                    progress.EndTime = DateTime.Now;
+                    progress.CurrentItem = "Export Failed";
+                }
+                
                 return Task.FromResult(result);
             }
         }
@@ -154,72 +199,123 @@ namespace EmbyCredits.Services
 
                 _logger.Info($"Importing {backup.Entries.Count} entries from backup dated {backup.BackupDate:yyyy-MM-dd HH:mm}");
 
+                var progress = Plugin.Instance?.GetType().GetProperty("BackupImportProgress")?.GetValue(null) as CreditsDetectionProgress;
+                if (progress != null)
+                {
+                    progress.Reset();
+                    progress.IsRunning = true;
+                    progress.TotalItems = backup.Entries.Count;
+                    progress.StartTime = DateTime.Now;
+                    progress.CurrentItem = "Building episode cache...";
+                }
+
+                _logger.Info("Building episode lookup caches for fast matching");
+                var allEpisodes = _libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    IncludeItemTypes = new[] { typeof(Episode).Name },
+                    Recursive = true
+                }).Cast<Episode>().ToList();
+
+                var episodesByTvdbId = new Dictionary<string, Episode>();
+                var episodesByGuid = new Dictionary<Guid, Episode>();
+                var episodesByPath = new Dictionary<string, Episode>(StringComparer.OrdinalIgnoreCase);
+                var episodesBySeriesAndNumber = new Dictionary<string, List<Episode>>();
+
+                foreach (var ep in allEpisodes)
+                {
+                    if (ep.ProviderIds?.TryGetValue("Tvdb", out var epTvdbId) == true && !string.IsNullOrEmpty(epTvdbId))
+                    {
+                        episodesByTvdbId[epTvdbId] = ep;
+                    }
+                    
+                    episodesByGuid[ep.Id] = ep;
+                    
+                    if (!string.IsNullOrEmpty(ep.Path))
+                    {
+                        episodesByPath[ep.Path] = ep;
+                    }
+                    
+                    var series = ep.Series;
+                    if (series?.ProviderIds != null && ep.ParentIndexNumber.HasValue && ep.IndexNumber.HasValue)
+                    {
+                        var tvdbId = series.ProviderIds.TryGetValue("Tvdb", out var sTvdbId) ? sTvdbId : null;
+                        var tmdbId = series.ProviderIds.TryGetValue("Tmdb", out var sTmdbId) ? sTmdbId : null;
+                        var imdbId = series.ProviderIds.TryGetValue("Imdb", out var sImdbId) ? sImdbId : null;
+                        
+                        if (!string.IsNullOrEmpty(tvdbId))
+                        {
+                            var key = $"tvdb:{tvdbId}:S{ep.ParentIndexNumber:D2}E{ep.IndexNumber:D2}";
+                            if (!episodesBySeriesAndNumber.ContainsKey(key))
+                                episodesBySeriesAndNumber[key] = new List<Episode>();
+                            episodesBySeriesAndNumber[key].Add(ep);
+                        }
+                        if (!string.IsNullOrEmpty(tmdbId))
+                        {
+                            var key = $"tmdb:{tmdbId}:S{ep.ParentIndexNumber:D2}E{ep.IndexNumber:D2}";
+                            if (!episodesBySeriesAndNumber.ContainsKey(key))
+                                episodesBySeriesAndNumber[key] = new List<Episode>();
+                            episodesBySeriesAndNumber[key].Add(ep);
+                        }
+                        if (!string.IsNullOrEmpty(imdbId))
+                        {
+                            var key = $"imdb:{imdbId}:S{ep.ParentIndexNumber:D2}E{ep.IndexNumber:D2}";
+                            if (!episodesBySeriesAndNumber.ContainsKey(key))
+                                episodesBySeriesAndNumber[key] = new List<Episode>();
+                            episodesBySeriesAndNumber[key].Add(ep);
+                        }
+                    }
+                }
+
+                _logger.Info($"Episode cache built: {episodesByTvdbId.Count} by TVDB ID, {episodesByGuid.Count} by GUID, {episodesByPath.Count} by path");
+
+                int processed = 0;
                 foreach (var entry in backup.Entries)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
                     Episode? episode = null;
 
-                    if (!string.IsNullOrEmpty(entry.TvdbEpisodeId))
+                    if (!string.IsNullOrEmpty(entry.TvdbEpisodeId) && episodesByTvdbId.TryGetValue(entry.TvdbEpisodeId, out var epByTvdb))
                     {
-                        var allEpisodes = _libraryManager.GetItemList(new InternalItemsQuery
-                        {
-                            IncludeItemTypes = new[] { typeof(Episode).Name },
-                            Recursive = true
-                        }).Cast<Episode>();
-
-                        foreach (var ep in allEpisodes)
-                        {
-                            if (ep.ProviderIds?.TryGetValue("Tvdb", out var epTvdbId) == true && epTvdbId == entry.TvdbEpisodeId)
-                            {
-                                episode = ep;
-                                break;
-                            }
-                        }
+                        episode = epByTvdb;
                     }
 
-                    if (episode == null && Guid.TryParse(entry.EpisodeId, out Guid episodeGuid))
+                    if (episode == null && Guid.TryParse(entry.EpisodeId, out Guid episodeGuid) && episodesByGuid.TryGetValue(episodeGuid, out var epByGuid))
                     {
-                        episode = _libraryManager.GetItemById(episodeGuid) as Episode;
+                        episode = epByGuid;
                     }
 
-                    if (episode == null && !string.IsNullOrEmpty(entry.FilePath))
+                    if (episode == null && !string.IsNullOrEmpty(entry.FilePath) && episodesByPath.TryGetValue(entry.FilePath, out var epByPath))
                     {
-                        episode = _libraryManager.FindByPath(entry.FilePath, false) as Episode;
+                        episode = epByPath;
                     }
 
                     if (episode == null)
                     {
-                        var episodeQuery = new InternalItemsQuery
+                        if (!string.IsNullOrEmpty(entry.TvdbId))
                         {
-                            IncludeItemTypes = new[] { typeof(Episode).Name },
-                            ParentIndexNumber = entry.SeasonNumber,
-                            IndexNumber = entry.EpisodeNumber,
-                            Recursive = true
-                        };
-
-                        var matchingEpisodes = _libraryManager.GetItemList(episodeQuery).Cast<Episode>();
-
-                        foreach (var ep in matchingEpisodes)
-                        {
-                            var series = ep.Series;
-                            if (series?.ProviderIds != null)
+                            var key = $"tvdb:{entry.TvdbId}:S{entry.SeasonNumber:D2}E{entry.EpisodeNumber:D2}";
+                            if (episodesBySeriesAndNumber.TryGetValue(key, out var matches) && matches.Count > 0)
                             {
-                                var tvdbMatch = !string.IsNullOrEmpty(entry.TvdbId) && 
-                                    series.ProviderIds.TryGetValue("Tvdb", out var seriesTvdbId) && 
-                                    seriesTvdbId == entry.TvdbId;
-                                var tmdbMatch = !string.IsNullOrEmpty(entry.TmdbId) && 
-                                    series.ProviderIds.TryGetValue("Tmdb", out var seriesTmdbId) && 
-                                    seriesTmdbId == entry.TmdbId;
-                                var imdbMatch = !string.IsNullOrEmpty(entry.ImdbId) && 
-                                    series.ProviderIds.TryGetValue("Imdb", out var seriesImdbId) && 
-                                    seriesImdbId == entry.ImdbId;
-
-                                if (tvdbMatch || tmdbMatch || imdbMatch)
-                                {
-                                    episode = ep;
-                                    break;
-                                }
+                                episode = matches[0];
+                            }
+                        }
+                        
+                        if (episode == null && !string.IsNullOrEmpty(entry.TmdbId))
+                        {
+                            var key = $"tmdb:{entry.TmdbId}:S{entry.SeasonNumber:D2}E{entry.EpisodeNumber:D2}";
+                            if (episodesBySeriesAndNumber.TryGetValue(key, out var matches) && matches.Count > 0)
+                            {
+                                episode = matches[0];
+                            }
+                        }
+                        
+                        if (episode == null && !string.IsNullOrEmpty(entry.ImdbId))
+                        {
+                            var key = $"imdb:{entry.ImdbId}:S{entry.SeasonNumber:D2}E{entry.EpisodeNumber:D2}";
+                            if (episodesBySeriesAndNumber.TryGetValue(key, out var matches) && matches.Count > 0)
+                            {
+                                episode = matches[0];
                             }
                         }
                     }
@@ -228,7 +324,19 @@ namespace EmbyCredits.Services
                     {
                         _logger.Debug($"Episode not found: {entry.SeriesName} S{entry.SeasonNumber:D2}E{entry.EpisodeNumber:D2}");
                         notFound++;
+                        if (progress != null) progress.FailedItems++;
+                        processed++;
+                        if (progress != null && processed % 5 == 0)
+                        {
+                            progress.ProcessedItems = processed;
+                            progress.CurrentItem = $"{entry.SeriesName} - S{entry.SeasonNumber:D2}E{entry.EpisodeNumber:D2}";
+                        }
                         continue;
+                    }
+
+                    if (progress != null && processed % 5 == 0)
+                    {
+                        progress.CurrentItem = $"{entry.SeriesName} - S{entry.SeasonNumber:D2}E{entry.EpisodeNumber:D2}";
                     }
 
                     if (!overwriteExisting)
@@ -238,6 +346,9 @@ namespace EmbyCredits.Services
                         {
                             _logger.Debug($"Skipping {episode.Name} - already has credits marker");
                             skipped++;
+                            processed++;
+                            if (progress != null && processed % 5 == 0)
+                                progress.ProcessedItems = processed;
                             continue;
                         }
                     }
@@ -261,14 +372,23 @@ namespace EmbyCredits.Services
                         chapters = chapters.OrderBy(c => c.StartPositionTicks).ToList();
                         _itemRepository.SaveChapters(episode.InternalId, chapters);
                         imported++;
+                        if (progress != null) progress.SuccessfulItems++;
                         _logger.Info($"Restored credits marker for: {episode.Series?.Name} - S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2} - {episode.Name}");
                     }
                     else
                     {
                         _logger.Warn($"Failed to set marker type for {episode.Name}");
                         notFound++;
+                        if (progress != null) progress.FailedItems++;
                     }
+                    
+                    processed++;
+                    if (progress != null && processed % 5 == 0)
+                        progress.ProcessedItems = processed;
                 }
+                
+                if (progress != null)
+                    progress.ProcessedItems = processed;
 
                 result.ItemsImported = imported;
                 result.ItemsSkipped = skipped;
@@ -277,6 +397,13 @@ namespace EmbyCredits.Services
 
                 _logger.Info(result.Message);
 
+                if (progress != null)
+                {
+                    progress.IsRunning = false;
+                    progress.EndTime = DateTime.Now;
+                    progress.CurrentItem = "Import Complete";
+                }
+
                 return Task.FromResult(result);
             }
             catch (Exception ex)
@@ -284,6 +411,15 @@ namespace EmbyCredits.Services
                 result.Success = false;
                 result.Message = $"Import failed: {ex.Message}";
                 _logger.ErrorException("Error during credits markers import", ex);
+                
+                var progress = Plugin.Instance?.GetType().GetProperty("BackupImportProgress")?.GetValue(null) as CreditsDetectionProgress;
+                if (progress != null)
+                {
+                    progress.IsRunning = false;
+                    progress.EndTime = DateTime.Now;
+                    progress.CurrentItem = "Import Failed";
+                }
+                
                 return Task.FromResult(result);
             }
         }

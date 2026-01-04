@@ -83,7 +83,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
 
             // Backup/Restore - delegate to BackupManager
             view.querySelector('#btnExportBackup').addEventListener('click', () => {
-                backupManager.exportBackup();
+                backupManager.exportBackup(view);
             });
 
             view.querySelector('#btnImportBackup').addEventListener('click', () => {
@@ -243,6 +243,19 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 });
             } else {
                 dataManager.loadData(this, view);
+            }
+        }
+        
+        onPause() {
+            super.onPause();
+            
+            if (this.progressInterval) {
+                clearInterval(this.progressInterval);
+                this.progressInterval = null;
+            }
+            if (this.progressHideTimeout) {
+                clearTimeout(this.progressHideTimeout);
+                this.progressHideTimeout = null;
             }
         }
     };

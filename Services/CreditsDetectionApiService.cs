@@ -212,6 +212,58 @@ namespace EmbyCredits.Services
             }
         }
 
+        public object Get(GetBackupExportProgressRequest request)
+        {
+            try
+            {
+                var progress = Plugin.BackupExportProgress;
+
+                return new
+                {
+                    Success = true,
+                    IsRunning = progress.IsRunning,
+                    TotalItems = progress.TotalItems,
+                    ProcessedItems = progress.ProcessedItems,
+                    SuccessfulItems = progress.SuccessfulItems,
+                    FailedItems = progress.FailedItems,
+                    CurrentItem = progress.CurrentItem,
+                    PercentComplete = progress.PercentComplete,
+                    EstimatedTimeRemainingSeconds = progress.EstimatedTimeRemaining?.TotalSeconds
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting backup export progress", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Get(GetBackupImportProgressRequest request)
+        {
+            try
+            {
+                var progress = Plugin.BackupImportProgress;
+
+                return new
+                {
+                    Success = true,
+                    IsRunning = progress.IsRunning,
+                    TotalItems = progress.TotalItems,
+                    ProcessedItems = progress.ProcessedItems,
+                    SuccessfulItems = progress.SuccessfulItems,
+                    FailedItems = progress.FailedItems,
+                    CurrentItem = progress.CurrentItem,
+                    PercentComplete = progress.PercentComplete,
+                    EstimatedTimeRemainingSeconds = progress.EstimatedTimeRemaining?.TotalSeconds
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting backup import progress", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
         public object Post(CancelDetectionRequest request)
         {
             try

@@ -47,6 +47,10 @@ namespace EmbyCredits.Api
     [Route(ApiRoutes.GetProgress, "GET", Summary = "Gets the current progress of credits detection.")]
     public class GetProgressRequest : IReturn<object> { }
 
+    public class GetBackupExportProgressRequest : IReturn<object> { }
+
+    public class GetBackupImportProgressRequest : IReturn<object> { }
+
     [Route(ApiRoutes.CancelDetection, "POST", Summary = "Cancels the currently running credits detection.")]
     public class CancelDetectionRequest : IReturn<object> { }
 
