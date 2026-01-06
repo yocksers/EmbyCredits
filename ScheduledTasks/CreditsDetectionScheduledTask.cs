@@ -171,6 +171,8 @@ namespace EmbyCredits.ScheduledTasks
             Plugin.Progress.StartTime = DateTime.Now;
 
             var processedCount = 0;
+            var failedEpisodeNames = new List<string>();
+            var successfulSeriesNames = new HashSet<string>();
 
             foreach (var episode in episodesToProcess)
             {
@@ -185,6 +187,9 @@ namespace EmbyCredits.ScheduledTasks
                     await CreditsDetectionService.ProcessEpisode(episode);
                     processedCount++;
 
+                    var seriesName = episode.Series?.Name ?? "Unknown Series";
+                    successfulSeriesNames.Add(seriesName);
+
                     var percentComplete = (double)processedCount / episodesToProcess.Count * 100;
                     progress.Report(percentComplete);
                 }
@@ -192,6 +197,10 @@ namespace EmbyCredits.ScheduledTasks
                 {
                     _logger.ErrorException($"Error processing episode {episode.Name}", ex);
                     Plugin.Progress.FailedItems++;
+                    
+                    var seriesName = episode.Series?.Name ?? "Unknown Series";
+                    var episodeLabel = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00} - {episode.Name}";
+                    failedEpisodeNames.Add(episodeLabel);
                 }
 
                 await Task.Delay(1000, cancellationToken);
@@ -202,6 +211,36 @@ namespace EmbyCredits.ScheduledTasks
             Plugin.Progress.CurrentItem = "Complete";
 
             _logger.Info($"Credits detection complete. Processed: {Plugin.Progress.SuccessfulItems}, Failed: {Plugin.Progress.FailedItems}");
+
+            var duration = DateTime.Now - Plugin.Progress.StartTime;
+            SendCompletionNotification(Plugin.Progress.SuccessfulItems, Plugin.Progress.FailedItems, episodesToProcess.Count, failedEpisodeNames, successfulSeriesNames.ToList(), duration ?? TimeSpan.Zero);
+        }
+
+        private void SendCompletionNotification(int successCount, int failedCount, int totalProcessed, List<string> failedEpisodes, List<string> successfulSeries, TimeSpan duration)
+        {
+            try
+            {
+                if (Plugin.Instance == null)
+                {
+                    _logger.Debug("Plugin instance not available");
+                    return;
+                }
+
+                var notificationManager = Plugin.Instance.GetNotificationManager();
+                if (notificationManager == null)
+                {
+                    _logger.Debug("Notification manager not available");
+                    return;
+                }
+
+                var config = Plugin.Instance.Configuration;
+                var notificationService = new NotificationService(_logger, notificationManager, config);
+                notificationService.SendScheduledTaskCompletionNotification(successCount, failedCount, totalProcessed, failedEpisodes, successfulSeries, duration);
+            }
+            catch (Exception ex)
+            {
+                _logger.ErrorException("Failed to send completion notification", ex);
+            }
         }
 
         private bool HasCreditsMarker(Episode episode)

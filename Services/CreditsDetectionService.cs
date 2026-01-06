@@ -30,13 +30,11 @@ namespace EmbyCredits.Services
         private static IFfmpegManager? _ffmpegManager;
         private static bool _isRunning;
         private static ConcurrentDictionary<string, DateTime> _processedEpisodes = new ConcurrentDictionary<string, DateTime>();
-        private static Timer? _processingTimer;
         private static ConcurrentQueue<Episode> _processingQueue = new ConcurrentQueue<Episode>();
         private static SemaphoreSlim _processingSemaphore = new SemaphoreSlim(1, 1);
         private static bool _isProcessing = false;
         private static bool _cancellationRequested = false;
         private static bool _isDryRun = false;
-        private static readonly object _timerLock = new object();
 
         private const int MaxQueueSize = 1000;
 
@@ -98,10 +96,8 @@ namespace EmbyCredits.Services
             if (_libraryManager != null && configuration.EnableAutoDetection)
             {
                 _libraryManager.ItemAdded += OnItemAdded;
-                _logger.Info("Auto-detection enabled: Library event handlers registered");
+                _logger.Info("Auto-detection enabled: ItemAdded event handler registered");
             }
-
-            _processingTimer = new Timer(CheckForNewEpisodes, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5));
         }
 
         public static void UpdateConfiguration(PluginConfiguration configuration)
@@ -146,14 +142,6 @@ namespace EmbyCredits.Services
         {
             _isRunning = false;
 
-            Timer? timerToDispose = null;
-            lock (_timerLock)
-            {
-                timerToDispose = _processingTimer;
-                _processingTimer = null;
-            }
-            timerToDispose?.Dispose();
-
             _isProcessing = false;
 
             if (_libraryManager != null)
@@ -186,7 +174,12 @@ namespace EmbyCredits.Services
             {
                 if (e.Item is Episode episode)
                 {
-                    // Skip TV specials (Season 0 or no season)
+                    if (episode.IsVirtualItem)
+                    {
+                        LogDebug($"Skipping virtual item: {episode.SeriesName} - {episode.Name}");
+                        return;
+                    }
+
                     if (episode.ParentIndexNumber == null || episode.ParentIndexNumber == 0)
                     {
                         LogDebug($"Skipping TV special: {episode.SeriesName} - {episode.Name} (Season {episode.ParentIndexNumber})");
@@ -196,9 +189,29 @@ namespace EmbyCredits.Services
                     var libraryIds = _configuration.LibraryIds ?? Array.Empty<string>();
                     if (libraryIds.Length > 0)
                     {
-
-                        var libraryId = episode.GetTopParent()?.Id.ToString();
-                        if (string.IsNullOrEmpty(libraryId) || !libraryIds.Contains(libraryId))
+                        var topParent = episode.GetTopParent();
+                        var internalId = topParent?.InternalId.ToString();
+                        
+                        LogDebug($"Episode {episode.Name} - TopParent: {topParent?.Name} (InternalId: {internalId}), Type: {topParent?.GetType().Name}, Configured libraries: [{string.Join(", ", libraryIds)}]");
+                        
+                        bool isInConfiguredLibrary = false;
+                        if (!string.IsNullOrEmpty(internalId))
+                        {
+                            if (libraryIds.Contains(internalId))
+                            {
+                                isInConfiguredLibrary = true;
+                            }
+                            else if (long.TryParse(internalId, out var id) && id > 0)
+                            {
+                                var collectionId = (id - 1).ToString();
+                                if (libraryIds.Contains(collectionId))
+                                {
+                                    isInConfiguredLibrary = true;
+                                }
+                            }
+                        }
+                        
+                        if (!isInConfiguredLibrary)
                         {
                             LogDebug($"Skipping episode {episode.Name} - not in configured libraries");
                             return;
@@ -206,7 +219,51 @@ namespace EmbyCredits.Services
                     }
 
                     LogInfo($"New episode detected: {episode.SeriesName} - {episode.Name}");
-                    QueueEpisode(episode);
+
+                    Task.Delay(15000).ContinueWith(_ =>
+                    {
+                        try
+                        {
+                            if (_libraryManager == null)
+                            {
+                                LogWarn($"LibraryManager not available for delayed processing of {episode.Name}");
+                                return;
+                            }
+
+                            var refreshedEpisode = _libraryManager.GetItemById(episode.Id) as Episode;
+                            if (refreshedEpisode == null)
+                            {
+                                LogWarn($"Episode {episode.Name} no longer exists after delay");
+                                return;
+                            }
+
+                            if (string.IsNullOrEmpty(refreshedEpisode.Path))
+                            {
+                                LogDebug($"Episode {refreshedEpisode.Name} has no path after delay, skipping");
+                                return;
+                            }
+
+                            if (!File.Exists(refreshedEpisode.Path))
+                            {
+                                LogDebug($"File does not exist for {refreshedEpisode.Name}: {refreshedEpisode.Path}");
+                                return;
+                            }
+
+                            var fileInfo = new FileInfo(refreshedEpisode.Path);
+                            if ((DateTime.UtcNow - fileInfo.LastWriteTimeUtc).TotalSeconds < 5)
+                            {
+                                LogDebug($"File still being modified: {refreshedEpisode.Name}");
+                                return;
+                            }
+
+                            LogInfo($"Processing episode after delay: {refreshedEpisode.SeriesName} - {refreshedEpisode.Name}");
+                            QueueEpisode(refreshedEpisode);
+                        }
+                        catch (Exception delayEx)
+                        {
+                            LogError($"Error in delayed processing for {episode.Name}", delayEx);
+                        }
+                    }, TaskScheduler.Default);
                 }
             }
             catch (Exception ex)
@@ -228,7 +285,6 @@ namespace EmbyCredits.Services
         public static void SetFfmpegManager(IFfmpegManager ffmpegManager)
         {
             _ffmpegManager = ffmpegManager;
-            Utilities.FFmpegHelper.Initialize(ffmpegManager);
         }
 
         public static void QueueEpisode(Episode episode, bool isManualDetection = false)
@@ -238,6 +294,13 @@ namespace EmbyCredits.Services
             var episodeId = episode.Id.ToString();
             LogDebug($"QueueEpisode called for: {episode.Name} (ID: {episodeId}), IsManual: {isManualDetection}");
             LogDebug($"Already processed: {_processedEpisodes.ContainsKey(episodeId)}, IsDryRun: {_isDryRun}, IsProcessing: {_isProcessing}");
+
+            // Skip TV specials (Season 0)
+            if (episode.ParentIndexNumber == null || episode.ParentIndexNumber == 0)
+            {
+                LogDebug($"Skipping TV special: {episode.SeriesName} - {episode.Name} (Season {episode.ParentIndexNumber})");
+                return;
+            }
 
             if (!isManualDetection)
             {
@@ -335,16 +398,31 @@ namespace EmbyCredits.Services
                 _detectionCoordinator = new DetectionCoordinator(_logger, _configuration);
             }
 
+            // Filter out specials (Season 0)
+            var validEpisodes = episodes.Where(e => e.ParentIndexNumber != null && e.ParentIndexNumber != 0).ToList();
+            var specialCount = episodes.Count - validEpisodes.Count;
+            
+            if (specialCount > 0)
+            {
+                LogInfo($"Filtered out {specialCount} specials from processing queue");
+            }
+
+            if (validEpisodes.Count == 0)
+            {
+                LogInfo("No valid episodes to process after filtering specials");
+                return;
+            }
+
             if (Plugin.Instance != null)
             {
                 Plugin.Progress.Reset();
                 Plugin.Progress.IsRunning = true;
-                Plugin.Progress.TotalItems = episodes.Count;
+                Plugin.Progress.TotalItems = validEpisodes.Count;
                 Plugin.Progress.StartTime = DateTime.Now;
             }
 
             var queuedCount = 0;
-            foreach (var episode in episodes)
+            foreach (var episode in validEpisodes)
             {
                 var episodeId = episode.Id.ToString();
                 if (_processedEpisodes.ContainsKey(episodeId))
@@ -363,7 +441,7 @@ namespace EmbyCredits.Services
             if (_isBatchMode)
             {
                 LogInfo($"Batch mode enabled: Pre-computing detections for {queuedCount} episodes");
-                Task.Run(() => PreComputeBatchDetections(episodes.ToList()));
+                Task.Run(() => PreComputeBatchDetections(validEpisodes.ToList()));
             }
             else
             {
@@ -686,6 +764,38 @@ namespace EmbyCredits.Services
                         Plugin.Progress.CurrentItem = _isDryRun ? "Dry Run Complete" : "Complete";
                         Plugin.Progress.CurrentItemProgress = 100;
                         LogInfo($"Processing complete: {Plugin.Progress.SuccessfulItems} succeeded, {Plugin.Progress.FailedItems} failed");
+
+                        if (_configuration != null && _configuration.EnableAutoDetection && !_isDryRun && Plugin.NotificationManager != null)
+                        {
+                            try
+                            {
+                                var duration = Plugin.Progress.EndTime.HasValue && Plugin.Progress.StartTime.HasValue
+                                    ? Plugin.Progress.EndTime.Value - Plugin.Progress.StartTime.Value
+                                    : TimeSpan.Zero;
+
+                                var failedEpisodes = Plugin.Progress.FailureReasons?.Select(kvp => $"{kvp.Key}: {kvp.Value}").ToList() ?? new List<string>();
+                                var successfulSeries = Plugin.Progress.SuccessDetails.Keys
+                                    .Select(k => k.Split(new[] { " S" }, StringSplitOptions.None)[0])
+                                    .Distinct()
+                                    .ToList();
+
+                                if (_logger == null) return;
+                                var notificationService = new NotificationService(_logger, Plugin.NotificationManager, _configuration);
+                                notificationService.SendAutoDetectionNotification(
+                                    Plugin.Progress.SuccessfulItems,
+                                    Plugin.Progress.FailedItems,
+                                    Plugin.Progress.ProcessedItems,
+                                    failedEpisodes,
+                                    successfulSeries,
+                                    duration
+                                );
+                            }
+                            catch (Exception ex)
+                            {
+                                LogError("Failed to send auto-detection notification", ex);
+                            }
+                        }
+
                         _isDryRun = false;
                         if (IsDebugMode)
                         {
@@ -701,53 +811,7 @@ namespace EmbyCredits.Services
             }
         }
 
-        private static void CheckForNewEpisodes(object? state)
-        {
 
-            lock (_timerLock)
-            {
-                if (_processingTimer == null)
-                    return;
-            }
-
-            if (!_isRunning || _libraryManager == null || _configuration == null || !_configuration.EnableAutoDetection)
-                return;
-
-            try
-            {
-                LogDebug("Checking for new episodes to analyze...");
-
-                var episodes = _libraryManager.GetItemList(new InternalItemsQuery
-                {
-                    IncludeItemTypes = new[] { "Episode" },
-                    IsVirtualItem = false,
-                    HasPath = true
-                }).OfType<Episode>().ToList();
-
-                var libraryIds = _configuration.LibraryIds ?? Array.Empty<string>();
-
-                foreach (var episode in episodes)
-                {
-                    if (!_processedEpisodes.ContainsKey(episode.Id.ToString()))
-                    {
-                        if (libraryIds.Length > 0)
-                        {
-                            var libraryId = episode.GetTopParent()?.Id.ToString();
-                            if (string.IsNullOrEmpty(libraryId) || !libraryIds.Contains(libraryId))
-                            {
-                                continue;
-                            }
-                        }
-
-                        QueueEpisode(episode);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LogError("Error checking for new episodes", ex);
-            }
-        }
 
         public static async Task ProcessEpisode(Episode episode)
         {

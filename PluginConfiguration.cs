@@ -53,7 +53,7 @@ namespace EmbyCredits
 
         public bool EnableOcrDetection { get; set; } = true;
         public string OcrEndpoint { get; set; } = "http://localhost:8884";
-        public string OcrDetectionKeywords { get; set; } = "directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine";
+        public string OcrDetectionKeywords { get; set; } = "associate producer,based on,cast,casting,cinematography,co-producer,composer,costume design,created by,credits,developed by,directed by,director of photography,editing,editor,end credits,ende,executive producer,fim,fin,fine,guest starring,music by,produced by,producer,production company,production design,screenplay,series producer,sound,special thanks,starring,story by,the end,visual effects,written by,끝,終";
 
         public string OcrSearchStartUnit { get; set; } = "minutes";
         public double OcrSearchStartValue { get; set; } = 3.0;
@@ -80,15 +80,12 @@ namespace EmbyCredits
         public int OcrCharacterDensityConsecutiveFrames { get; set; } = 3;
         public bool OcrCharacterDensityPrimaryMethod { get; set; } = true;
         
-        // Keyword requirement for density detection
         public bool OcrDensityRequireKeyword { get; set; } = true;
         public double OcrDensityKeywordWindowSeconds { get; set; } = 10.0;
         
-        // Temporal consistency for density detection
         public bool OcrDensityRequireTemporalConsistency { get; set; } = true;
         public double OcrDensityMinimumDurationSeconds { get; set; } = 15.0;
         
-        // Text style consistency for density detection
         public bool OcrDensityRequireStyleConsistency { get; set; } = true;
         public double OcrDensityStyleConsistencyThreshold { get; set; } = 0.7;
 
@@ -133,5 +130,10 @@ namespace EmbyCredits
         public bool BackupImportOverwriteExisting { get; set; } = false;
 
         public bool ManualSkipExistingMarkers { get; set; } = false;
+
+        public bool EnableScheduledTaskNotifications { get; set; } = false;
+        public bool EnableAutoDetectionNotifications { get; set; } = false;
+        public bool NotifyOnSuccessOnly { get; set; } = false;
+        public int MinimumEpisodesForNotification { get; set; } = 1;
     }
 }

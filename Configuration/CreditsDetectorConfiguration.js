@@ -104,7 +104,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
 
             view.querySelector('#btnResetKeywords').addEventListener('click', () => {
                 if (confirm('Reset keywords to defaults? This will replace all current keywords.')) {
-                    const defaults = 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine';
+                    const defaults = 'associate producer,based on,cast,casting,cinematography,co-producer,composer,costume design,created by,credits,developed by,directed by,director of photography,editing,editor,end credits,ende,executive producer,fim,fin,fine,guest starring,music by,produced by,producer,production company,production design,screenplay,series producer,sound,special thanks,starring,story by,the end,visual effects,written by,끝,終';
                     view.querySelector('#txtOcrDetectionKeywords').value = defaults;
                     this.updateKeywordDisplay(view);
                     

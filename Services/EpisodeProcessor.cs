@@ -75,17 +75,53 @@ namespace EmbyCredits.Services
                     _debugLogger.LogDebug($"Normalized path: {normalizedPath}");
                 }
 
-                if (string.IsNullOrEmpty(normalizedPath) || !File.Exists(normalizedPath))
+                if (string.IsNullOrEmpty(normalizedPath))
                 {
-                    _debugLogger.LogWarn($"Episode file not found: {episode.Path}");
-                    if (!string.IsNullOrEmpty(normalizedPath) && normalizedPath != episode.Path)
-                    {
-                        _debugLogger.LogDebug($"Also tried normalized path: {normalizedPath}");
-                    }
-                    return (false, 0, "File not found");
+                    _debugLogger.LogWarn($"Path normalization failed for: {episode.Path}");
+                    return (false, 0, "Path normalization failed");
                 }
 
-                var duration = await GetVideoDuration(normalizedPath);
+                if (!normalizedPath.StartsWith("smb://"))
+                {
+                    bool fileExists = false;
+                    bool checkFailed = false;
+                    try
+                    {
+                        fileExists = File.Exists(normalizedPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _debugLogger.LogDebug($"File.Exists check threw exception: {ex.Message}");
+                        checkFailed = true;
+                    }
+
+                    if (!checkFailed && !fileExists)
+                    {
+                        _debugLogger.LogWarn($"Episode file not found: {episode.Path}");
+                        if (!string.IsNullOrEmpty(normalizedPath) && normalizedPath != episode.Path)
+                        {
+                            _debugLogger.LogDebug($"Also tried normalized path: {normalizedPath}");
+                        }
+                        return (false, 0, "File not found");
+                    }
+                }
+                else
+                {
+                    _debugLogger.LogDebug($"SMB path detected - will be handled by Emby's MediaEncoder");
+                }
+
+                double duration = 0;
+                if (episode.RunTimeTicks.HasValue && episode.RunTimeTicks.Value > 0)
+                {
+                    duration = episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond;
+                    _debugLogger.LogDebug($"Using duration from Emby metadata: {duration} seconds");
+                }
+                else
+                {
+                    _debugLogger.LogDebug("Episode duration not available from Emby, trying ffprobe");
+                    duration = await GetVideoDuration(normalizedPath);
+                }
+
                 if (duration <= 0)
                 {
                     _debugLogger.LogWarn($"Could not determine video duration for {episode.Name}");
@@ -124,8 +160,31 @@ namespace EmbyCredits.Services
                         }).OfType<Episode>()
                         .Where(e => e.ParentIndexNumber == episode.ParentIndexNumber &&
                                    e.Id != episode.Id &&
-                                   !string.IsNullOrEmpty(e.Path) &&
-                                   File.Exists(Utilities.FFmpegHelper.NormalizeFilePath(e.Path)))
+                                   !string.IsNullOrEmpty(e.Path))
+                        .Where(e => 
+                        {
+                            var normalized = Utilities.FFmpegHelper.NormalizeFilePath(e.Path);
+                            if (string.IsNullOrEmpty(normalized)) return false;
+                            
+                            if (normalized.StartsWith("smb://"))
+                            {
+                                return true;
+                            }
+                            
+                            try
+                            {
+                                bool exists = File.Exists(normalized);
+                                if (!exists)
+                                {
+                                    return false;
+                                }
+                                return true;
+                            }
+                            catch
+                            {
+                                return true;
+                            }
+                        })
                         .Take(_configuration.MinimumEpisodesToCompare)
                         .ToList();
 
@@ -223,12 +282,14 @@ namespace EmbyCredits.Services
             {
                 _debugLogger.LogDebug($"Getting video duration for: {filePath}");
 
+                var ffprobeInputPath = Utilities.FFmpegHelper.GetInputArgument(filePath);
+
                 var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = Utilities.FFmpegHelper.GetFfprobePath(),
-                        Arguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{filePath}\"",
+                        Arguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {ffprobeInputPath}",
                         UseShellExecute = false,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,

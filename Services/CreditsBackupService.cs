@@ -50,7 +50,26 @@ namespace EmbyCredits.Services
 
                 if (libraryIds != null && libraryIds.Count > 0)
                 {
-                    allEpisodes = allEpisodes.Where(e => libraryIds.Contains(e.GetTopParent()?.Id.ToString() ?? ""));
+                    allEpisodes = allEpisodes.Where(e =>
+                    {
+                        var topParent = e.GetTopParent();
+                        var internalIdStr = topParent?.InternalId.ToString();
+                        
+                        if (string.IsNullOrEmpty(internalIdStr))
+                            return false;
+                            
+                        if (libraryIds.Contains(internalIdStr))
+                            return true;
+                            
+                        if (long.TryParse(internalIdStr, out var id) && id > 0)
+                        {
+                            var collectionId = (id - 1).ToString();
+                            if (libraryIds.Contains(collectionId))
+                                return true;
+                        }
+                        
+                        return false;
+                    });
                 }
 
                 if (seriesIds != null && seriesIds.Count > 0)

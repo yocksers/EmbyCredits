@@ -70,6 +70,11 @@ define(['loading', 'toast'], function (loading, toast) {
 
             view.querySelector('#chkBackupImportOverwriteExisting').checked = config.BackupImportOverwriteExisting || false;
 
+            view.querySelector('#chkEnableScheduledTaskNotifications').checked = config.EnableScheduledTaskNotifications || false;
+            view.querySelector('#chkEnableAutoDetectionNotifications').checked = config.EnableAutoDetectionNotifications || false;
+            view.querySelector('#chkNotifyOnSuccessOnly').checked = config.NotifyOnSuccessOnly || false;
+            view.querySelector('#txtMinimumEpisodesForNotification').value = config.MinimumEpisodesForNotification !== null && config.MinimumEpisodesForNotification !== undefined ? config.MinimumEpisodesForNotification : 1;
+
             // Load libraries and series/episode dropdowns
             require(['configurationpage?name=CreditsDetectorConfigurationSeriesManager'], (seriesManager) => {
                 seriesManager.loadLibraries(view, config);
@@ -167,6 +172,12 @@ define(['loading', 'toast'], function (loading, toast) {
 
         instance.config.BackupImportOverwriteExisting = view.querySelector('#chkBackupImportOverwriteExisting').checked;
 
+        instance.config.EnableScheduledTaskNotifications = view.querySelector('#chkEnableScheduledTaskNotifications').checked;
+        instance.config.EnableAutoDetectionNotifications = view.querySelector('#chkEnableAutoDetectionNotifications').checked;
+        instance.config.NotifyOnSuccessOnly = view.querySelector('#chkNotifyOnSuccessOnly').checked;
+        const minEpisodes = Number.parseInt(view.querySelector('#txtMinimumEpisodesForNotification').value, 10);
+        instance.config.MinimumEpisodesForNotification = Number.isNaN(minEpisodes) ? 1 : minEpisodes;
+
         const checkboxes = view.querySelectorAll('.chkLibrary');
         const selectedLibraryIds = [];
         checkboxes.forEach(checkbox => {
@@ -238,12 +249,15 @@ define(['loading', 'toast'], function (loading, toast) {
     }
 
     function browseTempFolder(view) {
-        require(['directorybrowser'], (directoryBrowser) => {
-            directoryBrowser.show({
-                callback: (path) => {
+        require(['directorybrowser'], function(directoryBrowser) {
+            var picker = new directoryBrowser();
+            picker.show({
+                includeFiles: false,
+                callback: function(path) {
                     if (path) {
                         view.querySelector('#txtTempFolderPath').value = path;
                     }
+                    picker.close();
                 }
             });
         });

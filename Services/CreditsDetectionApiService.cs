@@ -102,6 +102,13 @@ namespace EmbyCredits.Services
                 }
 
                 var allEpisodes = ItemLookupHelper.GetSeriesEpisodes(_libraryManager, series.InternalId, _logger);
+                
+                // Check if requesting Season 0 (specials)
+                if (request.SeasonNumber == 0)
+                {
+                    return new { Success = false, Message = "Season 0 (specials) are not supported for credits detection" };
+                }
+                
                 var seasonEpisodes = allEpisodes.Where(e => e.ParentIndexNumber == request.SeasonNumber).ToList();
 
                 if (seasonEpisodes.Count == 0)
@@ -362,7 +369,6 @@ namespace EmbyCredits.Services
         {
             _logger?.Info("=== DryRunSeriesRequest START ===");
 
-            // Handle season-specific dry run
             if (request?.SeasonNumber.HasValue == true && !string.IsNullOrEmpty(request.SeriesId))
             {
                 try
@@ -530,7 +536,6 @@ namespace EmbyCredits.Services
         {
             _logger?.Info("=== DryRunSeriesDebugRequest START ===");
 
-            // Handle season-specific debug dry run
             if (request?.SeasonNumber.HasValue == true && !string.IsNullOrEmpty(request.SeriesId))
             {
                 try

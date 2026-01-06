@@ -6,6 +6,7 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
+using MediaBrowser.Controller.Notifications;
 using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Controller.Plugins;
 using MediaBrowser.Model.Drawing;
@@ -23,18 +24,21 @@ namespace EmbyCredits
         private readonly ILibraryManager _libraryManager;
         private readonly IItemRepository _itemRepository;
         private readonly IFfmpegManager _ffmpegManager;
+        private readonly IMediaEncoder _mediaEncoder;
+        private readonly INotificationManager _notificationManager;
         public static Plugin? Instance { get; private set; }
         public static CreditsDetectionProgress Progress { get; } = new CreditsDetectionProgress();
         public static CreditsDetectionProgress BackupExportProgress { get; } = new CreditsDetectionProgress();
         public static CreditsDetectionProgress BackupImportProgress { get; } = new CreditsDetectionProgress();
         public static CreditsBackupService? CreditsBackupService { get; private set; }
         public static ChapterMarkerService? ChapterMarkerService { get; private set; }
+        public static INotificationManager? NotificationManager { get; private set; }
 
         public override string Name => "Credits Detector";
         public override string Description => "Automatically detects end credits in TV shows and saves timestamps to files.";
         public override Guid Id => Guid.Parse("b1a65a73-a620-432a-9f5b-285038031c26");
 
-        public Plugin(IApplicationPaths appPaths, IXmlSerializer xmlSerializer, ILogManager logManager, ILibraryManager libraryManager, IItemRepository itemRepository, IFfmpegManager ffmpegManager)
+        public Plugin(IApplicationPaths appPaths, IXmlSerializer xmlSerializer, ILogManager logManager, ILibraryManager libraryManager, IItemRepository itemRepository, IFfmpegManager ffmpegManager, IMediaEncoder mediaEncoder, INotificationManager notificationManager)
             : base(appPaths, xmlSerializer)
         {
             Instance = this;
@@ -43,6 +47,9 @@ namespace EmbyCredits
             _libraryManager = libraryManager;
             _itemRepository = itemRepository;
             _ffmpegManager = ffmpegManager;
+            _mediaEncoder = mediaEncoder;
+            _notificationManager = notificationManager;
+            NotificationManager = notificationManager;
         }
 
         public override void SaveConfiguration()
@@ -140,6 +147,8 @@ namespace EmbyCredits
             CreditsDetectionService.SetLibraryManager(_libraryManager);
             CreditsDetectionService.SetItemRepository(_itemRepository);
             CreditsDetectionService.SetFfmpegManager(_ffmpegManager);
+            
+            Services.Utilities.FFmpegHelper.Initialize(_ffmpegManager, _mediaEncoder);
             Services.Utilities.FFmpegHelper.SetCustomTempPath(Configuration.TempFolderPath);
 
             CreditsBackupService = new CreditsBackupService(_logger, _libraryManager, _itemRepository);
@@ -176,6 +185,11 @@ namespace EmbyCredits
             {
                 _logger.Warn($"Error during final temp directory cleanup: {ex.Message}");
             }
+        }
+
+        public INotificationManager GetNotificationManager()
+        {
+            return _notificationManager;
         }
 
         public Stream GetThumbImage()

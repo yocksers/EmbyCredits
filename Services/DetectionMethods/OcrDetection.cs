@@ -117,7 +117,9 @@ namespace EmbyCredits.Services.DetectionMethods
 
                     var ffmpegTempDir = tempDir.Replace("\\", "/");
                     var ffmpegFramePath = $"{ffmpegTempDir}/frame_%04d.{imageExtension}";
-                    var extractArgs = $"-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"fps={fps.ToString(CultureInfo.InvariantCulture)}\" {qualityParam} -f image2 \"{ffmpegFramePath}\"";
+                    
+                    var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
+                    var extractArgs = $"-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"fps={fps.ToString(CultureInfo.InvariantCulture)}\" {qualityParam} -f image2 \"{ffmpegFramePath}\"";
 
                     LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps ({imageFormat.ToUpperInvariant()}{(imageFormat == "jpg" ? $" Q{Configuration.OcrJpegQuality}" : "")}) for OCR analysis");
                     LogDebug($"FFmpeg command: {FFmpegHelper.GetFfmpegPath()} {extractArgs}");
