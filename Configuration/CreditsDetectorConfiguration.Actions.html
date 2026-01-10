@@ -53,24 +53,24 @@
             <span>Clear Queue</span>
         </button>
     </div>
-    <div style="margin-top: 0.5em; padding: 0.5em; background-color: rgba(245,245,245,0.95); border-radius: 4px; border-left: 3px solid #1e88e5;">
-        <span style="font-size: 0.9em; color: #333 !important;"><strong style="color: #1e88e5;">Dry Run:</strong> Detects credits without saving chapter markers - useful for testing detection accuracy.</span><br>
-        <span style="font-size: 0.9em; color: #333 !important;"><strong style="color: #9c27b0;">Dry Run with Debug:</strong> Same as Dry Run but captures detailed debug logs and downloads them for troubleshooting.</span>
+    <div style="margin-top: 0.5em; padding: 0.5em; background-color: rgba(128,128,128,0.15); border-radius: 4px; border-left: 3px solid #1e88e5;">
+        <span style="font-size: 0.9em;"><strong style="color: #1e88e5;">Dry Run:</strong> Detects credits without saving chapter markers - useful for testing detection accuracy.</span><br>
+        <span style="font-size: 0.9em;"><strong style="color: #9c27b0;">Dry Run with Debug:</strong> Same as Dry Run but captures detailed debug logs and downloads them for troubleshooting.</span>
     </div>
 
     <div id="progressContainer" style="margin-top: 2em; display: none;">
         <div class="fieldDescription" style="margin-bottom: 0.5em;">
             <strong>Processing: <span id="currentItem">-</span></strong>
         </div>
-        <div style="background: rgba(255,255,255,0.1); border-radius: 4px; height: 24px; overflow: hidden; position: relative; margin-bottom: 0.5em;">
+        <div style="background: rgba(128,128,128,0.2); border-radius: 4px; height: 24px; overflow: hidden; position: relative; margin-bottom: 0.5em;">
             <div id="progressBar" style="background: linear-gradient(90deg, #52B54B 0%, #6FC774 100%); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center; justify-content: center;">
                 <span id="percentText" style="color: white; font-weight: bold; font-size: 0.9em; text-shadow: 0 1px 2px rgba(0,0,0,0.5);"></span>
             </div>
         </div>
-        <div style="background: rgba(255,255,255,0.05); border-radius: 4px; height: 8px; overflow: hidden; position: relative; margin-bottom: 0.5em;">
+        <div style="background: rgba(128,128,128,0.15); border-radius: 4px; height: 8px; overflow: hidden; position: relative; margin-bottom: 0.5em;">
             <div id="itemProgressBar" style="background: linear-gradient(90deg, #4A9FE5 0%, #5AAEF5 100%); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
         </div>
-        <div style="display: flex; justify-content: space-between; font-size: 0.9em; color: rgba(255,255,255,0.7); margin-bottom: 0.5em;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.9em; opacity: 0.8; margin-bottom: 0.5em;">
             <span>Episodes: <span id="progressCount">0/0</span></span>
             <span>Success: <span id="successCount">0</span> | Failed: <span id="failedCount">0</span></span>
             <span>ETA: <span id="etaText">-</span></span>
@@ -85,11 +85,11 @@
 
     <div id="failureDetails" style="margin-top: 1.5em; display: none;">
         <h3 style="color: #E5A54A; margin-bottom: 0.5em;">Failed Episodes</h3>
-        <div id="failureList" style="background: rgba(255,255,255,0.05); border-radius: 4px; padding: 1em; max-height: 300px; overflow-y: auto;"></div>
+        <div id="failureList" style="background: rgba(128,128,128,0.1); border-radius: 4px; padding: 1em; max-height: 300px; overflow-y: auto; border: 1px solid rgba(128,128,128,0.2);"></div>
     </div>
     <div id="successDetails" style="margin-top: 1.5em; display: none;">
         <h3 style="color: #52b54b; margin-bottom: 0.5em;">Successfully Detected Markers</h3>
-        <div id="successList" style="background: rgba(255,255,255,0.05); border-radius: 4px; padding: 1em; max-height: 300px; overflow-y: auto;"></div>
+        <div id="successList" style="background: rgba(128,128,128,0.1); border-radius: 4px; padding: 1em; max-height: 300px; overflow-y: auto; border: 1px solid rgba(128,128,128,0.2);"></div>
     </div>
 </div>
 
@@ -107,7 +107,7 @@
 
     <div id="markersDisplay" style="margin-top: 2em; display: none;">
         <h3 id="markersSeriesName" style="color: #52B54B;"></h3>
-        <div id="markersContent" style="max-height: 500px; overflow-y: auto;"></div>
+        <div id="markersContent" style="max-height: 500px; overflow-y: auto; padding: 0.5em; background: rgba(128,128,128,0.08); border-radius: 4px;"></div>
     </div>
 </div>
 
@@ -123,6 +123,10 @@
         <button is="emby-button" type="button" class="raised" id="btnImportBackup" style="flex: 1; min-width: 200px;">
             <i class="md-icon">upload</i>
             <span>Import Credits Backup</span>
+        </button>
+        <button is="emby-button" type="button" class="raised" id="btnBulkExportSeries" style="flex: 1; min-width: 200px; background-color: #52B54B;">
+            <i class="md-icon">playlist_add_check</i>
+            <span>Bulk Export by Series</span>
         </button>
     </div>
 
@@ -147,4 +151,46 @@
     </a>
     <p style="margin-top: 0.75em; font-size: 0.95em; opacity: 0.85;">If you like this plugin please consider donating a coffee.</p>
     <p style="margin-top: 1em; font-size: 0.9em; color: #52B54B; font-style: italic;">Special thanks to Neminem for the help with this plugin</p>
+</div>
+
+<div id="bulkExportModal" class="dialogBackdrop" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; justify-content: center; align-items: center;">
+    <div class="dialog" style="border-radius: 8px; padding: 2em; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em;">
+            <h2 style="margin: 0; color: #52B54B;">Select TV Shows to Export</h2>
+            <button is="emby-button" type="button" id="btnCloseBulkExportModal" class="paper-icon-button-light" style="background: transparent; border: none; cursor: pointer;">
+                <i class="md-icon" style="font-size: 24px;">close</i>
+            </button>
+        </div>
+
+        <div class="selectContainer" style="margin-bottom: 1.5em;">
+            <label class="selectLabel" for="selectBulkExportLibrary">Filter by Library (Optional)</label>
+            <select is="emby-select" id="selectBulkExportLibrary">
+                <option value="">-- All Libraries --</option>
+            </select>
+            <div class="fieldDescription">Filter TV shows by library</div>
+        </div>
+
+        <div style="margin-bottom: 1em;">
+            <button is="emby-button" type="button" class="raised" id="btnSelectAllSeries" style="margin-right: 0.5em;">
+                <span>Select All</span>
+            </button>
+            <button is="emby-button" type="button" class="raised" id="btnDeselectAllSeries">
+                <span>Deselect All</span>
+            </button>
+        </div>
+
+        <div id="bulkExportSeriesList" style="max-height: 300px; overflow-y: auto; border: 1px solid rgba(128,128,128,0.3); border-radius: 4px; padding: 1em; background: rgba(128,128,128,0.1);">
+            <div style="text-align: center; opacity: 0.6;">Loading TV shows...</div>
+        </div>
+
+        <div style="margin-top: 1.5em; display: flex; gap: 1em; justify-content: flex-end;">
+            <button is="emby-button" type="button" class="raised" id="btnCancelBulkExport">
+                <span>Cancel</span>
+            </button>
+            <button is="emby-button" type="button" class="raised button-submit" id="btnConfirmBulkExport" style="background-color: #52B54B;">
+                <i class="md-icon">download</i>
+                <span>Export Selected</span>
+            </button>
+        </div>
+    </div>
 </div>

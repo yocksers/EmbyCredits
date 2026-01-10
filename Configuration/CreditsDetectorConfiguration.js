@@ -20,14 +20,12 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
         }
 
         bindEventListeners(view) {
-            // Form submission - delegate to DataManager
             view.querySelector('.creditsDetectorForm').addEventListener('submit', (e) => {
                 e.preventDefault();
                 dataManager.saveData(this, view);
                 return false;
             });
 
-            // Data actions
             view.querySelector('#btnResetToDefaults').addEventListener('click', () => {
                 dataManager.resetToDefaults(view);
             });
@@ -36,7 +34,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 dataManager.browseTempFolder(view);
             });
 
-            // Processing actions
+
             view.querySelector('#btnProcessSeries').addEventListener('click', () => {
                 processingActions.processSeries(this, view);
             });
@@ -65,7 +63,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 processingActions.testOcrConnection(view);
             });
 
-            // Series/Episode selection - delegate to SeriesManager
             view.querySelector('#selectLibraryFilter').addEventListener('change', () => {
                 const libraryId = view.querySelector('#selectLibraryFilter').value;
                 seriesManager.loadSeriesList(view, libraryId);
@@ -78,10 +75,9 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
 
             view.querySelector('#selectSeriesForMarkers').addEventListener('change', () => {
                 const seriesId = view.querySelector('#selectSeriesForMarkers').value;
-                markersManager.displayMarkers(view);
+                markersManager.displayMarkers(this, view);
             });
 
-            // Backup/Restore - delegate to BackupManager
             view.querySelector('#btnExportBackup').addEventListener('click', () => {
                 backupManager.exportBackup(view);
             });
@@ -90,7 +86,35 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 backupManager.importBackup(view);
             });
 
-            // Keyword Manager (inline)
+            view.querySelector('#btnBulkExportSeries').addEventListener('click', () => {
+                backupManager.openBulkExportModal(view);
+            });
+
+            view.querySelector('#btnCloseBulkExportModal').addEventListener('click', () => {
+                backupManager.closeBulkExportModal(view);
+            });
+
+            view.querySelector('#btnCancelBulkExport').addEventListener('click', () => {
+                backupManager.closeBulkExportModal(view);
+            });
+
+            view.querySelector('#selectBulkExportLibrary').addEventListener('change', () => {
+                const libraryId = view.querySelector('#selectBulkExportLibrary').value;
+                backupManager.loadBulkExportSeriesList(view, libraryId);
+            });
+
+            view.querySelector('#btnSelectAllSeries').addEventListener('click', () => {
+                backupManager.selectAllSeries(view);
+            });
+
+            view.querySelector('#btnDeselectAllSeries').addEventListener('click', () => {
+                backupManager.deselectAllSeries(view);
+            });
+
+            view.querySelector('#btnConfirmBulkExport').addEventListener('click', () => {
+                backupManager.confirmBulkExport(view);
+            });
+
             view.querySelector('#btnAddKeyword').addEventListener('click', () => {
                 this.addKeyword(view);
             });
@@ -108,7 +132,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     view.querySelector('#txtOcrDetectionKeywords').value = defaults;
                     this.updateKeywordDisplay(view);
                     
-                    // Auto-save after resetting keywords
                     require(['configurationpage?name=CreditsDetectorConfigurationDataManager'], (dataManager) => {
                         dataManager.saveData(this, view);
                     });
@@ -140,7 +163,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             input.value = '';
             input.focus();
             
-            // Auto-save after adding keyword
             require(['configurationpage?name=CreditsDetectorConfigurationDataManager'], (dataManager) => {
                 dataManager.saveData(this, view);
             });
@@ -153,7 +175,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             hiddenInput.value = filtered.join(',');
             this.updateKeywordDisplay(view);
             
-            // Auto-save after removing keyword
             require(['configurationpage?name=CreditsDetectorConfigurationDataManager'], (dataManager) => {
                 dataManager.saveData(this, view);
             });
@@ -164,19 +185,18 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             const hiddenInput = view.querySelector('#txtOcrDetectionKeywords');
             const keywords = hiddenInput.value.split(',').map(k => k.trim()).filter(k => k.length > 0);
             
-            // Sort keywords alphabetically (case-insensitive)
             keywords.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
             
             displayArea.innerHTML = '';
             
             if (keywords.length === 0) {
-                displayArea.innerHTML = '<div style="color: rgba(255,255,255,0.5); width: 100%; text-align: center; padding: 1.5em;">No keywords configured</div>';
+                displayArea.innerHTML = '<div style="opacity: 0.5; width: 100%; text-align: center; padding: 1.5em;">No keywords configured</div>';
                 return;
             }
             
             keywords.forEach(keyword => {
                 const chip = document.createElement('div');
-                chip.style.cssText = 'display: inline-flex; align-items: center; gap: 0.5em; padding: 0.5em 0.75em; background: #52B54B; border-radius: 4px; font-size: 0.9em;';
+                chip.style.cssText = 'display: inline-flex; align-items: center; gap: 0.5em; padding: 0.5em 0.75em; background: #52B54B; color: white; border-radius: 4px; font-size: 0.9em;';
                 
                 const text = document.createElement('span');
                 text.textContent = keyword;

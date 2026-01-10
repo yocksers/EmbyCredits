@@ -219,6 +219,12 @@ namespace EmbyCredits.Services
 
                 if (creditsStart > 0)
                 {
+                    if (creditsStart >= duration)
+                    {
+                        _debugLogger.LogWarn($"✗ Detected timestamp ({FormatTime(creditsStart)}) exceeds video duration ({FormatTime(duration)}) for {episode.Name}");
+                        return (false, 0, $"Detected timestamp exceeds duration: {creditsStart:F1}s >= {duration:F1}s");
+                    }
+
                     if (!isDryRun)
                     {
                         _debugLogger.LogDebug($"Saving chapter marker at {FormatTime(creditsStart)}");
@@ -284,7 +290,7 @@ namespace EmbyCredits.Services
 
                 var ffprobeInputPath = Utilities.FFmpegHelper.GetInputArgument(filePath);
 
-                var process = new Process
+                using (var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
                     {
@@ -295,21 +301,22 @@ namespace EmbyCredits.Services
                         RedirectStandardError = true,
                         CreateNoWindow = true
                     }
-                };
-
-                process.Start();
-                var output = await process.StandardOutput.ReadToEndAsync();
-                await process.WaitForExitAsync();
-
-                if (double.TryParse(output.Trim(), System.Globalization.NumberStyles.Any, 
-                    System.Globalization.CultureInfo.InvariantCulture, out var duration))
+                })
                 {
-                    _debugLogger.LogDebug($"Duration result: {duration} seconds");
-                    return duration;
-                }
+                    process.Start();
+                    var output = await process.StandardOutput.ReadToEndAsync();
+                    await process.WaitForExitAsync();
 
-                _debugLogger.LogError("Failed to parse duration output", null);
-                return 0;
+                    if (double.TryParse(output.Trim(), System.Globalization.NumberStyles.Any, 
+                        System.Globalization.CultureInfo.InvariantCulture, out var duration))
+                    {
+                        _debugLogger.LogDebug($"Duration result: {duration} seconds");
+                        return duration;
+                    }
+
+                    _debugLogger.LogError("Failed to parse duration output", null);
+                    return 0;
+                }
             }
             catch (Exception ex)
             {

@@ -7,6 +7,8 @@ namespace EmbyCredits.Api
         public const string ProcessEpisode = "/CreditsDetector/ProcessEpisode";
         public const string ProcessSeries = "/CreditsDetector/ProcessSeries";
         public const string ProcessSeason = "/CreditsDetector/ProcessSeason";
+        public const string ProcessSeasonMissingMarkers = "/CreditsDetector/ProcessSeasonMissingMarkers";
+        public const string BatchUpdateSeasonMissingMarkers = "/CreditsDetector/BatchUpdateSeasonMissingMarkers";
         public const string ProcessLibrary = "/CreditsDetector/ProcessLibrary";
         public const string GetAllSeries = "/CreditsDetector/GetAllSeries";
         public const string GetProgress = "/CreditsDetector/GetProgress";
@@ -19,6 +21,8 @@ namespace EmbyCredits.Api
         public const string GetDebugLog = "/CreditsDetector/GetDebugLog";
         public const string ExportCreditsBackup = "/CreditsDetector/ExportCreditsBackup";
         public const string ImportCreditsBackup = "/CreditsDetector/ImportCreditsBackup";
+        public const string ExportSeriesCredits = "/CreditsDetector/ExportSeriesCredits";
+        public const string ImportSeriesCredits = "/CreditsDetector/ImportSeriesCredits";
         public const string GetBackupExportProgress = "/CreditsDetector/GetBackupExportProgress";
         public const string GetBackupImportProgress = "/CreditsDetector/GetBackupImportProgress";
         public const string UpdateCreditsMarker = "/CreditsDetector/UpdateCreditsMarker";

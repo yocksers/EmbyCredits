@@ -121,10 +121,11 @@ namespace EmbyCredits.Services
                             TmdbId = series?.ProviderIds?.TryGetValue("Tmdb", out var tmdbId) == true ? tmdbId : null,
                             ImdbId = series?.ProviderIds?.TryGetValue("Imdb", out var imdbId) == true ? imdbId : null,
                             TvdbEpisodeId = episode.ProviderIds?.TryGetValue("Tvdb", out var epTvdbId) == true ? epTvdbId : null,
+                            TmdbEpisodeId = episode.ProviderIds?.TryGetValue("Tmdb", out var epTmdbId) == true ? epTmdbId : null,
+                            ImdbEpisodeId = episode.ProviderIds?.TryGetValue("Imdb", out var epImdbId) == true ? epImdbId : null,
                             SeasonNumber = episode.ParentIndexNumber ?? 0,
                             EpisodeNumber = episode.IndexNumber ?? 0,
                             EpisodeName = episode.Name,
-                            EpisodeId = episode.Id.ToString(),
                             FilePath = episode.Path,
                             CreditsStartTicks = creditsMarker.StartPositionTicks
                         };
@@ -236,9 +237,10 @@ namespace EmbyCredits.Services
                 }).Cast<Episode>().ToList();
 
                 var episodesByTvdbId = new Dictionary<string, Episode>();
-                var episodesByGuid = new Dictionary<Guid, Episode>();
-                var episodesByPath = new Dictionary<string, Episode>(StringComparer.OrdinalIgnoreCase);
+                var episodesByTmdbId = new Dictionary<string, Episode>();
+                var episodesByImdbId = new Dictionary<string, Episode>();
                 var episodesBySeriesAndNumber = new Dictionary<string, List<Episode>>();
+                var episodesByPath = new Dictionary<string, Episode>(StringComparer.OrdinalIgnoreCase);
 
                 foreach (var ep in allEpisodes)
                 {
@@ -247,7 +249,15 @@ namespace EmbyCredits.Services
                         episodesByTvdbId[epTvdbId] = ep;
                     }
                     
-                    episodesByGuid[ep.Id] = ep;
+                    if (ep.ProviderIds?.TryGetValue("Tmdb", out var epTmdbId) == true && !string.IsNullOrEmpty(epTmdbId))
+                    {
+                        episodesByTmdbId[epTmdbId] = ep;
+                    }
+                    
+                    if (ep.ProviderIds?.TryGetValue("Imdb", out var epImdbId) == true && !string.IsNullOrEmpty(epImdbId))
+                    {
+                        episodesByImdbId[epImdbId] = ep;
+                    }
                     
                     if (!string.IsNullOrEmpty(ep.Path))
                     {
@@ -285,7 +295,7 @@ namespace EmbyCredits.Services
                     }
                 }
 
-                _logger.Info($"Episode cache built: {episodesByTvdbId.Count} by TVDB ID, {episodesByGuid.Count} by GUID, {episodesByPath.Count} by path");
+                _logger.Info($"Episode cache built: {episodesByTvdbId.Count} by TVDB ID, {episodesByTmdbId.Count} by TMDB ID, {episodesByImdbId.Count} by IMDB ID, {episodesByPath.Count} by path");
 
                 int processed = 0;
                 foreach (var entry in backup.Entries)
@@ -299,14 +309,14 @@ namespace EmbyCredits.Services
                         episode = epByTvdb;
                     }
 
-                    if (episode == null && Guid.TryParse(entry.EpisodeId, out Guid episodeGuid) && episodesByGuid.TryGetValue(episodeGuid, out var epByGuid))
+                    if (episode == null && !string.IsNullOrEmpty(entry.TmdbEpisodeId) && episodesByTmdbId.TryGetValue(entry.TmdbEpisodeId, out var epByTmdb))
                     {
-                        episode = epByGuid;
+                        episode = epByTmdb;
                     }
 
-                    if (episode == null && !string.IsNullOrEmpty(entry.FilePath) && episodesByPath.TryGetValue(entry.FilePath, out var epByPath))
+                    if (episode == null && !string.IsNullOrEmpty(entry.ImdbEpisodeId) && episodesByImdbId.TryGetValue(entry.ImdbEpisodeId, out var epByImdb))
                     {
-                        episode = epByPath;
+                        episode = epByImdb;
                     }
 
                     if (episode == null)
@@ -337,6 +347,11 @@ namespace EmbyCredits.Services
                                 episode = matches[0];
                             }
                         }
+                    }
+
+                    if (episode == null && !string.IsNullOrEmpty(entry.FilePath) && episodesByPath.TryGetValue(entry.FilePath, out var epByPath))
+                    {
+                        episode = epByPath;
                     }
 
                     if (episode == null)
@@ -370,6 +385,30 @@ namespace EmbyCredits.Services
                                 progress.ProcessedItems = processed;
                             continue;
                         }
+                    }
+
+                    if (!episode.RunTimeTicks.HasValue || episode.RunTimeTicks.Value <= 0)
+                    {
+                        _logger.Debug($"Skipping {episode.Name} - no valid runtime information");
+                        notFound++;
+                        if (progress != null) progress.FailedItems++;
+                        processed++;
+                        if (progress != null && processed % 5 == 0)
+                            progress.ProcessedItems = processed;
+                        continue;
+                    }
+
+                    if (entry.CreditsStartTicks >= episode.RunTimeTicks.Value)
+                    {
+                        var timestampSeconds = entry.CreditsStartTicks / (double)TimeSpan.TicksPerSecond;
+                        var durationSeconds = episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond;
+                        _logger.Warn($"Skipping {episode.Name} - timestamp ({timestampSeconds:F1}s) exceeds video duration ({durationSeconds:F1}s)");
+                        notFound++;
+                        if (progress != null) progress.FailedItems++;
+                        processed++;
+                        if (progress != null && processed % 5 == 0)
+                            progress.ProcessedItems = processed;
+                        continue;
                     }
 
                     var chapters = _itemRepository.GetChapters(episode)?.ToList() ?? new List<ChapterInfo>();
@@ -505,10 +544,11 @@ namespace EmbyCredits.Services
         public string? TmdbId { get; set; }
         public string? ImdbId { get; set; }
         public string? TvdbEpisodeId { get; set; }
+        public string? TmdbEpisodeId { get; set; }
+        public string? ImdbEpisodeId { get; set; }
         public int SeasonNumber { get; set; }
         public int EpisodeNumber { get; set; }
         public string EpisodeName { get; set; } = string.Empty;
-        public string EpisodeId { get; set; } = string.Empty;
         public string FilePath { get; set; } = string.Empty;
         public long CreditsStartTicks { get; set; }
     }

@@ -907,11 +907,9 @@ namespace EmbyCredits.Services.DetectionMethods
             if (string.IsNullOrEmpty(text))
                 return string.Empty;
             
-            // Remove form feed and other control characters (except newline, carriage return, and tab which may be meaningful)
             var cleaned = new System.Text.StringBuilder(text.Length);
             foreach (char c in text)
             {
-                // Keep printable characters and meaningful whitespace (newline, carriage return, tab, space)
                 if (!char.IsControl(c) || c == '\n' || c == '\r' || c == '\t' || c == ' ')
                 {
                     cleaned.Append(c);
@@ -985,23 +983,18 @@ namespace EmbyCredits.Services.DetectionMethods
                     consecutiveCount++;
                     if (consecutiveCount >= consecutiveRequired)
                     {
-                        // Basic density check passed, now apply additional filters
-                        
-                        // Filter 1: Keyword Requirement
                         if (Configuration.OcrDensityRequireKeyword && !CheckKeywordRequirement(detectionScores, currentTimestamp))
                         {
                             LogDebug($"Density detected at {FormatTime(currentTimestamp)} but no keywords found within {Configuration.OcrDensityKeywordWindowSeconds}s window - rejected");
                             return false;
                         }
                         
-                        // Filter 2: Temporal Consistency Check
                         if (Configuration.OcrDensityRequireTemporalConsistency && !CheckTemporalConsistency(history, currentTimestamp))
                         {
                             LogDebug($"Density detected at {FormatTime(currentTimestamp)} but temporal consistency requirement not met (need {Configuration.OcrDensityMinimumDurationSeconds}s sustained) - rejected");
                             return false;
                         }
                         
-                        // Filter 3: Text Style Consistency
                         if (Configuration.OcrDensityRequireStyleConsistency && !CheckStyleConsistency(history, currentTimestamp, currentCharCount))
                         {
                             LogDebug($"Density detected at {FormatTime(currentTimestamp)} but style consistency check failed - rejected");
@@ -1023,7 +1016,6 @@ namespace EmbyCredits.Services.DetectionMethods
         
         private bool CheckKeywordRequirement(List<(double timestamp, int matchCount, string matchedKeywords)> detectionScores, double currentTimestamp)
         {
-            // Check if there are any keyword matches within the specified time window
             var windowSeconds = Configuration.OcrDensityKeywordWindowSeconds;
             var keywordMatches = detectionScores
                 .Where(s => Math.Abs(s.timestamp - currentTimestamp) <= windowSeconds && 
@@ -1036,11 +1028,9 @@ namespace EmbyCredits.Services.DetectionMethods
         
         private bool CheckTemporalConsistency(List<(double timestamp, int charCount)> history, double currentTimestamp)
         {
-            // Check if we have sustained high density for the minimum required duration
             var minDuration = Configuration.OcrDensityMinimumDurationSeconds;
             var threshold = Configuration.OcrCharacterDensityThreshold;
             
-            // Get frames within the lookback window
             var relevantFrames = history
                 .Where(h => h.timestamp <= currentTimestamp && h.timestamp >= currentTimestamp - minDuration)
                 .OrderBy(h => h.timestamp)
@@ -1049,10 +1039,8 @@ namespace EmbyCredits.Services.DetectionMethods
             if (relevantFrames.Count == 0)
                 return false;
             
-            // Calculate the actual time span covered
             var timeSpan = currentTimestamp - relevantFrames.First().timestamp;
             
-            // Must have frames spanning at least the minimum duration
             if (timeSpan < minDuration * 0.8) // Allow 20% tolerance
                 return false;
             

@@ -23,6 +23,25 @@ namespace EmbyCredits.Services
         {
             try
             {
+                if (!episode.RunTimeTicks.HasValue || episode.RunTimeTicks.Value <= 0)
+                {
+                    _logger.Error($"Cannot save credits marker for {episode.Name} - no valid runtime information");
+                    throw new InvalidOperationException("Episode has no valid runtime information");
+                }
+
+                var durationSeconds = episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond;
+                if (creditsStartSeconds < 0)
+                {
+                    _logger.Error($"Cannot save credits marker for {episode.Name} - negative timestamp: {creditsStartSeconds}s");
+                    throw new ArgumentOutOfRangeException(nameof(creditsStartSeconds), "Timestamp cannot be negative");
+                }
+
+                if (creditsStartSeconds >= durationSeconds)
+                {
+                    _logger.Error($"Cannot save credits marker for {episode.Name} - timestamp ({creditsStartSeconds:F1}s) exceeds video duration ({durationSeconds:F1}s)");
+                    throw new ArgumentOutOfRangeException(nameof(creditsStartSeconds), $"Timestamp {creditsStartSeconds:F1}s exceeds video duration {durationSeconds:F1}s");
+                }
+
                 var chapters = _itemRepository.GetChapters(episode)?.ToList() ?? new List<ChapterInfo>();
 
                 var existingCreditsMarkers = chapters.Where(c =>
@@ -136,6 +155,7 @@ namespace EmbyCredits.Services
                         Episode = episode.IndexNumber,
                         SeasonEpisode = $"S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2}",
                         Duration = episode.RunTimeTicks.HasValue ? FormatTime(episode.RunTimeTicks.Value / TimeSpan.TicksPerSecond) : "Unknown",
+                        DurationSeconds = episode.RunTimeTicks.HasValue ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond : 0,
                         HasCreditsMarker = creditsMarkers.Count > 0,
                         Markers = creditsMarkers,
                         AllChapters = chapters.Select(c => new

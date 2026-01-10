@@ -101,10 +101,9 @@ define(['loading', 'toast'], function (loading, toast) {
         })).then(response => {
             const episodes = response.Items || [];
             
-            // Filter out TV specials (Season 0)
             const filteredEpisodes = episodes.filter(ep => ep.ParentIndexNumber && ep.ParentIndexNumber !== 0);
             
-            // Sort episodes by season number, then episode number
+
             filteredEpisodes.sort((a, b) => {
                 const seasonA = a.ParentIndexNumber || 0;
                 const seasonB = b.ParentIndexNumber || 0;
@@ -114,7 +113,6 @@ define(['loading', 'toast'], function (loading, toast) {
                 return (a.IndexNumber || 0) - (b.IndexNumber || 0);
             });
             
-            // Group episodes by season
             const episodesBySeason = {};
             filteredEpisodes.forEach(ep => {
                 const season = ep.ParentIndexNumber || 0;
@@ -127,19 +125,15 @@ define(['loading', 'toast'], function (loading, toast) {
             const selectEpisode = view.querySelector('#selectEpisode');
             selectEpisode.innerHTML = '<option value="">-- All Episodes --</option>';
             
-            // Get sorted season numbers
             const seasons = Object.keys(episodesBySeason).map(s => parseInt(s)).sort((a, b) => a - b);
             
-            // Add each season with optgroup
             seasons.forEach(seasonNum => {
-                // Add season option to select entire season
                 const seasonOption = document.createElement('option');
                 seasonOption.value = `season:${seasonNum}`;
                 seasonOption.textContent = `Season ${seasonNum}`;
                 seasonOption.style.fontWeight = 'bold';
                 selectEpisode.appendChild(seasonOption);
                 
-                // Create optgroup for episodes in this season
                 const optgroup = document.createElement('optgroup');
                 optgroup.label = `Season ${seasonNum} Episodes`;
                 

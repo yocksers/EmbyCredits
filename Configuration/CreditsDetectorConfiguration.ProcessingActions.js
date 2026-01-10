@@ -7,9 +7,7 @@ define(['loading', 'toast'], function (loading, toast) {
         const episodeId = view.querySelector('#selectEpisode').value;
         const skipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers').checked;
 
-        // Priority: Episode > Season > Series > Library
         if (episodeId) {
-            // Check if it's a season selection (format: "season:N")
             if (episodeId.startsWith('season:')) {
                 const seasonNumber = parseInt(episodeId.split(':')[1]);
                 loading.show();
@@ -33,7 +31,6 @@ define(['loading', 'toast'], function (loading, toast) {
                 return;
             }
             
-            // Process single episode
             loading.show();
             ApiClient.ajax({
                 type: 'POST',
@@ -167,10 +164,8 @@ define(['loading', 'toast'], function (loading, toast) {
 
         const endpoint = isDebug ? 'CreditsDetector/DryRunSeriesDebug' : 'CreditsDetector/DryRunSeries';
         
-        // Priority: Episode > Season > Series > Library
         let dataPayload = null;
         if (episodeId) {
-            // Check if it's a season selection (format: "season:N")
             if (episodeId.startsWith('season:')) {
                 const seasonNumber = parseInt(episodeId.split(':')[1]);
                 dataPayload = { SeriesId: seriesId, SeasonNumber: seasonNumber, SkipExistingMarkers: skipExistingMarkers };

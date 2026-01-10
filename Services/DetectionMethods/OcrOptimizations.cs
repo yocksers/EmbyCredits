@@ -13,30 +13,32 @@ namespace EmbyCredits.Services.DetectionMethods
             int maxParallelism = 4)
         {
             var results = new List<(string, string, double)>();
-            var semaphore = new System.Threading.SemaphoreSlim(maxParallelism, maxParallelism);
-            var tasks = new List<Task<(string, string, double)>>();
-
-            foreach (var frame in frames)
+            using (var semaphore = new System.Threading.SemaphoreSlim(maxParallelism, maxParallelism))
             {
-                await semaphore.WaitAsync().ConfigureAwait(false);
+                var tasks = new List<Task<(string, string, double)>>();
 
-                var task = Task.Run(async () =>
+                foreach (var frame in frames)
                 {
-                    try
-                    {
-                        var text = await ocrFunction(frame.path).ConfigureAwait(false);
-                        return (frame.path, text, frame.timestamp);
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                });
+                    await semaphore.WaitAsync().ConfigureAwait(false);
 
-                tasks.Add(task);
+                    var task = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var text = await ocrFunction(frame.path).ConfigureAwait(false);
+                            return (frame.path, text, frame.timestamp);
+                        }
+                        finally
+                        {
+                            semaphore.Release();
+                        }
+                    });
+
+                    tasks.Add(task);
+                }
+
+                results = (await Task.WhenAll(tasks).ConfigureAwait(false)).ToList();
             }
-
-            results = (await Task.WhenAll(tasks).ConfigureAwait(false)).ToList();
             return results;
         }
 

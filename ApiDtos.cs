@@ -31,6 +31,22 @@ namespace EmbyCredits.Api
         public bool SkipExistingMarkers { get; set; } = false;
     }
 
+    [Route(ApiRoutes.ProcessSeasonMissingMarkers, "POST", Summary = "Process only episodes missing credits markers in a specific season.")]
+    public class ProcessSeasonMissingMarkersRequest : IReturn<object>
+    {
+        public string SeriesId { get; set; } = string.Empty;
+        public int SeasonNumber { get; set; }
+    }
+
+    [Route(ApiRoutes.BatchUpdateSeasonMissingMarkers, "POST", Summary = "Batch update credits timestamps for all episodes missing markers in a specific season.")]
+    public class BatchUpdateSeasonMissingMarkersRequest : IReturn<object>
+    {
+        public string SeriesId { get; set; } = string.Empty;
+        public int SeasonNumber { get; set; }
+        public double CreditsStartSeconds { get; set; }
+        public bool IsRelativeFromEnd { get; set; } = false;
+    }
+
     [Route(ApiRoutes.ProcessLibrary, "POST", Summary = "Process all TV shows in a library for credits detection.")]
     public class ProcessLibraryRequest : IReturn<object>
     {
@@ -106,6 +122,20 @@ namespace EmbyCredits.Api
         public bool OverwriteExisting { get; set; }
     }
 
+    [Route(ApiRoutes.ExportSeriesCredits, "GET", Summary = "Exports credits markers for a single TV series")]
+    public class ExportSeriesCreditsRequest : IReturn<System.IO.Stream>
+    {
+        public string SeriesId { get; set; } = string.Empty;
+    }
+
+    [Route(ApiRoutes.ImportSeriesCredits, "POST", Summary = "Imports credits markers for a single TV series")]
+    public class ImportSeriesCreditsRequest : IReturn<object>
+    {
+        public string SeriesId { get; set; } = string.Empty;
+        public string JsonData { get; set; } = string.Empty;
+        public bool OverwriteExisting { get; set; } = true;
+    }
+
     [Route(ApiRoutes.GetImage, "GET", Summary = "Gets a plugin image resource.")]
     public class GetImageRequest : IReturn<System.IO.Stream>
     {
@@ -117,5 +147,6 @@ namespace EmbyCredits.Api
     {
         public string EpisodeId { get; set; } = string.Empty;
         public double CreditsStartSeconds { get; set; }
+        public bool IsRelativeFromEnd { get; set; } = false;
     }
 }

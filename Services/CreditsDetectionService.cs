@@ -37,6 +37,7 @@ namespace EmbyCredits.Services
         private static bool _isDryRun = false;
 
         private const int MaxQueueSize = 1000;
+        private const int MaxProcessedEpisodesCache = 10000;
 
         private static DetectionCoordinator? _detectionCoordinator;
         private static DebugLogger? _debugLogger;
@@ -130,11 +131,44 @@ namespace EmbyCredits.Services
             {
 
                 _detectionCoordinator?.ClearCache();
+                _batchDetectionCache.Clear();
+                CleanupOldProcessedEpisodes();
                 _logger?.Info("Cleared in-memory batch detection cache for fresh detection");
             }
             catch (Exception ex)
             {
                 LogError("Error clearing cache", ex);
+            }
+        }
+
+        private static void CleanupOldProcessedEpisodes()
+        {
+            if (_processedEpisodes.Count <= MaxProcessedEpisodesCache)
+                return;
+
+            var cutoffTime = DateTime.UtcNow.AddDays(-7);
+            var keysToRemove = _processedEpisodes
+                .Where(kvp => kvp.Value < cutoffTime)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in keysToRemove)
+            {
+                _processedEpisodes.TryRemove(key, out _);
+            }
+
+            if (_processedEpisodes.Count > MaxProcessedEpisodesCache)
+            {
+                var oldestEntries = _processedEpisodes
+                    .OrderBy(kvp => kvp.Value)
+                    .Take(_processedEpisodes.Count - MaxProcessedEpisodesCache)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                foreach (var key in oldestEntries)
+                {
+                    _processedEpisodes.TryRemove(key, out _);
+                }
             }
         }
 
@@ -295,7 +329,6 @@ namespace EmbyCredits.Services
             LogDebug($"QueueEpisode called for: {episode.Name} (ID: {episodeId}), IsManual: {isManualDetection}");
             LogDebug($"Already processed: {_processedEpisodes.ContainsKey(episodeId)}, IsDryRun: {_isDryRun}, IsProcessing: {_isProcessing}");
 
-            // Skip TV specials (Season 0)
             if (episode.ParentIndexNumber == null || episode.ParentIndexNumber == 0)
             {
                 LogDebug($"Skipping TV special: {episode.SeriesName} - {episode.Name} (Season {episode.ParentIndexNumber})");
@@ -395,10 +428,10 @@ namespace EmbyCredits.Services
             if (_detectionCoordinator == null && _logger != null && _configuration != null)
             {
                 LogInfo("Initializing DetectionCoordinator");
+                _detectionCoordinator?.Dispose();
                 _detectionCoordinator = new DetectionCoordinator(_logger, _configuration);
             }
 
-            // Filter out specials (Season 0)
             var validEpisodes = episodes.Where(e => e.ParentIndexNumber != null && e.ParentIndexNumber != 0).ToList();
             var specialCount = episodes.Count - validEpisodes.Count;
             
@@ -708,6 +741,11 @@ namespace EmbyCredits.Services
         public static System.Collections.Generic.List<object> GetSeriesMarkers(System.Collections.Generic.List<Episode> episodes)
         {
             return _chapterMarkerService?.GetSeriesMarkers(episodes) ?? new System.Collections.Generic.List<object>();
+        }
+
+        public static ChapterMarkerService? GetChapterMarkerService()
+        {
+            return _chapterMarkerService;
         }
 
         private static async Task ProcessQueue()
