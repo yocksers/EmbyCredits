@@ -103,6 +103,7 @@ namespace EmbyCredits.Services
 
         public static void UpdateConfiguration(PluginConfiguration configuration)
         {
+            var previousAutoDetectionState = _configuration?.EnableAutoDetection ?? false;
             _configuration = configuration;
             _logger?.Info("Credits Detection Service configuration updated");
             LogInfo($"Text Detection Enabled: {configuration.EnableTextDetection}");
@@ -121,6 +122,21 @@ namespace EmbyCredits.Services
                     _chapterMarkerService = new ChapterMarkerService(_logger, _itemRepository);
                     _episodeProcessor = new EpisodeProcessor(_logger, _libraryManager, _detectionCoordinator, 
                         _chapterMarkerService, _debugLogger, configuration);
+                }
+            }
+
+            if (_libraryManager != null && _isRunning)
+            {
+                if (configuration.EnableAutoDetection && !previousAutoDetectionState)
+                {
+                    _libraryManager.ItemAdded -= OnItemAdded;
+                    _libraryManager.ItemAdded += OnItemAdded;
+                    _logger?.Info("Auto-detection enabled: ItemAdded event handler registered");
+                }
+                else if (!configuration.EnableAutoDetection && previousAutoDetectionState)
+                {
+                    _libraryManager.ItemAdded -= OnItemAdded;
+                    _logger?.Info("Auto-detection disabled: ItemAdded event handler unregistered");
                 }
             }
         }

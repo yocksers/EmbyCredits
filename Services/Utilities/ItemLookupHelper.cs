@@ -10,10 +10,6 @@ namespace EmbyCredits.Services.Utilities
 {
     public static class ItemLookupHelper
     {
-        /// <summary>
-        /// Determines if an episode is a TV special (Season 0 or no season).
-        /// TV specials are excluded from credits detection.
-        /// </summary>
         public static bool IsSpecialEpisode(Episode episode)
         {
             return episode.ParentIndexNumber == null || episode.ParentIndexNumber == 0;

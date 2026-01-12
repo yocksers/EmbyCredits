@@ -1044,10 +1044,8 @@ namespace EmbyCredits.Services.DetectionMethods
             if (timeSpan < minDuration * 0.8) // Allow 20% tolerance
                 return false;
             
-            // Count how many frames meet the threshold
             var framesAboveThreshold = relevantFrames.Count(f => f.charCount >= threshold);
             
-            // Require at least 60% of frames to be above threshold (allows for some variation)
             var requiredRatio = 0.6;
             var actualRatio = (double)framesAboveThreshold / relevantFrames.Count;
             
@@ -1056,8 +1054,6 @@ namespace EmbyCredits.Services.DetectionMethods
         
         private bool CheckStyleConsistency(List<(double timestamp, int charCount)> history, double currentTimestamp, int currentCharCount)
         {
-            // Check if character counts are relatively consistent (indicates credits-style text)
-            // Credits typically have similar amounts of text per frame, unlike random documents
             var lookbackSeconds = 10.0;
             var threshold = Configuration.OcrCharacterDensityThreshold;
             
@@ -1070,8 +1066,6 @@ namespace EmbyCredits.Services.DetectionMethods
             if (recentFrames.Count < 3)
                 return false;
             
-            // Calculate coefficient of variation (standard deviation / mean)
-            // Lower values indicate more consistent text amounts (typical for credits)
             var charCounts = recentFrames.Select(f => (double)f.charCount).ToList();
             var mean = charCounts.Average();
             
@@ -1082,8 +1076,6 @@ namespace EmbyCredits.Services.DetectionMethods
             var stdDev = Math.Sqrt(variance);
             var coefficientOfVariation = stdDev / mean;
             
-            // Credits typically have CV < 0.5, random text/documents have higher variation
-            // User configurable threshold (default 0.7 is lenient)
             var maxAllowedCV = Configuration.OcrDensityStyleConsistencyThreshold;
             
             return coefficientOfVariation <= maxAllowedCV;
