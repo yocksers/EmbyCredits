@@ -12,6 +12,8 @@ Automatically detect and mark end credits in TV show episodes using OCR (Optical
 - **🔄 Failed Episode Fallback** - Automatically applies timestamps to failed episodes based on successful detections (configurable)
 - **🎛️ Confidence Filtering** - Filter OCR results by confidence score to reduce false positives
 - **💾 Backup & Restore** - Export and import credits markers with TheTVDB IDs for portability between servers
+- **📦 Bulk Export by Series** - Export individual backup files for multiple selected TV shows at once
+- **📥 Multi-File Import** - Import multiple backup JSON files simultaneously for faster restoration
 - **✏️ Manual Marker Editing** - Edit or add credits timestamps directly in the interface for any episode
 - **⚡ Batch Processing** - Efficiently process entire series with pre-computation and caching
 - **🎯 Highly Configurable** - Fine-tune detection parameters, frame rates, analysis windows, and performance options
@@ -24,7 +26,8 @@ Automatically detect and mark end credits in TV show episodes using OCR (Optical
 ## 📋 Prerequisites
 
 - **Emby Server** 4.8+ (tested on 4.9.1.90)
--- **Tesseract OCR Server** (Docker recommended)
+- **Tesseract OCR Server** (Docker recommended)
+- **FFmpeg** (typically included with Emby)
 
 ## 🚀 Quick Start
 
@@ -57,6 +60,7 @@ docker run -d \
 
 1. Navigate to **Emby Dashboard** → **Plugins** → **Credits Detector**
 2. Essential settings:
+   - **Enable OCR Detection**: ✅ Check
    - **OCR Endpoint**: `http://localhost:8884` (or your Docker host IP)
    - **Custom Temp Folder Path**: 
      - **Docker users**: Set to `/tmp` or a mapped volume (e.g., `/config/temp`)
@@ -128,9 +132,17 @@ docker run -d \
 ### Process an Entire Series
 
 1. Go to **Dashboard** → **Plugins** → **Credits Detector**
-2. Select a series from the dropdown
-3. Click **Process All Episodes**
-4. Monitor progress in real-time
+2. Select a library filter (optional) to narrow down your TV shows
+3. Select a series from the dropdown
+4. Click **Process Selection**
+5. Monitor progress in real-time
+
+### Process a Specific Season
+
+1. Select a series from the dropdown
+2. Select a season from the episode dropdown (e.g., "Season 1")
+3. Click **Process Selection**
+4. Only episodes from that season will be processed
 
 ### Auto-Detection
 
@@ -142,6 +154,8 @@ After processing, credits markers appear as chapter points in Emby's video playe
 - **View all markers**: Select a series from the **View Chapter Markers** section to see detected timestamps for all episodes
 - **Edit markers**: Click the **Edit** button next to any marker to manually adjust the timestamp (format: `HH:MM:SS` or `MM:SS`)
 - **Add markers**: For episodes without detected credits, click **Add Marker** to manually set the timestamp
+- **Batch operations**: Use **Detect Missing** to process all episodes in a season without markers, or **Set Time for Missing** to apply a specific timestamp to multiple episodes
+- **Export/Import per series**: Each series can be individually exported or imported for granular backup management
 - **Check logs**: View detailed success/failure reasons in the processing log
 - **Identify fallbacks**: Episodes using fallback timestamps are marked as "OCR Detection (Fallback)"
 
@@ -166,10 +180,24 @@ Test detection without saving markers:
 ### Backup & Restore
 
 Export and import credits markers for backups or server migrations:
+
+#### Single Backup (All Shows)
 1. **Export**: Click **Export Credits Backup** to download a JSON file with all credits markers and TheTVDB IDs
-2. **Import**: Click **Import Credits Backup**, select a JSON file, and choose whether to overwrite existing markers
+2. **Import**: Click **Import Credits Backup**, select one or more JSON files, and choose whether to overwrite existing markers
 3. Markers are automatically matched using TheTVDB IDs, Emby IDs, file paths, or series + season/episode numbers
 4. **Overwrite Setting**: Enable **Overwrite Existing Credits on Import** to replace existing markers, or disable to skip episodes that already have markers
+
+#### Bulk Export by Series
+1. Click **Bulk Export by Series** button in the Backup & Restore section
+2. Filter TV shows by library (optional)
+3. Check the TV shows you want to export
+4. Use **Select All** / **Deselect All** buttons for quick selection
+5. Click **Export Selected** to download individual JSON files for each show
+6. Files are named `credits-[ShowName]-[timestamp].json` for easy identification
+
+#### Multi-File Import
+- The import function supports selecting multiple JSON files at once
+- Perfect for restoring multiple shows exported via bulk export
 
 ## 🔍 How It Works
 
