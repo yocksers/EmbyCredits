@@ -39,7 +39,7 @@ namespace EmbyCredits.Services
             _configuration = configuration;
         }
 
-        public async Task<(bool success, double creditsStart, string failureReason)> ProcessEpisode(
+        public async Task<(bool success, double creditsStart, string failureReason, double confidence)> ProcessEpisode(
             Episode episode,
             bool isDryRun,
             bool isBatchMode,
@@ -78,7 +78,7 @@ namespace EmbyCredits.Services
                 if (string.IsNullOrEmpty(normalizedPath))
                 {
                     _debugLogger.LogWarn($"Path normalization failed for: {episode.Path}");
-                    return (false, 0, "Path normalization failed");
+                    return (false, 0, "Path normalization failed", 0);
                 }
 
                 if (!normalizedPath.StartsWith("smb://"))
@@ -102,7 +102,7 @@ namespace EmbyCredits.Services
                         {
                             _debugLogger.LogDebug($"Also tried normalized path: {normalizedPath}");
                         }
-                        return (false, 0, "File not found");
+                        return (false, 0, "File not found", 0);
                     }
                 }
                 else
@@ -125,13 +125,14 @@ namespace EmbyCredits.Services
                 if (duration <= 0)
                 {
                     _debugLogger.LogWarn($"Could not determine video duration for {episode.Name}");
-                    return (false, 0, "Could not determine video duration");
+                    return (false, 0, "Could not determine video duration", 0);
                 }
 
                 _debugLogger.LogInfo($"Video duration: {FormatTime(duration)}");
 
                 double creditsStart = 0;
                 string failureReason = string.Empty;
+                double confidence = 0;
 
                 if (_configuration.UseEpisodeComparison && _libraryManager != null && episode.Series != null)
                 {
@@ -196,7 +197,8 @@ namespace EmbyCredits.Services
                                 episode, duration, comparisonEpisodes);
                             creditsStart = result.timestamp;
                             failureReason = result.failureReason;
-                            _debugLogger.LogDebug($"Comparison result: timestamp={creditsStart}, reason={failureReason}");
+                            confidence = result.confidence;
+                            _debugLogger.LogDebug($"Comparison result: timestamp={creditsStart}, confidence={confidence:F2}, reason={failureReason}");
                         }
                         else
                         {
@@ -204,7 +206,8 @@ namespace EmbyCredits.Services
                             var result = await _detectionCoordinator.DetectCredits(normalizedPath, duration, episodeId);
                             creditsStart = result.timestamp;
                             failureReason = result.failureReason;
-                            _debugLogger.LogDebug($"Single detection result: timestamp={creditsStart}, reason={failureReason}");
+                            confidence = result.confidence;
+                            _debugLogger.LogDebug($"Single detection result: timestamp={creditsStart}, confidence={confidence:F2}, reason={failureReason}");
                         }
                     }
                 }
@@ -214,7 +217,8 @@ namespace EmbyCredits.Services
                     var result = await _detectionCoordinator.DetectCredits(normalizedPath, duration, episodeId);
                     creditsStart = result.timestamp;
                     failureReason = result.failureReason;
-                    _debugLogger.LogDebug($"Detection result: timestamp={creditsStart}, reason={failureReason}");
+                    confidence = result.confidence;
+                    _debugLogger.LogDebug($"Detection result: timestamp={creditsStart}, confidence={confidence:F2}, reason={failureReason}");
                 }
 
                 if (creditsStart > 0)
@@ -222,7 +226,7 @@ namespace EmbyCredits.Services
                     if (creditsStart >= duration)
                     {
                         _debugLogger.LogWarn($"✗ Detected timestamp ({FormatTime(creditsStart)}) exceeds video duration ({FormatTime(duration)}) for {episode.Name}");
-                        return (false, 0, $"Detected timestamp exceeds duration: {creditsStart:F1}s >= {duration:F1}s");
+                        return (false, 0, $"Detected timestamp exceeds duration: {creditsStart:F1}s >= {duration:F1}s", 0);
                     }
 
                     if (!isDryRun)
@@ -230,9 +234,9 @@ namespace EmbyCredits.Services
                         _debugLogger.LogDebug($"Saving chapter marker at {FormatTime(creditsStart)}");
                         _chapterMarkerService.SaveCreditsMarker(episode, creditsStart);
                     }
-                    _debugLogger.LogInfo($"✓ [{(isDryRun ? "DRY RUN" : "SAVED")}] Credits detected at {FormatTime(creditsStart)} for {episode.Name}");
+                    _debugLogger.LogInfo($"✓ [{(isDryRun ? "DRY RUN" : "SAVED")}] Credits detected at {FormatTime(creditsStart)} for {episode.Name} (confidence: {confidence:F2})");
 
-                    return (true, creditsStart, string.Empty);
+                    return (true, creditsStart, string.Empty, confidence);
                 }
                 else
                 {
@@ -242,13 +246,13 @@ namespace EmbyCredits.Services
                         _debugLogger.LogDebug($"Failure reason: {failureReason}");
                     }
 
-                    return (false, 0, failureReason);
+                    return (false, 0, failureReason, 0);
                 }
             }
             catch (Exception ex)
             {
                 _logger.ErrorException($"Error processing episode {episode.Name}", ex);
-                return (false, 0, $"Exception: {ex.Message}");
+                return (false, 0, $"Exception: {ex.Message}", 0);
             }
             finally
             {

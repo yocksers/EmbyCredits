@@ -103,8 +103,8 @@
             failureList.innerHTML = '';
             Object.entries(progress.FailureReasons).forEach(([episode, reason]) => {
                 const item = document.createElement('div');
-                item.style.cssText = 'padding: 0.5em; margin-bottom: 0.5em; border-left: 3px solid #E5A54A; background: rgba(255,255,255,0.03);';
-                item.innerHTML = `<strong style="color: #e0e0e0;">${episode}</strong><br/><span style="color: #E5A54A; font-size: 0.9em;">${reason}</span>`;
+                item.style.cssText = 'padding: 0.5em; margin-bottom: 0.5em;';
+                item.innerHTML = `<strong>${episode}</strong><br/><span style="font-size: 0.9em;">${reason}</span>`;
                 failureList.appendChild(item);
             });
         } else {
@@ -116,8 +116,14 @@
             successList.innerHTML = '';
             Object.entries(progress.SuccessDetails).forEach(([episode, timestamp]) => {
                 const item = document.createElement('div');
-                item.style.cssText = 'padding: 0.5em; margin-bottom: 0.5em; border-left: 3px solid #52b54b; background: rgba(255,255,255,0.03);';
-                item.innerHTML = `<strong style="color: #e0e0e0;">${episode}</strong><br/><span style="color: #52b54b; font-size: 0.9em; font-weight: bold;">Credits marker added at ${timestamp}</span>`;
+                item.style.cssText = 'padding: 0.5em; margin-bottom: 0.5em;';
+                
+                const confidence = progress.ConfidenceScores && progress.ConfidenceScores[episode];
+                const confidenceText = confidence !== undefined && confidence !== null
+                    ? ` (confidence: ${(confidence * 100).toFixed(0)}%)`
+                    : '';
+                
+                item.innerHTML = `<strong>${episode}</strong><br/><span style="font-size: 0.9em; font-weight: bold;">Credits marker added at ${timestamp}</span><span>${confidenceText}</span>`;
                 successList.appendChild(item);
             });
         } else {

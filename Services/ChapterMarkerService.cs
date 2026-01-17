@@ -136,9 +136,7 @@ namespace EmbyCredits.Services
                     var creditsMarkers = chapters.Where(c =>
                     {
                         var markerType = GetMarkerType(c);
-                        return markerType == "CreditsStart" || 
-                               markerType == "Credits" ||
-                               (c.Name != null && c.Name.ToLowerInvariant().Contains("credit"));
+                        return markerType == "CreditsStart" || markerType == "Credits";
                     }).Select(c => new
                     {
                         Name = c.Name,
@@ -157,13 +155,7 @@ namespace EmbyCredits.Services
                         Duration = episode.RunTimeTicks.HasValue ? FormatTime(episode.RunTimeTicks.Value / TimeSpan.TicksPerSecond) : "Unknown",
                         DurationSeconds = episode.RunTimeTicks.HasValue ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond : 0,
                         HasCreditsMarker = creditsMarkers.Count > 0,
-                        Markers = creditsMarkers,
-                        AllChapters = chapters.Select(c => new
-                        {
-                            Name = c.Name,
-                            StartTime = FormatTime(c.StartPositionTicks / TimeSpan.TicksPerSecond),
-                            MarkerType = GetMarkerType(c)
-                        }).ToList()
+                        Markers = creditsMarkers
                     });
                 }
                 catch (Exception ex)
@@ -173,6 +165,11 @@ namespace EmbyCredits.Services
             }
 
             return result;
+        }
+
+        public List<ChapterInfo> GetChapters(Episode episode)
+        {
+            return _itemRepository.GetChapters(episode)?.ToList() ?? new List<ChapterInfo>();
         }
 
         private string? GetMarkerType(ChapterInfo chapter)

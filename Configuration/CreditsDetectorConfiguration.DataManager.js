@@ -16,13 +16,15 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = config.ScheduledTaskOnlyProcessMissing !== false;
             view.querySelector('#chkManualSkipExistingMarkers').checked = config.ManualSkipExistingMarkers || false;
 
+            view.querySelector('#chkPreventConcurrentPluginProcessing').checked = config.PreventConcurrentPluginProcessing !== false;
             view.querySelector('#txtDelayBetweenEpisodesMs').value = config.DelayBetweenEpisodesMs || 0;
             view.querySelector('#txtTempFolderPath').value = config.TempFolderPath || '';
 
             view.querySelector('#txtOcrEndpoint').value = config.OcrEndpoint || 'http://localhost:8884';
             view.querySelector('#txtOcrDetectionKeywords').value = config.OcrDetectionKeywords || 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine';
-            
-            // Load unified search start setting (with legacy fallback)
+                        view.querySelector('#txtOcrRetryAttempts').value = config.OcrRetryAttempts !== undefined ? config.OcrRetryAttempts : 5;
+            view.querySelector('#txtOcrRetryDelayMs').value = config.OcrRetryDelayMs !== undefined ? config.OcrRetryDelayMs : 2000;
+                        // Load unified search start setting (with legacy fallback)
             const searchStartUnit = config.OcrSearchStartUnit || 'minutes';
             let searchStartValue;
             if (config.OcrSearchStartValue !== undefined) {
@@ -121,14 +123,16 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.ScheduledTaskOnlyProcessMissing = view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked;
         instance.config.ManualSkipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers').checked;
 
+        instance.config.PreventConcurrentPluginProcessing = view.querySelector('#chkPreventConcurrentPluginProcessing').checked;
         instance.config.DelayBetweenEpisodesMs = Number.parseInt(view.querySelector('#txtDelayBetweenEpisodesMs').value, 10) || 0;
         instance.config.TempFolderPath = view.querySelector('#txtTempFolderPath').value || '';
 
         instance.config.EnableOcrDetection = true;
         instance.config.OcrEndpoint = view.querySelector('#txtOcrEndpoint').value || 'http://localhost:8884';
         instance.config.OcrDetectionKeywords = view.querySelector('#txtOcrDetectionKeywords').value || 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine';
-        
-        // Save unified search start setting
+                instance.config.OcrRetryAttempts = Number.parseInt(view.querySelector('#txtOcrRetryAttempts').value, 10) || 5;
+        instance.config.OcrRetryDelayMs = Number.parseInt(view.querySelector('#txtOcrRetryDelayMs').value, 10) || 2000;
+                // Save unified search start setting
         instance.config.OcrSearchStartUnit = view.querySelector('#selectOcrSearchStartUnit').value || 'minutes';
         instance.config.OcrSearchStartValue = Number.parseFloat(view.querySelector('#txtOcrSearchStartValue').value) || 3;
         

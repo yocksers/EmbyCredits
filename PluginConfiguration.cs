@@ -89,6 +89,9 @@ namespace EmbyCredits
         public bool OcrDensityRequireStyleConsistency { get; set; } = true;
         public double OcrDensityStyleConsistencyThreshold { get; set; } = 0.7;
 
+        public int OcrRetryAttempts { get; set; } = 5;
+        public int OcrRetryDelayMs { get; set; } = 2000;
+
         public bool UseCorrelationScoring { get; set; } = true;
         public int CorrelationWindowSeconds { get; set; } = 5;
 
@@ -135,5 +138,7 @@ namespace EmbyCredits
         public bool EnableAutoDetectionNotifications { get; set; } = false;
         public bool NotifyOnSuccessOnly { get; set; } = false;
         public int MinimumEpisodesForNotification { get; set; } = 1;
+
+        public bool PreventConcurrentPluginProcessing { get; set; } = true;
     }
 }

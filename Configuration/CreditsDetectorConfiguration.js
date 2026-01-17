@@ -78,6 +78,10 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 markersManager.displayMarkers(this, view);
             });
 
+            view.querySelector('#btnShowSeasonValidation').addEventListener('click', () => {
+                markersManager.showSeasonValidation(this, view);
+            });
+
             view.querySelector('#btnExportBackup').addEventListener('click', () => {
                 backupManager.exportBackup(view);
             });
@@ -113,6 +117,10 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
 
             view.querySelector('#btnConfirmBulkExport').addEventListener('click', () => {
                 backupManager.confirmBulkExport(view);
+            });
+
+            view.querySelector('#chkManualSkipExistingMarkers').addEventListener('change', () => {
+                dataManager.saveData(this, view);
             });
 
             view.querySelector('#btnAddKeyword').addEventListener('click', () => {
@@ -196,7 +204,8 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             
             keywords.forEach(keyword => {
                 const chip = document.createElement('div');
-                chip.style.cssText = 'display: inline-flex; align-items: center; gap: 0.5em; padding: 0.5em 0.75em; background: #52B54B; color: white; border-radius: 4px; font-size: 0.9em;';
+                chip.className = 'raised';
+                chip.style.cssText = 'display: inline-flex; align-items: center; gap: 0.5em; padding: 0.5em 0.75em; border-radius: 4px; font-size: 0.9em; background-color: #52B54B; color: white;';
                 
                 const text = document.createElement('span');
                 text.textContent = keyword;
@@ -205,13 +214,13 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 const removeBtn = document.createElement('button');
                 removeBtn.type = 'button';
                 removeBtn.innerHTML = '<i class="md-icon" style="font-size: 18px;">close</i>';
-                removeBtn.style.cssText = 'background: rgba(0,0,0,0.3); border: none; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; transition: background 0.2s;';
+                removeBtn.style.cssText = 'background: rgba(0,0,0,0.2); border: none; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; transition: background 0.2s; color: white;';
                 removeBtn.title = 'Remove keyword';
                 removeBtn.addEventListener('mouseenter', () => {
-                    removeBtn.style.background = 'rgba(0,0,0,0.5)';
+                    removeBtn.style.background = 'rgba(0,0,0,0.4)';
                 });
                 removeBtn.addEventListener('mouseleave', () => {
-                    removeBtn.style.background = 'rgba(0,0,0,0.3)';
+                    removeBtn.style.background = 'rgba(0,0,0,0.2)';
                 });
                 removeBtn.addEventListener('click', () => {
                     this.removeKeyword(view, keyword);
@@ -222,14 +231,28 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             });
         }
 
+        enforceDropdownStyles(view) {
+            // Ensure dropdown styles are properly set
+            const selects = view.querySelectorAll('select.emby-select');
+            selects.forEach(select => {
+                if (!select.style.maxWidth && select.id !== 'selectOcrSearchStartUnit') {
+                    select.style.maxWidth = '500px';
+                }
+            });
+        }
+
         onResume(options) {
             super.onResume(options);
             const view = this.view;
 
-            // Load all HTML partials first
-            if (!this.partialsLoaded) {
-                loader.loadPagePartials(view).then(() => {
-                    this.partialsLoaded = true;
+            // Always reload partials to ensure fresh content and proper initialization
+            // This prevents CSS/component corruption from other plugins
+            console.log('Credits Detector: Loading partials...');
+            loader.loadPagePartials(view).then(() => {
+                console.log('Credits Detector: Partials loaded, initializing page...');
+                
+                // Ensure event bindings happen after DOM is fully populated
+                setTimeout(() => {
                     events.bindTabNavigation(view);
                     this.bindEventListeners(view);
                     
@@ -240,30 +263,32 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     
                     dataManager.loadData(this, view);
                     
-                    // Load donate image
-                    const donateImg = view.querySelector('#donateImage');
-                    if (donateImg && !donateImg.src) {
-                        fetch(ApiClient.getUrl('CreditsDetector/Images/donate.png'), {
-                            headers: {
-                                'X-Emby-Token': ApiClient.accessToken()
-                            }
-                        })
-                        .then(response => response.blob())
-                        .then(blob => {
-                            const objectUrl = URL.createObjectURL(blob);
-                            donateImg.src = objectUrl;
-                        })
-                        .catch(error => {
-                            console.error('Error loading donate image:', error);
-                        });
-                    }
+                    // Enforce dropdown styles after load
+                    this.enforceDropdownStyles(view);
+                        
+                        // Load donate image
+                        const donateImg = view.querySelector('#donateImage');
+                        if (donateImg && !donateImg.src) {
+                            fetch(ApiClient.getUrl('CreditsDetector/Images/donate.png'), {
+                                headers: {
+                                    'X-Emby-Token': ApiClient.accessToken()
+                                },
+                                cache: 'force-cache'
+                            })
+                            .then(response => response.blob())
+                            .then(blob => {
+                                const objectUrl = URL.createObjectURL(blob);
+                                donateImg.src = objectUrl;
+                            })
+                            .catch(error => {
+                                console.error('Error loading donate image:', error);
+                            });
+                        }
+                    }, 50);
                 }).catch(error => {
                     console.error('Error loading partials:', error);
-                    toast({ type: 'error', text: 'Failed to load configuration page' });
+                    toast({ type: 'error', text: 'Failed to load configuration page. Please refresh the page.' });
                 });
-            } else {
-                dataManager.loadData(this, view);
-            }
         }
         
         onPause() {

@@ -40,7 +40,7 @@
                     <i class="md-icon">folder_open</i>
                 </button>
             </div>
-            <div class="fieldDescription"><strong style="color: #E5A54A;">⚠️ CRITICAL FOR DOCKER USERS:</strong> Set this to prevent filling your Docker image! Leave empty only if running Emby natively on host OS. Temp files are automatically cleaned up after processing.</div>
+            <div class="fieldDescription"><strong>⚠️ CRITICAL FOR DOCKER USERS:</strong> Set this to prevent filling your Docker image! Leave empty only if running Emby natively on host OS. Temp files are automatically cleaned up after processing.</div>
         </div>
 
         <div class="checkboxContainer" style="margin-top: 1.5em;">
@@ -52,7 +52,7 @@
         </div>
 
         <div style="margin-top: 1.5em;">
-            <h3 style="color: #52B54B;">Library Selection</h3>
+            <h3>Library Selection</h3>
             <div class="fieldDescription" style="margin-bottom: 1em;">Choose which TV Show or Mixed libraries to enable credits detection. If none are selected, all TV Show and Mixed libraries will be used.</div>
 
             <div style="margin-bottom: 1em;">
@@ -74,6 +74,14 @@
     <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
         <h2 style="margin-top:0;">Performance & Resource Control</h2>
         
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkPreventConcurrentPluginProcessing" data-config-key="PreventConcurrentPluginProcessing" />
+                <span>Prevent Concurrent Plugin Processing</span>
+            </label>
+            <div class="fieldDescription"><strong>Recommended: Enabled (Default).</strong> Automatically pauses EmbyCredits detection when Intro Skipper or other plugins are processing to prevent resource conflicts. Disable only on powerful servers that can handle multiple plugins simultaneously.</div>
+        </div>
+
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtDelayBetweenEpisodesMs">Delay Between Episodes (ms)</label>
             <input is="emby-input" type="number" id="txtDelayBetweenEpisodesMs" data-config-key="DelayBetweenEpisodesMs" min="0" max="60000" step="1000" />
@@ -81,8 +89,8 @@
         </div>
     </div>
 
-    <div class="paper-card" style="padding: 1.5em; margin-top: 2em; border-left: 4px solid #52B54B;">
-        <h2 style="margin-top: 0; color: #52B54B;">OCR Detection Settings</h2>
+    <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
+        <h2 style="margin-top: 0;">OCR Detection Settings</h2>
         <p class="fieldDescription">OCR detection is always enabled. Configure the settings below. Requires Docker container running (see Setup Guide tab).</p>
 
         <div class="inputContainer">
@@ -94,8 +102,20 @@
                     <i class="md-icon">check_circle</i>
                     <span>Test Connection</span>
                 </button>
-                <span id="ocrTestSuccess" style="display: none; color: #52B54B; font-size: 1.5em;">✓</span>
+                <span id="ocrTestSuccess" style="display: none; font-size: 1.5em;">✓</span>
             </div>
+        </div>
+
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtOcrRetryAttempts">OCR Retry Attempts</label>
+            <input is="emby-input" type="number" id="txtOcrRetryAttempts" data-config-key="OcrRetryAttempts" min="1" max="10" />
+            <div class="fieldDescription"><strong>Recommended: 5.</strong> Number of times to retry OCR requests on temporary failures (network issues, service outages)</div>
+        </div>
+
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtOcrRetryDelayMs">Retry Delay (milliseconds)</label>
+            <input is="emby-input" type="number" id="txtOcrRetryDelayMs" data-config-key="OcrRetryDelayMs" min="500" max="10000" step="500" />
+            <div class="fieldDescription"><strong>Recommended: 2000ms (2 seconds).</strong> Delay between retry attempts to allow service to recover</div>
         </div>
 
         <div class="inputContainer">
@@ -109,12 +129,12 @@
                         <i class="md-icon">add</i>
                         <span>Add</span>
                     </button>
-                    <button is="emby-button" type="button" class="raised" id="btnResetKeywords" style="background-color: #e67e22;" title="Reset to defaults">
+                    <button is="emby-button" type="button" class="raised" id="btnResetKeywords" title="Reset to defaults">
                         <i class="md-icon">restore</i>
                     </button>
                 </div>
                 
-                <div id="keywordDisplayArea" style="padding: 0.75em; border: 1px solid rgba(128,128,128,0.3); border-radius: 4px; min-height: 80px; display: flex; flex-wrap: wrap; gap: 0.5em; align-content: flex-start; background: rgba(128,128,128,0.1);">
+                <div id="keywordDisplayArea" style="padding: 0.75em; border: 1px solid rgba(128,128,128,0.3); border-radius: 4px; min-height: 80px; display: flex; flex-wrap: wrap; gap: 0.5em; align-content: flex-start;">
                 </div>
             </div>
             
@@ -125,7 +145,7 @@
             <label class="inputLabel inputLabelUnfocused" for="txtOcrSearchStartValue">Search Start Position</label>
             <div style="display: flex; gap: 0.5em; align-items: flex-start;">
                 <input is="emby-input" type="number" step="0.5" id="txtOcrSearchStartValue" data-config-key="OcrSearchStartValue" style="flex: 1;" />
-                <select is="emby-select" id="selectOcrSearchStartUnit" data-config-key="OcrSearchStartUnit" style="width: 150px;">
+                <select id="selectOcrSearchStartUnit" data-config-key="OcrSearchStartUnit" class="emby-select-withcolor emby-select" style="max-width: 150px;">
                     <option value="minutes">Minutes from End</option>
                     <option value="percentage">Percentage (%)</option>
                 </select>
@@ -150,7 +170,7 @@
         </div>
 
         <h3 style="margin-top: 2em; margin-bottom: 1em;">Character Density Detection</h3>
-        <div class="fieldDescription" style="margin-bottom: 1.5em; padding: 1em; background: rgba(82, 181, 75, 0.1); border-left: 3px solid #52B54B;">
+        <div class="fieldDescription" style="margin-bottom: 1.5em; padding: 1em;">
             <strong>Smart Detection:</strong> Instead of relying solely on keywords, this detects credits by identifying frames with high text density. 
             Credits typically have 50-200+ characters per frame, while regular content has very few. This works regardless of which specific words appear in the credits.
         </div>
@@ -183,7 +203,7 @@
             <div class="fieldDescription"><strong>Recommended: 3.</strong> How many consecutive frames must exceed the threshold to confirm credits (prevents false positives from occasional text overlays)</div>
         </div>
 
-        <h3 style="margin-top: 2em; color: #52B54B;">Density Detection Filters (False Positive Prevention)</h3>
+        <h3 style="margin-top: 2em;">Density Detection Filters (False Positive Prevention)</h3>
         <p class="fieldDescription">These filters help prevent false positives from phone books, documents, or other dense text shown in videos.</p>
 
         <div class="checkboxContainer">
@@ -248,7 +268,7 @@
 
         <div class="selectContainer">
             <label class="selectLabel" for="selectOcrImageFormat">Image Format</label>
-            <select is="emby-select" id="selectOcrImageFormat" data-config-key="OcrImageFormat">
+            <select id="selectOcrImageFormat" data-config-key="OcrImageFormat" class="emby-select-withcolor emby-select" style="max-width: 300px;">
                 <option value="png">PNG (Higher quality, slower)</option>
                 <option value="jpg">JPEG (Faster, smaller files)</option>
             </select>
@@ -268,7 +288,7 @@
         </div>
 
         <div style="margin-top: 2em; padding-top: 1.5em; border-top: 2px solid rgba(82, 181, 75, 0.3);">
-            <h3 style="color: #52B54B; margin-top: 0;">Performance Optimizations</h3>
+            <h3 style="margin-top: 0;">Performance Optimizations</h3>
             
             <div class="checkboxContainer">
                 <label>
@@ -306,8 +326,8 @@
         </div>
     </div>
 
-    <div class="paper-card" style="padding: 1.5em; margin-top: 2em; border-left: 4px solid #3498db;">
-        <h2 style="margin-top: 0; color: #3498db;">Notification Settings</h2>
+    <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
+        <h2 style="margin-top: 0;">Notification Settings</h2>
         <p class="fieldDescription">Configure notifications for when the scheduled credits detection task completes. Notifications will be sent through Emby's notification system to all configured providers (Pushover, Email, etc.).</p>
 
         <div class="checkboxContainer">
@@ -345,7 +365,7 @@
         <button is="emby-button" type="submit" class="raised button-submit block" style="flex: 1;">
             <span>Save</span>
         </button>
-        <button is="emby-button" type="button" class="raised block" id="btnResetToDefaults" style="flex: 1; background-color: #e67e22;">
+        <button is="emby-button" type="button" class="raised block" id="btnResetToDefaults" style="flex: 1;">
             <i class="md-icon">restore</i>
             <span>Reset to Defaults</span>
         </button>

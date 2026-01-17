@@ -56,7 +56,7 @@ namespace EmbyCredits.Services
             }
         }
 
-        public async Task<(double timestamp, string failureReason)> DetectCredits(string videoPath, double duration, string episodeId)
+        public async Task<(double timestamp, string failureReason, double confidence)> DetectCredits(string videoPath, double duration, string episodeId)
         {
             LogDebug($"DetectCredits called: duration={FormatTime(duration)}");
             var (detectionResults, methodErrors) = await RunAllDetectionMethods(videoPath, duration, episodeId);
@@ -69,24 +69,24 @@ namespace EmbyCredits.Services
                     ? string.Join("; ", methodErrors.Values)
                     : "No credits detected by any enabled method";
                 LogDebug($"Failure reasons: {failureReason}");
-                return (0, failureReason);
+                return (0, failureReason, 0);
             }
 
             LogDebug($"Found {detectionResults.Count} detection result(s)");
             var result = SelectByStrategy(detectionResults);
-            LogDebug($"Selected timestamp: {FormatTime(result.timestamp)}");
+            LogDebug($"Selected timestamp: {FormatTime(result.timestamp)} with confidence: {result.confidence:F2}");
 
-            return (result.timestamp, result.reason);
+            return (result.timestamp, result.reason, result.confidence);
         }
 
-        public async Task<(double timestamp, string failureReason)> DetectCreditsWithComparison(
+        public async Task<(double timestamp, string failureReason, double confidence)> DetectCreditsWithComparison(
             Episode episode,
             double duration,
             List<Episode> comparisonEpisodes)
         {
             var crossEpisodeResults = await RunCrossEpisodeDetection(episode, duration, comparisonEpisodes);
             var selected = SelectByStrategy(crossEpisodeResults);
-            return (selected.timestamp, selected.reason);
+            return (selected.timestamp, selected.reason, selected.confidence);
         }
 
         public async Task PreComputeBatchDetections(List<Episode> episodes, Func<double, Task> progressCallback)
@@ -443,10 +443,10 @@ namespace EmbyCredits.Services
             return results;
         }
 
-        private (double timestamp, string reason) AnalyzeWithCorrelationScoring(List<(string method, double timestamp, double confidence, int priority, string reason)> detectionResults)
+        private (double timestamp, string reason, double confidence) AnalyzeWithCorrelationScoring(List<(string method, double timestamp, double confidence, int priority, string reason)> detectionResults)
         {
             if (detectionResults.Count == 0)
-                return (0, string.Empty);
+                return (0, string.Empty, 0);
 
             var correlationWindow = _configuration.CorrelationWindowSeconds;
             var groupedResults = new List<(double timestamp, double combinedScore, List<string> methods, List<string> reasons)>();
@@ -474,17 +474,18 @@ namespace EmbyCredits.Services
             var bestGroup = groupedResults.OrderByDescending(g => g.combinedScore).First();
             var creditsStart = bestGroup.timestamp;
             var combinedReasons = bestGroup.reasons.Count > 0 ? string.Join(" | ", bestGroup.reasons.Distinct()) : string.Empty;
+            var normalizedConfidence = Math.Min(1.0, bestGroup.combinedScore / bestGroup.methods.Count);
 
             _logger.Info($"Correlation scoring selected {FormatTime(creditsStart)} " +
-                       $"(score: {bestGroup.combinedScore:F2}, methods: {string.Join(", ", bestGroup.methods)})");
+                       $"(score: {bestGroup.combinedScore:F2}, confidence: {normalizedConfidence:F2}, methods: {string.Join(", ", bestGroup.methods)})");
 
-            return (creditsStart, combinedReasons);
+            return (creditsStart, combinedReasons, normalizedConfidence);
         }
 
-        private (double timestamp, string reason) SelectByStrategy(List<(string method, double timestamp, double confidence, int priority, string reason)> detectionResults)
+        private (double timestamp, string reason, double confidence) SelectByStrategy(List<(string method, double timestamp, double confidence, int priority, string reason)> detectionResults)
         {
             if (detectionResults.Count == 0)
-                return (0, string.Empty);
+                return (0, string.Empty, 0);
 
             var strategy = _configuration.DetectionResultSelection ?? "CorrelationScoring";
 
@@ -493,34 +494,38 @@ namespace EmbyCredits.Services
                 case "Earliest":
                     var earliest = detectionResults.OrderBy(r => r.timestamp).First();
                     _logger.Info($"Earliest mode selected {earliest.method} at {FormatTime(earliest.timestamp)}");
-                    return (earliest.timestamp, earliest.reason);
+                    return (earliest.timestamp, earliest.reason, earliest.confidence);
 
                 case "Latest":
                     var latest = detectionResults.OrderByDescending(r => r.timestamp).First();
                     _logger.Info($"Latest mode selected {latest.method} at {FormatTime(latest.timestamp)}");
-                    return (latest.timestamp, latest.reason);
+                    return (latest.timestamp, latest.reason, latest.confidence);
 
                 case "Average":
                     var average = detectionResults.Average(r => r.timestamp);
+                    var avgConfidence = detectionResults.Average(r => r.confidence);
                     _logger.Info($"Average mode calculated {FormatTime(average)} from {detectionResults.Count} detections");
                     var avgReasons = string.Join(" | ", detectionResults.Select(r => r.reason).Where(r => !string.IsNullOrEmpty(r)));
-                    return (average, avgReasons);
+                    return (average, avgReasons, avgConfidence);
 
                 case "Median":
                     var sorted = detectionResults.OrderBy(r => r.timestamp).ToList();
                     var median = sorted.Count % 2 == 0
                         ? (sorted[sorted.Count / 2 - 1].timestamp + sorted[sorted.Count / 2].timestamp) / 2
                         : sorted[sorted.Count / 2].timestamp;
+                    var medianConfidence = sorted.Count % 2 == 0
+                        ? (sorted[sorted.Count / 2 - 1].confidence + sorted[sorted.Count / 2].confidence) / 2
+                        : sorted[sorted.Count / 2].confidence;
                     _logger.Info($"Median mode calculated {FormatTime(median)} from {detectionResults.Count} detections");
                     var medianReason = sorted.Count % 2 == 0 
                         ? $"{sorted[sorted.Count / 2 - 1].reason} | {sorted[sorted.Count / 2].reason}"
                         : sorted[sorted.Count / 2].reason;
-                    return (median, medianReason);
+                    return (median, medianReason, medianConfidence);
 
                 case "Priority":
                     var byPriority = detectionResults.OrderBy(r => r.priority).First();
                     _logger.Info($"Priority mode selected {byPriority.method} at {FormatTime(byPriority.timestamp)} (priority: {byPriority.priority})");
-                    return (byPriority.timestamp, byPriority.reason);
+                    return (byPriority.timestamp, byPriority.reason, byPriority.confidence);
 
                 case "CorrelationScoring":
                 default:

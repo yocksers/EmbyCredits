@@ -16,6 +16,7 @@ namespace EmbyCredits
         public DateTime? EndTime { get; set; }
         public Dictionary<string, string> FailureReasons { get; set; } = new Dictionary<string, string>();
         public Dictionary<string, string> SuccessDetails { get; set; } = new Dictionary<string, string>();
+        public Dictionary<string, double> ConfidenceScores { get; set; } = new Dictionary<string, double>();
 
         public void Reset()
         {
@@ -30,6 +31,7 @@ namespace EmbyCredits
             EndTime = null;
             FailureReasons.Clear();
             SuccessDetails.Clear();
+            ConfidenceScores.Clear();
         }
 
         public int PercentComplete => TotalItems > 0 ? (int)((ProcessedItems / (double)TotalItems) * 100) : 0;

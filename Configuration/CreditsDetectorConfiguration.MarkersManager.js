@@ -36,10 +36,10 @@ define(['loading', 'toast'], function (loading, toast) {
                 const seriesNameDiv = document.createElement('div');
                 seriesNameDiv.style.cssText = 'margin-bottom: 1em;';
                 
-                const titleHtml = `<h3 style="color: #52B54B; display: inline-block; margin: 0; margin-right: 1em;">${response.SeriesName || 'Series Markers'}</h3>`;
+                const titleHtml = `<h3 style="display: inline-block; margin: 0; margin-right: 1em;">${response.SeriesName || 'Series Markers'}</h3>`;
                 const buttonsHtml = `
-                    <button class="btnExportSeries" data-series-id="${seriesId}" style="padding: 0.4em 0.8em; background: #4A9FE5; border: none; border-radius: 3px; color: white; cursor: pointer; font-size: 0.85em; margin-right: 0.5em; vertical-align: middle;">⬇ Export</button>
-                    <button class="btnImportSeries" data-series-id="${seriesId}" style="padding: 0.4em 0.8em; background: #52B54B; border: none; border-radius: 3px; color: white; cursor: pointer; font-size: 0.85em; vertical-align: middle;">⬆ Import</button>
+                    <button is="emby-button" type="button" class="raised btnExportSeries" data-series-id="${seriesId}" style="padding: 0.4em 0.8em; font-size: 0.85em; margin-right: 0.5em; vertical-align: middle;">⬇ Export</button>
+                    <button is="emby-button" type="button" class="raised button-submit btnImportSeries" data-series-id="${seriesId}" style="padding: 0.4em 0.8em; font-size: 0.85em; vertical-align: middle;">⬆ Import</button>
                 `;
                 
                 seriesNameDiv.innerHTML = titleHtml + buttonsHtml;
@@ -81,11 +81,11 @@ define(['loading', 'toast'], function (loading, toast) {
                     const seasonHeader = document.createElement('div');
                     seasonHeader.style.cssText = 'margin-bottom: 0.5em;';
                     
-                    let headerHtml = `<h4 style="color: #4A9FE5; display: inline-block; margin: 0; margin-right: 1em;">Season ${season}</h4>`;
+                    let headerHtml = `<h4 style="display: inline-block; margin: 0; margin-right: 1em;">Season ${season}</h4>`;
                     
                     if (missingMarkersCount > 0) {
-                        headerHtml += `<button class="btnDetectSeasonMissing" data-series-id="${seriesId}" data-season-number="${season}" style="padding: 0.4em 0.8em; background: #52B54B; border: none; border-radius: 3px; color: white; cursor: pointer; font-size: 0.85em; font-weight: normal; vertical-align: middle; margin-right: 0.5em;">▶ Detect Missing (${missingMarkersCount})</button>`;
-                        headerHtml += `<button class="btnBatchSetTime" data-series-id="${seriesId}" data-season-number="${season}" style="padding: 0.4em 0.8em; background: #4A9FE5; border: none; border-radius: 3px; color: white; cursor: pointer; font-size: 0.85em; font-weight: normal; vertical-align: middle;">✏ Set Time for Missing (${missingMarkersCount})</button>`;
+                        headerHtml += `<button is="emby-button" type="button" class="raised button-submit btnDetectSeasonMissing" data-series-id="${seriesId}" data-season-number="${season}" style="padding: 0.4em 0.8em; font-size: 0.85em; font-weight: normal; vertical-align: middle; margin-right: 0.5em;">▶ Detect Missing (${missingMarkersCount})</button>`;
+                        headerHtml += `<button is="emby-button" type="button" class="raised btnBatchSetTime" data-series-id="${seriesId}" data-season-number="${season}" style="padding: 0.4em 0.8em; font-size: 0.85em; font-weight: normal; vertical-align: middle;">✏ Set Time for Missing (${missingMarkersCount})</button>`;
                     }
                     
                     seasonHeader.innerHTML = headerHtml;
@@ -100,16 +100,17 @@ define(['loading', 'toast'], function (loading, toast) {
                         if (hasMarkers && episode.Markers && episode.Markers.length > 0) {
                             episode.Markers.forEach(marker => {
                                 markersHtml += `<div style="margin-top: 0.5em; opacity: 0.9;">
-                                    <strong style="color: #52b54b;">${marker.MarkerType || 'Credits'}</strong>: ${marker.StartTime}
-                                    <button class="btnEditMarker" data-episode-id="${episode.EpisodeId}" data-current-time="${marker.StartTime}" data-duration-seconds="${episode.DurationSeconds || 0}" style="margin-left: 1em; padding: 0.25em 0.75em; background: #4A9FE5; border: none; border-radius: 3px; color: white; cursor: pointer; font-size: 0.9em;">Edit</button>
+                                    <strong>${marker.MarkerType || 'Credits'}</strong>: ${marker.StartTime}
+                                    <button is="emby-button" type="button" class="raised btnEditMarker" data-episode-id="${episode.EpisodeId}" data-current-time="${marker.StartTime}" data-duration-seconds="${episode.DurationSeconds || 0}" style="margin-left: 1em; padding: 0.25em 0.75em; font-size: 0.9em;">Edit</button>
+                                    <button is="emby-button" type="button" class="raised button-submit btnApplyToSeason" data-episode-id="${episode.EpisodeId}" data-series-id="${seriesId}" data-season-number="${episode.Season}" data-episode-name="${episode.EpisodeName || 'Unknown'}" style="margin-left: 0.5em; padding: 0.25em 0.75em; font-size: 0.9em;">Apply to Season</button>
                                 </div>`;
                             });
                         } else {
-                            markersHtml = `<div style="margin-top: 0.5em; opacity: 0.7; font-style: italic;">No credits marker <button class="btnEditMarker" data-episode-id="${episode.EpisodeId}" data-current-time="" data-duration-seconds="${episode.DurationSeconds || 0}" style="margin-left: 1em; padding: 0.25em 0.75em; background: #52B54B; border: none; border-radius: 3px; color: white; cursor: pointer; font-size: 0.9em;">Add Marker</button></div>`;
+                            markersHtml = `<div style="margin-top: 0.5em; opacity: 0.7; font-style: italic;">No credits marker <button is="emby-button" type="button" class="raised button-submit btnEditMarker" data-episode-id="${episode.EpisodeId}" data-current-time="" data-duration-seconds="${episode.DurationSeconds || 0}" style="margin-left: 1em; padding: 0.25em 0.75em; font-size: 0.9em;">Add Marker</button></div>`;
                         }
                         
                         episodeDiv.innerHTML = `
-                            <div><strong style="color: ${hasMarkers ? '#52b54b' : '#999'};">${episode.SeasonEpisode}</strong> - ${episode.EpisodeName || 'Unknown'} <span style="opacity: 0.7; font-size: 0.9em;">(${episode.Duration})</span></div>
+                            <div><strong>${episode.SeasonEpisode}</strong> - ${episode.EpisodeName || 'Unknown'} <span style="opacity: 0.7; font-size: 0.9em;">(${episode.Duration})</span></div>
                             ${markersHtml}
                         `;
                         
@@ -125,6 +126,16 @@ define(['loading', 'toast'], function (loading, toast) {
                         const currentTime = this.getAttribute('data-current-time');
                         const durationSeconds = parseFloat(this.getAttribute('data-duration-seconds')) || 0;
                         editMarker(instance, view, episodeId, currentTime, seriesId, durationSeconds);
+                    });
+                });
+                
+                markersContent.querySelectorAll('.btnApplyToSeason').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const episodeId = this.getAttribute('data-episode-id');
+                        const seriesId = this.getAttribute('data-series-id');
+                        const seasonNumber = parseInt(this.getAttribute('data-season-number'));
+                        const episodeName = this.getAttribute('data-episode-name');
+                        applyToSeason(instance, view, episodeId, seriesId, seasonNumber, episodeName);
                     });
                 });
                 
@@ -274,6 +285,48 @@ define(['loading', 'toast'], function (loading, toast) {
                 loading.hide();
                 console.error('Error updating marker:', error);
                 toast({ type: 'error', text: 'Failed to update marker: ' + error.message });
+            });
+        });
+    }
+    
+    function applyToSeason(instance, view, episodeId, seriesId, seasonNumber, episodeName) {
+        const confirmMsg = `Copy the credits timestamp from "${episodeName}" to all other episodes in Season ${seasonNumber} that don't have markers?\n\nThis will only apply to episodes without existing credits markers.`;
+        
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+        
+        require(['loading', 'toast'], (loading, toast) => {
+            loading.show();
+            
+            fetch(ApiClient.getUrl('CreditsDetector/ApplyToSeason'), {
+                method: 'POST',
+                headers: {
+                    'X-Emby-Token': ApiClient.accessToken(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    EpisodeId: episodeId,
+                    SeriesId: seriesId,
+                    SeasonNumber: seasonNumber
+                })
+            })
+            .then(response => response.json())
+            .then(result => {
+                loading.hide();
+                if (result.Success) {
+                    toast({ type: 'success', text: result.Message });
+                    setTimeout(() => {
+                        displayMarkers(instance, view);
+                    }, 1000);
+                } else {
+                    toast({ type: 'error', text: result.Message || 'Failed to apply marker to season' });
+                }
+            })
+            .catch(error => {
+                loading.hide();
+                console.error('Error applying marker to season:', error);
+                toast({ type: 'error', text: 'Failed to apply marker to season: ' + error.message });
             });
         });
     }
@@ -516,7 +569,124 @@ define(['loading', 'toast'], function (loading, toast) {
         input.click();
     }
     
+    function showSeasonValidation(instance, view) {
+        const seriesSelect = view.querySelector('#selectSeriesForMarkers');
+        if (!seriesSelect || !seriesSelect.value) {
+            require(['toast'], (toast) => {
+                toast({ type: 'error', text: 'Please select a series first' });
+            });
+            return;
+        }
+
+        const seriesId = seriesSelect.value;
+        const seasonNumber = prompt('Enter season number for batch validation:');
+        
+        if (!seasonNumber || isNaN(seasonNumber) || parseInt(seasonNumber) < 1) {
+            return;
+        }
+
+        require(['loading', 'toast'], (loading, toast) => {
+            loading.show();
+            
+            ApiClient.getJSON(ApiClient.getUrl('CreditsDetector/GetSeasonValidation', {
+                SeriesId: seriesId,
+                SeasonNumber: parseInt(seasonNumber)
+            }))
+            .then(response => {
+                loading.hide();
+                
+                if (!response.Success) {
+                    toast({ type: 'error', text: response.Message || 'Failed to load validation data' });
+                    return;
+                }
+
+                showValidationModal(instance, view, response);
+            })
+            .catch(error => {
+                loading.hide();
+                console.error('Error loading validation data:', error);
+                toast({ type: 'error', text: 'Failed to load validation data: ' + error.message });
+            });
+        });
+    }
+
+    function showValidationModal(instance, view, data) {
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 2em;';
+        
+        const content = document.createElement('div');
+        content.style.cssText = 'background: #181818; color: #e8e8e8; border-radius: 8px; max-width: 1200px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 2em; box-shadow: 0 4px 30px rgba(0,0,0,0.5);';
+        
+        const episodesWithMarkers = data.Episodes.filter(ep => ep.Marker && ep.Marker.HasMarker && ep.Marker.StartTime && ep.DurationSeconds > 0);
+        let averageFromEndText = '';
+        
+        if (episodesWithMarkers.length > 0) {
+            const timeFromEndValues = episodesWithMarkers.map(ep => {
+                const timeparts = ep.Marker.StartTime.split(':').map(p => parseInt(p, 10));
+                let markerSeconds = 0;
+                if (timeparts.length === 3) {
+                    markerSeconds = timeparts[0] * 3600 + timeparts[1] * 60 + timeparts[2];
+                } else if (timeparts.length === 2) {
+                    markerSeconds = timeparts[0] * 60 + timeparts[1];
+                }
+                return ep.DurationSeconds - markerSeconds;
+            });
+            
+            const avgFromEnd = timeFromEndValues.reduce((a, b) => a + b, 0) / timeFromEndValues.length;
+            const avgMinutes = Math.floor(avgFromEnd / 60);
+            const avgSeconds = Math.floor(avgFromEnd % 60);
+            averageFromEndText = ` | Average from end: ${avgMinutes}:${avgSeconds.toString().padStart(2, '0')}`;
+        }
+        
+        let html = `<h2 style="margin-top: 0; color: #52B54B;">${data.SeriesName} - Season ${data.SeasonNumber} Validation</h2>`;
+        html += `<p style=\"color: #b8b8b8; margin-bottom: 1.5em;\">Side-by-side comparison of all episodes for quick validation${averageFromEndText}</p>`;
+        html += `<div style=\"display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1em;\">`;
+        
+        data.Episodes.forEach(ep => {
+            const hasMarker = ep.Marker && ep.Marker.HasMarker;
+            const statusIcon = hasMarker ? '✓' : '✗';
+            const statusColor = hasMarker ? '#52B54B' : '#E53935';
+            const borderColor = hasMarker ? 'rgba(82, 181, 75, 0.5)' : 'rgba(229, 57, 53, 0.3)';
+            
+            html += `<div style=\"background: #242424; border: 2px solid ${borderColor}; border-radius: 6px; padding: 1em;\">`;
+            html += `<div style=\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5em;\">`;
+            html += `<strong style=\"color: #e8e8e8;\">Episode ${ep.EpisodeNumber}</strong>`;
+            html += `<span style=\"font-size: 1.5em; color: ${statusColor};\">${statusIcon}</span>`;
+            html += `</div>`;
+            html += `<div style=\"font-size: 0.9em; color: #d0d0d0; margin-bottom: 0.5em;\">${ep.EpisodeName}</div>`;
+            html += `<div style=\"font-size: 0.85em; color: #a0a0a0; margin-bottom: 0.5em;\">Duration: ${ep.Duration}</div>`;
+            
+            if (hasMarker) {
+                html += `<div style=\"font-weight: bold; color: #52B54B; margin-bottom: 0.5em;\">Credits: ${ep.Marker.StartTime}</div>`;
+            } else {
+                html += `<div style=\"font-style: italic; color: #808080; margin-bottom: 0.5em;\">No credits marker</div>`;
+            }
+            
+            html += `</div>`;
+        });
+        
+        html += `</div>`;
+        html += `<div style=\"margin-top: 2em; display: flex; justify-content: flex-end;\">`;
+        html += `<button is="emby-button" type="button" class="raised button-submit" id="btnCloseValidation" style="padding: 0.6em 1.5em; font-size: 1em; background-color: #4A9FE5; color: white;">Close</button>`;
+        html += `</div>`;
+        
+        content.innerHTML = html;
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+        
+        document.getElementById('btnCloseValidation').addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
+        
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                document.body.removeChild(modal);
+            }
+        });
+    }
+    
     return {
-        displayMarkers: displayMarkers
+        displayMarkers: displayMarkers,
+        showSeasonValidation: showSeasonValidation
     };
 });

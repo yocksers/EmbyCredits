@@ -764,65 +764,112 @@ namespace EmbyCredits.Services.DetectionMethods
 
         private async Task<string> PerformOcr(string imagePath, CancellationToken cancellationToken = default)
         {
-            try
+            var maxRetries = Configuration.OcrRetryAttempts;
+            var retryDelay = Configuration.OcrRetryDelayMs;
+
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
-                var endpoint = Configuration.OcrEndpoint.TrimEnd('/') + "/tesseract";
-
-                LogDebug($"Reading image file: {imagePath}");
-                var imageBytes = File.ReadAllBytes(imagePath);
-                LogDebug($"Image size: {imageBytes.Length} bytes");
-
-                using (var content = new MultipartFormDataContent())
+                try
                 {
-                    var imageContent = new ByteArrayContent(imageBytes);
-                    imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
-                    content.Add(imageContent, "file", Path.GetFileName(imagePath));
-
-                    var options = "{\"languages\":[\"eng\"]}";
-                    content.Add(new StringContent(options), "options");
-
-                    LogDebug($"Sending POST request to {endpoint}...");
-                    var response = await _httpClient.PostAsync(endpoint, content, cancellationToken).ConfigureAwait(false);
-                    LogDebug($"OCR response status: {response.StatusCode}");
-
-                    if (!response.IsSuccessStatusCode)
+                    var result = await PerformOcrInternal(imagePath, cancellationToken).ConfigureAwait(false);
+                    if (attempt > 1)
                     {
-                        LogWarn($"OCR API returned error: {response.StatusCode}");
+                        LogInfo($"OCR succeeded on attempt {attempt}/{maxRetries}");
+                    }
+                    return result;
+                }
+                catch (HttpRequestException ex)
+                {
+                    if (attempt < maxRetries)
+                    {
+                        LogWarn($"OCR attempt {attempt}/{maxRetries} failed: {ex.Message}. Retrying in {retryDelay}ms...");
+                        await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        LogError($"OCR failed after {maxRetries} attempts: {ex.Message}", ex);
                         return string.Empty;
                     }
-
-                    var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-
-                    var (text, confidence) = ParseOcrResponse(responseText);
-
-                    if (Configuration.OcrMinimumConfidence > 0 && confidence > 0 && confidence < Configuration.OcrMinimumConfidence)
+                }
+                catch (TaskCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    LogWarn("OCR request cancelled");
+                    return string.Empty;
+                }
+                catch (TaskCanceledException)
+                {
+                    if (attempt < maxRetries)
                     {
-                        LogDebug($"OCR result rejected due to low confidence: {confidence:F2} < {Configuration.OcrMinimumConfidence:F2}");
+                        LogWarn($"OCR attempt {attempt}/{maxRetries} timed out. Retrying in {retryDelay}ms...");
+                        await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        LogError($"OCR timed out after {maxRetries} attempts");
                         return string.Empty;
                     }
-
-                    if (confidence > 0)
+                }
+                catch (Exception ex)
+                {
+                    if (attempt < maxRetries)
                     {
-                        LogDebug($"OCR confidence: {confidence:F2}");
+                        LogWarn($"OCR attempt {attempt}/{maxRetries} encountered error: {ex.Message}. Retrying in {retryDelay}ms...");
+                        await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
                     }
-
-                    return text;
+                    else
+                    {
+                        LogError($"OCR failed after {maxRetries} attempts: {ex.Message}", ex);
+                        return string.Empty;
+                    }
                 }
             }
-            catch (HttpRequestException ex)
+
+            return string.Empty;
+        }
+
+        private async Task<string> PerformOcrInternal(string imagePath, CancellationToken cancellationToken = default)
+        {
+            var endpoint = Configuration.OcrEndpoint.TrimEnd('/') + "/tesseract";
+
+            LogDebug($"Reading image file: {imagePath}");
+            var imageBytes = File.ReadAllBytes(imagePath);
+            LogDebug($"Image size: {imageBytes.Length} bytes");
+
+            using (var content = new MultipartFormDataContent())
             {
-                LogWarn($"Failed to connect to OCR API at {Configuration.OcrEndpoint}: {ex.Message}");
-                return string.Empty;
-            }
-            catch (TaskCanceledException)
-            {
-                LogWarn("OCR request timed out");
-                return string.Empty;
-            }
-            catch (Exception ex)
-            {
-                LogWarn($"Error performing OCR: {ex.Message}");
-                return string.Empty;
+                var imageContent = new ByteArrayContent(imageBytes);
+                imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+                content.Add(imageContent, "file", Path.GetFileName(imagePath));
+
+                var options = "{\"languages\":[\"eng\"]}";
+                content.Add(new StringContent(options), "options");
+
+                LogDebug($"Sending POST request to {endpoint}...");
+                var response = await _httpClient.PostAsync(endpoint, content, cancellationToken).ConfigureAwait(false);
+                LogDebug($"OCR response status: {response.StatusCode}");
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    LogWarn($"OCR API returned error: {response.StatusCode}");
+                    return string.Empty;
+                }
+
+                var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+                var (text, confidence) = ParseOcrResponse(responseText);
+
+                if (Configuration.OcrMinimumConfidence > 0 && confidence > 0 && confidence < Configuration.OcrMinimumConfidence)
+                {
+                    LogDebug($"OCR result rejected due to low confidence: {confidence:F2} < {Configuration.OcrMinimumConfidence:F2}");
+                    return string.Empty;
+                }
+
+                if (confidence > 0)
+                {
+                    LogDebug($"OCR confidence: {confidence:F2}");
+                }
+
+                return text;
             }
         }
 

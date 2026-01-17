@@ -149,4 +149,19 @@ namespace EmbyCredits.Api
         public double CreditsStartSeconds { get; set; }
         public bool IsRelativeFromEnd { get; set; } = false;
     }
+
+    [Route(ApiRoutes.ApplyToSeason, "POST", Summary = "Copies one episode's credits timestamp to all episodes in the season that don't have markers.")]
+    public class ApplyToSeasonRequest : IReturn<object>
+    {
+        public string EpisodeId { get; set; } = string.Empty;
+        public string SeriesId { get; set; } = string.Empty;
+        public int SeasonNumber { get; set; }
+    }
+
+    [Route(ApiRoutes.GetSeasonValidation, "GET", Summary = "Gets validation data for all episodes in a season.")]
+    public class GetSeasonValidationRequest : IReturn<object>
+    {
+        public string SeriesId { get; set; } = string.Empty;
+        public int SeasonNumber { get; set; }
+    }
 }

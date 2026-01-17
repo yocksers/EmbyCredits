@@ -43,6 +43,7 @@ namespace EmbyCredits.Services
         private static DebugLogger? _debugLogger;
         private static ChapterMarkerService? _chapterMarkerService;
         private static EpisodeProcessor? _episodeProcessor;
+        private static PluginCoordinationService? _pluginCoordination;
 
         private static readonly ConcurrentDictionary<string, List<(string method, double timestamp)>> _batchDetectionCache = new ConcurrentDictionary<string, List<(string method, double timestamp)>>();
         private static bool _isBatchMode = false;
@@ -85,6 +86,8 @@ namespace EmbyCredits.Services
             _detectionCoordinator = new DetectionCoordinator(_logger, _configuration);
 
             _debugLogger = new DebugLogger(_logger, configuration);
+            _pluginCoordination = new PluginCoordinationService(_logger, configuration);
+            
             if (_itemRepository != null)
             {
                 _chapterMarkerService = new ChapterMarkerService(_logger, _itemRepository);
@@ -117,6 +120,8 @@ namespace EmbyCredits.Services
                 _detectionCoordinator = new DetectionCoordinator(_logger, configuration);
 
                 _debugLogger = new DebugLogger(_logger, configuration);
+                _pluginCoordination = new PluginCoordinationService(_logger, configuration);
+                
                 if (_itemRepository != null)
                 {
                     _chapterMarkerService = new ChapterMarkerService(_logger, _itemRepository);
@@ -359,13 +364,7 @@ namespace EmbyCredits.Services
                     var hasCreditsMarker = chapters.Any(c => 
                     {
                         var markerType = GetMarkerType(c);
-                        if (markerType != null && markerType.Contains("Credits"))
-                            return true;
-                        
-                        if (c.Name != null && c.Name.ToLowerInvariant().Contains("credit"))
-                            return true;
-                        
-                        return false;
+                        return markerType == "CreditsStart";
                     });
 
                     LogDebug($"Episode has existing credits marker: {hasCreditsMarker}, ScheduledTaskOnlyProcessMissing: {_configuration.ScheduledTaskOnlyProcessMissing}");
@@ -552,13 +551,7 @@ namespace EmbyCredits.Services
                 var hasCreditsMarker = chapters.Any(c => 
                 {
                     var markerType = GetMarkerType(c);
-                    if (markerType != null && markerType.Contains("Credits"))
-                        return true;
-                    
-                    if (c.Name != null && c.Name.ToLowerInvariant().Contains("credit"))
-                        return true;
-                    
-                    return false;
+                    return markerType == "CreditsStart";
                 });
 
                 if (hasCreditsMarker)
@@ -592,13 +585,7 @@ namespace EmbyCredits.Services
                     var hasCreditsMarker = chapters.Any(c => 
                     {
                         var markerType = GetMarkerType(c);
-                        if (markerType != null && markerType.Contains("Credits"))
-                            return true;
-                        
-                        if (c.Name != null && c.Name.ToLowerInvariant().Contains("credit"))
-                            return true;
-                        
-                        return false;
+                        return markerType == "CreditsStart";
                     });
 
                     if (hasCreditsMarker)
@@ -792,6 +779,25 @@ namespace EmbyCredits.Services
                         break;
                     }
 
+                    // Wait if other plugins (like Intro Skipper) are processing
+                    if (_pluginCoordination != null)
+                    {
+                        try
+                        {
+                            await _pluginCoordination.WaitForOtherPlugins();
+                        }
+                        catch (Exception coordEx)
+                        {
+                            LogDebug($"Plugin coordination check failed: {coordEx.Message}");
+                        }
+                    }
+
+                    if (!_isRunning || _cancellationRequested)
+                    {
+                        LogInfo("Processing cancelled during coordination wait");
+                        break;
+                    }
+
                     LogInfo($"Processing episode from queue: {episode.Name}");
                     await ProcessEpisode(episode);
 
@@ -887,7 +893,7 @@ namespace EmbyCredits.Services
                     Plugin.Progress.CurrentItemProgress = 10;
                 }
 
-                var (success, creditsStart, failureReason) = await _episodeProcessor.ProcessEpisode(
+                var (success, creditsStart, failureReason, confidence) = await _episodeProcessor.ProcessEpisode(
                     episode, _isDryRun, _isBatchMode, _batchDetectionCache);
 
                 if (Plugin.Instance != null)
@@ -906,6 +912,7 @@ namespace EmbyCredits.Services
                             ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
                             : episode.Name;
                         Plugin.Progress.SuccessDetails[episodeKey] = FormatTime(creditsStart);
+                        Plugin.Progress.ConfidenceScores[episodeKey] = confidence;
                     }
 
                     if (!_isDryRun)

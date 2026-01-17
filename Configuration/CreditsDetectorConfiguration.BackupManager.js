@@ -250,7 +250,7 @@ define(['loading', 'toast'], function (loading, toast) {
             });
         }).catch(error => {
             console.error('Error loading series:', error);
-            seriesList.innerHTML = '<div style="text-align: center; color: #E53935; padding: 1em;">Failed to load TV shows</div>';
+            seriesList.innerHTML = '<div style="text-align: center; padding: 1em;">Failed to load TV shows</div>';
         });
     }
     

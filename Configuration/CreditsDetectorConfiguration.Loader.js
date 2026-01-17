@@ -13,7 +13,14 @@ define([], function () {
 
         const promises = parts.map(p => {
             console.log('Fetching partial:', p.page);
-            return fetch('/web/configurationpage?name=' + p.page)
+            const cacheBuster = new Date().getTime();
+            return fetch('/web/configurationpage?name=' + p.page + '&_=' + cacheBuster, {
+                cache: 'no-cache',
+                headers: {
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
+                }
+            })
                 .then(r => {
                     console.log('Fetch response for', p.page, '- Status:', r.status, 'OK:', r.ok);
                     if (!r.ok) throw new Error('Failed to load ' + p.page + ': ' + r.status);
@@ -36,6 +43,14 @@ define([], function () {
 
         await Promise.all(promises);
         console.log('All partials loaded');
+        
+        // Verify content loaded correctly - check for key elements
+        setTimeout(() => {
+            const actionsPage = view.querySelector('#actionsPage');
+            if (actionsPage && actionsPage.innerHTML.trim().length === 0) {
+                console.warn('Actions page appears empty - content may not have loaded correctly');
+            }
+        }, 100);
     }
 
     return {

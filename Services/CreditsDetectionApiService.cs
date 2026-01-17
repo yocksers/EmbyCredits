@@ -1,6 +1,7 @@
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Services;
 using System;
@@ -155,7 +156,6 @@ namespace EmbyCredits.Services
 
                 var allEpisodes = ItemLookupHelper.GetSeriesEpisodes(_libraryManager, series.InternalId, _logger);
                 
-                // Check if requesting Season 0 (specials)
                 if (request.SeasonNumber == 0)
                 {
                     return new { Success = false, Message = "Season 0 (specials) are not supported for credits detection" };
@@ -256,7 +256,6 @@ namespace EmbyCredits.Services
 
                 var allEpisodes = ItemLookupHelper.GetSeriesEpisodes(_libraryManager, series.InternalId, _logger);
                 
-                // Check if requesting Season 0 (specials)
                 if (request.SeasonNumber == 0)
                 {
                     return new { Success = false, Message = "Season 0 (specials) are not supported for credits detection" };
@@ -483,7 +482,8 @@ namespace EmbyCredits.Services
                     StartTime = progress.StartTime,
                     EndTime = progress.EndTime,
                     FailureReasons = progress.FailureReasons,
-                    SuccessDetails = progress.SuccessDetails
+                    SuccessDetails = progress.SuccessDetails,
+                    ConfidenceScores = progress.ConfidenceScores
                 };
             }
             catch (Exception ex)
@@ -635,6 +635,123 @@ namespace EmbyCredits.Services
             catch (Exception ex)
             {
                 _logger?.ErrorException("Error getting series markers", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Get(GetSeasonValidationRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.SeriesId))
+                {
+                    return new { Success = false, Message = "SeriesId is required" };
+                }
+
+                var series = ItemLookupHelper.ResolveSeries(_libraryManager, request.SeriesId, _logger);
+                if (series == null)
+                {
+                    return new { Success = false, Message = "Series not found" };
+                }
+
+                var allEpisodes = ItemLookupHelper.GetSeriesEpisodes(_libraryManager, series.InternalId, _logger);
+
+                if (request.SeasonNumber == 0)
+                {
+                    return new { Success = false, Message = "Season 0 (specials) are not supported" };
+                }
+
+                var seasonEpisodes = allEpisodes
+                    .Where(e => e.ParentIndexNumber == request.SeasonNumber)
+                    .OrderBy(e => e.IndexNumber)
+                    .ToList();
+
+                if (seasonEpisodes.Count == 0)
+                {
+                    return new { Success = false, Message = $"No episodes found for Season {request.SeasonNumber}" };
+                }
+
+                var episodeMarkers = CreditsDetectionService.GetSeriesMarkers(seasonEpisodes);
+                var validationData = new List<object>();
+
+                foreach (var episode in seasonEpisodes)
+                {
+                    var marker = episodeMarkers.FirstOrDefault(m =>
+                    {
+                        var markerType = m.GetType();
+                        var episodeIdProp = markerType.GetProperty("EpisodeId");
+                        if (episodeIdProp != null)
+                        {
+                            var episodeId = episodeIdProp.GetValue(m)?.ToString();
+                            return episodeId == episode.Id.ToString();
+                        }
+                        return false;
+                    });
+
+                    object? markerData = null;
+                    if (marker != null)
+                    {
+                        var markerType = marker.GetType();
+                        var hasCreditsMarkerProp = markerType.GetProperty("HasCreditsMarker");
+                        var markersProp = markerType.GetProperty("Markers");
+
+                        var hasMarker = hasCreditsMarkerProp != null &&
+                                       hasCreditsMarkerProp.GetValue(marker) is bool boolVal && boolVal;
+
+                        if (hasMarker && markersProp != null)
+                        {
+                            var markers = markersProp.GetValue(marker);
+                            if (markers is System.Collections.IEnumerable enumerable)
+                            {
+                                foreach (var m in enumerable)
+                                {
+                                    var mType = m.GetType();
+                                    var startTimeProp = mType.GetProperty("StartTime");
+                                    if (startTimeProp != null)
+                                    {
+                                        markerData = new
+                                        {
+                                            HasMarker = true,
+                                            StartTime = startTimeProp.GetValue(m)?.ToString()
+                                        };
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (markerData == null)
+                    {
+                        markerData = new { HasMarker = false, StartTime = (string?)null };
+                    }
+
+                    validationData.Add(new
+                    {
+                        EpisodeId = episode.Id.ToString(),
+                        EpisodeNumber = episode.IndexNumber ?? 0,
+                        EpisodeName = episode.Name,
+                        Duration = episode.RunTimeTicks.HasValue
+                            ? FormatTime(episode.RunTimeTicks.Value / TimeSpan.TicksPerSecond)
+                            : "Unknown",
+                        DurationSeconds = episode.RunTimeTicks.HasValue
+                            ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond
+                            : 0,
+                        Marker = markerData
+                    });
+                }
+
+                return new
+                {
+                    Success = true,
+                    SeriesName = series.Name,
+                    SeasonNumber = request.SeasonNumber,
+                    Episodes = validationData
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting season validation data", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }
@@ -1126,6 +1243,220 @@ namespace EmbyCredits.Services
                 _logger?.ErrorException("Error updating credits marker", ex);
                 return new { Success = false, Message = ex.Message };
             }
+        }
+
+        public object Post(ApplyToSeasonRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.EpisodeId))
+                {
+                    return new { Success = false, Message = "EpisodeId is required" };
+                }
+
+                if (string.IsNullOrEmpty(request.SeriesId))
+                {
+                    return new { Success = false, Message = "SeriesId is required" };
+                }
+
+                Guid episodeGuid;
+                if (!Guid.TryParse(request.EpisodeId, out episodeGuid))
+                {
+                    return new { Success = false, Message = "Invalid EpisodeId format" };
+                }
+
+                var sourceEpisode = _libraryManager.GetItemById(episodeGuid) as Episode;
+                if (sourceEpisode == null)
+                {
+                    return new { Success = false, Message = "Source episode not found" };
+                }
+
+                var chapterMarkerService = Plugin.ChapterMarkerService;
+                if (chapterMarkerService == null)
+                {
+                    return new { Success = false, Message = "Chapter marker service not available" };
+                }
+
+                var chapters = chapterMarkerService.GetChapters(sourceEpisode);
+
+                var creditsMarker = chapters.FirstOrDefault(c =>
+                {
+                    var markerType = GetMarkerTypeFromChapter(c);
+                    return markerType == "CreditsStart" || markerType == "Credits" ||
+                           (c.Name != null && c.Name.ToLowerInvariant().Contains("credit"));
+                });
+
+                if (creditsMarker == null)
+                {
+                    return new { Success = false, Message = "Source episode does not have a credits marker" };
+                }
+
+                var creditsStartSeconds = creditsMarker.StartPositionTicks / (double)TimeSpan.TicksPerSecond;
+                var sourceDurationSeconds = sourceEpisode.RunTimeTicks.HasValue
+                    ? sourceEpisode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond
+                    : 0;
+
+                if (sourceDurationSeconds <= 0)
+                {
+                    return new { Success = false, Message = "Source episode has no valid runtime information" };
+                }
+
+                var timeFromEnd = sourceDurationSeconds - creditsStartSeconds;
+
+                var series = ItemLookupHelper.ResolveSeries(_libraryManager, request.SeriesId, _logger);
+                if (series == null)
+                {
+                    return new { Success = false, Message = "Series not found" };
+                }
+
+                var allEpisodes = ItemLookupHelper.GetSeriesEpisodes(_libraryManager, series.InternalId, _logger);
+                var seasonEpisodes = allEpisodes
+                    .Where(e => e.ParentIndexNumber == request.SeasonNumber && e.Id != episodeGuid)
+                    .ToList();
+
+                if (seasonEpisodes.Count == 0)
+                {
+                    return new { Success = false, Message = $"No other episodes found in Season {request.SeasonNumber}" };
+                }
+
+                var episodeMarkers = chapterMarkerService.GetSeriesMarkers(seasonEpisodes);
+                var episodesWithMarkers = new HashSet<string>();
+
+                foreach (var marker in episodeMarkers)
+                {
+                    var markerType = marker.GetType();
+                    var hasCreditsMarkerProp = markerType.GetProperty("HasCreditsMarker");
+                    var episodeIdProp = markerType.GetProperty("EpisodeId");
+
+                    if (hasCreditsMarkerProp != null && episodeIdProp != null)
+                    {
+                        var hasMarkerValue = hasCreditsMarkerProp.GetValue(marker);
+                        if (hasMarkerValue is bool boolVal && boolVal)
+                        {
+                            var episodeId = episodeIdProp.GetValue(marker)?.ToString();
+                            if (episodeId != null)
+                            {
+                                episodesWithMarkers.Add(episodeId);
+                            }
+                        }
+                    }
+                }
+
+                var episodesWithoutMarkers = seasonEpisodes
+                    .Where(ep => !episodesWithMarkers.Contains(ep.Id.ToString()))
+                    .ToList();
+
+                if (episodesWithoutMarkers.Count == 0)
+                {
+                    return new
+                    {
+                        Success = true,
+                        Message = $"All other episodes in Season {request.SeasonNumber} already have credits markers",
+                        EpisodeCount = 0,
+                        TotalEpisodes = seasonEpisodes.Count
+                    };
+                }
+
+                var successCount = 0;
+                var failedEpisodes = new List<string>();
+
+                foreach (var episode in episodesWithoutMarkers)
+                {
+                    try
+                    {
+                        if (!episode.RunTimeTicks.HasValue || episode.RunTimeTicks.Value <= 0)
+                        {
+                            failedEpisodes.Add($"{episode.Name} (no runtime)");
+                            _logger?.Warn($"Skipping {episode.Name} - no valid runtime information");
+                            continue;
+                        }
+
+                        var episodeDurationSeconds = episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond;
+                        var episodeCreditsStartSeconds = episodeDurationSeconds - timeFromEnd;
+
+                        if (episodeCreditsStartSeconds < 0)
+                        {
+                            failedEpisodes.Add($"{episode.Name} (offset exceeds duration)");
+                            _logger?.Warn($"Skipping {episode.Name} - credits offset from end exceeds video duration");
+                            continue;
+                        }
+
+                        if (episodeCreditsStartSeconds >= episodeDurationSeconds)
+                        {
+                            failedEpisodes.Add($"{episode.Name} (timestamp exceeds duration)");
+                            _logger?.Warn($"Skipping {episode.Name} - timestamp exceeds video duration");
+                            continue;
+                        }
+
+                        chapterMarkerService.SaveCreditsMarker(episode, episodeCreditsStartSeconds);
+                        successCount++;
+                        _logger?.Info($"Applied credits marker at {FormatTime(episodeCreditsStartSeconds)} (-{FormatTime(timeFromEnd)} from end) to {episode.Name}");
+                    }
+                    catch (Exception ex)
+                    {
+                        failedEpisodes.Add($"{episode.Name} ({ex.Message})");
+                        _logger?.ErrorException($"Failed to apply marker to {episode.Name}", ex);
+                    }
+                }
+
+                var timeDescription = $"{FormatTime(creditsStartSeconds)} (-{FormatTime(timeFromEnd)} from end)";
+
+                if (failedEpisodes.Count == 0)
+                {
+                    return new
+                    {
+                        Success = true,
+                        Message = $"Successfully copied credits marker from '{sourceEpisode.Name}' at {timeDescription} to {successCount} episode(s) in Season {request.SeasonNumber}",
+                        EpisodeCount = successCount,
+                        TotalEpisodes = seasonEpisodes.Count,
+                        SourceEpisode = sourceEpisode.Name,
+                        CreditsTime = timeDescription
+                    };
+                }
+                else
+                {
+                    return new
+                    {
+                        Success = true,
+                        Message = $"Copied marker to {successCount} episode(s), {failedEpisodes.Count} failed. Time: {timeDescription}",
+                        EpisodeCount = successCount,
+                        FailedCount = failedEpisodes.Count,
+                        FailedEpisodes = failedEpisodes,
+                        SourceEpisode = sourceEpisode.Name,
+                        CreditsTime = timeDescription
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException($"Error applying credits marker to season", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        private string? GetMarkerTypeFromChapter(ChapterInfo chapter)
+        {
+            try
+            {
+                if (chapter == null)
+                    return null;
+
+                var chapterType = chapter.GetType();
+                if (chapterType == null)
+                    return null;
+
+                var markerTypeProp = chapterType.GetProperty("MarkerType");
+                if (markerTypeProp != null && markerTypeProp.CanRead)
+                {
+                    var value = markerTypeProp.GetValue(chapter);
+                    return value?.ToString();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Debug($"Error reading MarkerType property: {ex.Message}");
+            }
+            return null;
         }
     }
 }
