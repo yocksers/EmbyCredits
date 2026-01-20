@@ -77,6 +77,9 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkNotifyOnSuccessOnly').checked = config.NotifyOnSuccessOnly || false;
             view.querySelector('#txtMinimumEpisodesForNotification').value = config.MinimumEpisodesForNotification !== null && config.MinimumEpisodesForNotification !== undefined ? config.MinimumEpisodesForNotification : 1;
 
+            view.querySelector('#txtBackupFolderPath').value = config.BackupFolderPath || '';
+            view.querySelector('#txtMaxScheduledBackups').value = config.MaxScheduledBackups !== null && config.MaxScheduledBackups !== undefined ? config.MaxScheduledBackups : 10;
+
             // Load libraries and series/episode dropdowns
             require(['configurationpage?name=CreditsDetectorConfigurationSeriesManager'], (seriesManager) => {
                 seriesManager.loadLibraries(view, config);
@@ -181,6 +184,10 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.NotifyOnSuccessOnly = view.querySelector('#chkNotifyOnSuccessOnly').checked;
         const minEpisodes = Number.parseInt(view.querySelector('#txtMinimumEpisodesForNotification').value, 10);
         instance.config.MinimumEpisodesForNotification = Number.isNaN(minEpisodes) ? 1 : minEpisodes;
+
+        instance.config.BackupFolderPath = view.querySelector('#txtBackupFolderPath').value || '';
+        const maxBackups = Number.parseInt(view.querySelector('#txtMaxScheduledBackups').value, 10);
+        instance.config.MaxScheduledBackups = Number.isNaN(maxBackups) ? 10 : maxBackups;
 
         const checkboxes = view.querySelectorAll('.chkLibrary');
         const selectedLibraryIds = [];

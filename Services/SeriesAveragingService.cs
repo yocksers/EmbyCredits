@@ -70,9 +70,9 @@ namespace EmbyCredits.Services
                 return 0;
             }
 
-            if (data.TimestampCount < _configuration.MinimumEpisodesForAveraging)
+            if (data.TimestampCount < _configuration.MinimumEpisodesToCompare)
             {
-                _logger.Debug($"[SeriesAveraging] Not enough data for {series.Name}: {data.TimestampCount}/{_configuration.MinimumEpisodesForAveraging}");
+                _logger.Debug($"[SeriesAveraging] Not enough data for {series.Name}: {data.TimestampCount}/{_configuration.MinimumEpisodesToCompare}");
                 return 0;
             }
 
