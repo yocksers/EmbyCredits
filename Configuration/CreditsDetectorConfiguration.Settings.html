@@ -43,6 +43,23 @@
             <div class="fieldDescription"><strong>⚠️ CRITICAL FOR DOCKER USERS:</strong> Set this to prevent filling your Docker image! Leave empty only if running Emby natively on host OS. Temp files are automatically cleaned up after processing.</div>
         </div>
 
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtBackupFolderPath">Backup Folder Path</label>
+            <div style="display: flex; gap: 0.5em;">
+                <input is="emby-input" type="text" id="txtBackupFolderPath" data-config-key="BackupFolderPath" style="flex: 1;" />
+                <button is="emby-button" type="button" class="raised button-submit" id="btnBrowseBackupFolder" title="Browse for folder">
+                    <i class="md-icon">folder_open</i>
+                </button>
+            </div>
+            <div class="fieldDescription">Custom location for scheduled backup files. If empty, backups will be saved to the default plugin data folder (DataPath/plugins/EmbyCredits/Backups/).</div>
+        </div>
+
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtMaxScheduledBackups">Maximum Backup Files</label>
+            <input is="emby-input" type="number" id="txtMaxScheduledBackups" data-config-key="MaxScheduledBackups" min="1" max="100" />
+            <div class="fieldDescription">Maximum number of scheduled backup files to keep. Older backups will be automatically deleted. Default: 10</div>
+        </div>
+
         <div class="checkboxContainer" style="margin-top: 1.5em;">
             <label>
                 <input is="emby-checkbox" type="checkbox" id="chkEnableDetailedLogging" data-config-key="EnableDetailedLogging" />

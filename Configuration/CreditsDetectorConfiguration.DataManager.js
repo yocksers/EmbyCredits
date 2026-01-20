@@ -267,6 +267,21 @@ define(['loading', 'toast'], function (loading, toast) {
         });
     }
 
+    function browseBackupFolder(view) {
+        require(['directorybrowser'], function(directoryBrowser) {
+            var picker = new directoryBrowser();
+            picker.show({
+                includeFiles: false,
+                callback: function(path) {
+                    if (path) {
+                        view.querySelector('#txtBackupFolderPath').value = path;
+                    }
+                    picker.close();
+                }
+            });
+        });
+    }
+
     function updateSearchStartDescription(view, unit) {
         const descMinutes = view.querySelector('#descMinutes');
         const descPercentage = view.querySelector('#descPercentage');
@@ -317,6 +332,7 @@ define(['loading', 'toast'], function (loading, toast) {
         saveData: saveData,
         resetToDefaults: resetToDefaults,
         browseTempFolder: browseTempFolder,
+        browseBackupFolder: browseBackupFolder,
         setupUnitChangeListener: setupUnitChangeListener
     };
 });

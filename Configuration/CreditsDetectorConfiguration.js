@@ -34,6 +34,10 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 dataManager.browseTempFolder(view);
             });
 
+            view.querySelector('#btnBrowseBackupFolder').addEventListener('click', () => {
+                dataManager.browseBackupFolder(view);
+            });
+
 
             view.querySelector('#btnProcessSeries').addEventListener('click', () => {
                 processingActions.processSeries(this, view);

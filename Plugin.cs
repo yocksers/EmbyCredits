@@ -68,6 +68,9 @@ namespace EmbyCredits
                 {
                     Name = "CreditsDetectorConfiguration",
                     EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.html",
+                    EnableInMainMenu = true,
+                    MenuIcon = "movie_filter",
+                    DisplayName = "Credits Detector"
                 },
                 new PluginPageInfo
                 {

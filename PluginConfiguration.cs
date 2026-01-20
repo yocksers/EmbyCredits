@@ -140,5 +140,8 @@ namespace EmbyCredits
         public int MinimumEpisodesForNotification { get; set; } = 1;
 
         public bool PreventConcurrentPluginProcessing { get; set; } = true;
+
+        public int MaxScheduledBackups { get; set; } = 10;
+        public string BackupFolderPath { get; set; } = "";
     }
 }
