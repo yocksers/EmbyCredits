@@ -17,11 +17,26 @@ namespace EmbyCredits.Services.DetectionMethods
     public class OcrDetection : BaseDetectionMethod
     {
         public override string MethodName => "OCR Detection";
-        public override double Confidence => 0.95;
+        
+        private double _calculatedConfidence = 0.95;
+        public override double Confidence => _calculatedConfidence;
+        
         public override int Priority => Configuration.OcrDetectionPriority;
         public override bool IsEnabled => Configuration.EnableOcrDetection;
 
-        private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+        private List<double> _ocrTextConfidences = new List<double>();
+        private int _totalKeywordMatches = 0;
+        private int _totalFramesProcessed = 0;
+
+        private static readonly HttpClient _httpClient = new HttpClient 
+        { 
+            Timeout = TimeSpan.FromMinutes(2)
+        };
+
+        static OcrDetection()
+        {
+            _httpClient.DefaultRequestHeaders.ConnectionClose = false;
+        }
 
         public OcrDetection(ILogger logger, PluginConfiguration configuration)
             : base(logger, configuration)
@@ -31,6 +46,12 @@ namespace EmbyCredits.Services.DetectionMethods
         public override async Task<double> DetectCredits(string videoPath, double duration, CancellationToken cancellationToken = default)
         {
             LastError = string.Empty;
+            
+            _ocrTextConfidences.Clear();
+            _totalKeywordMatches = 0;
+            _totalFramesProcessed = 0;
+            _calculatedConfidence = 0.95;
+            
             try
             {
                 if (string.IsNullOrWhiteSpace(Configuration.OcrEndpoint))
@@ -102,60 +123,565 @@ namespace EmbyCredits.Services.DetectionMethods
                 try
                 {
                     var fps = Configuration.OcrFrameRate;
-                    var imageFormat = Configuration.OcrImageFormat?.ToLowerInvariant() == "jpg" ? "jpg" : "png";
-                    var imageExtension = imageFormat;
+                    var recentTextFrames = new List<(double timestamp, string text)>();
+                    
+                    if (Configuration.OcrUseDirectMemoryPipeline)
+                    {
+                        LogInfo("Using direct memory pipeline (no disk I/O) for frame extraction");
+                        return await ProcessFramesDirectFromMemory(videoPath, duration, startTime, analysisDuration, fps, keywords, recentTextFrames, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        LogInfo("Using disk-based frame extraction (legacy method)");
+                        return await ProcessFramesFromDisk(videoPath, duration, startTime, analysisDuration, fps, keywords, tempDir, recentTextFrames, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LastError = $"OCR detection error: {ex.Message}";
+                    LogError("Error in OCR detection", ex);
+                    return 0;
+                }
+                finally
+                {
+                    if (Directory.Exists(tempDir))
+                    {
+                        try
+                        {
+                            Directory.Delete(tempDir, true);
+                            LogDebug($"Cleaned up temp directory: {tempDir}");
+                        }
+                        catch (Exception ex)
+                        {
+                            LogDebug($"Could not cleanup temp directory: {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LastError = $"OCR detection error: {ex.Message}";
+                LogError("Error in OCR detection", ex);
+                return 0;
+            }
+        }
 
-                    var qualityParam = "";
+        private Task ProcessOcrResult(
+            string ocrText,
+            double timestamp,
+            int frameIndex,
+            double analysisDuration,
+            double fps,
+            List<string> keywords,
+            List<(double timestamp, int score, string matchedText)> detectionScores,
+            List<(double timestamp, int charCount)> characterDensityHistory,
+            List<(double timestamp, string text)> recentTextFrames,
+            int maxFramesToProcess)
+        {
+            if (frameIndex == 0)
+            {
+                LogInfo($"Processing first frame at {FormatTime(timestamp)}");
+            }
+
+            var estimatedTotal = Math.Min(maxFramesToProcess, (int)(analysisDuration * fps));
+            var ocrProgress = estimatedTotal > 0 ? (double)(frameIndex + 1) / estimatedTotal : 0;
+            var overallProgress = 15 + (ocrProgress * 80);
+            UpdateProgress(overallProgress, $"OCR: {frameIndex + 1} frames ({ocrProgress:P0})");
+
+            if (frameIndex > 0 && frameIndex % 50 == 0)
+            {
+                LogDebug($"OCR progress: {frameIndex} frames processed");
+            }
+
+            if (!string.IsNullOrWhiteSpace(ocrText))
+            {
+                recentTextFrames.Add((timestamp, ocrText));
+                if (recentTextFrames.Count > Configuration.OcrScrollingMinFrames + 5)
+                {
+                    recentTextFrames.RemoveAt(0);
+                }
+
+                var charCount = CountMeaningfulCharacters(ocrText);
+                characterDensityHistory.Add((timestamp, charCount));
+
+                var textPreview = ocrText.Length > 100 ? ocrText.Substring(0, 100) + "..." : ocrText;
+                var textOneLine = textPreview.Replace("\n", " ").Replace("\r", "");
+                LogDebug($"Frame at {FormatTime(timestamp)}: OCR detected {charCount} chars: \"{textOneLine}\"");
+
+                var matchedKeywords = Configuration.OcrEnableFuzzyMatching 
+                    ? FindKeywordMatchesFuzzy(ocrText, keywords, Configuration.OcrFuzzyMatchMaxDistance)
+                    : FindKeywordMatches(ocrText, keywords);
+
+                var densityDetected = false;
+                if (Configuration.OcrEnableCharacterDensityDetection)
+                {
+                    densityDetected = CheckCharacterDensity(characterDensityHistory, detectionScores, timestamp, charCount, ocrText);
+                }
+
+                var scrollingDetected = false;
+                if (Configuration.OcrEnableScrollingDetection && recentTextFrames.Count >= Configuration.OcrScrollingMinFrames)
+                {
+                    scrollingDetected = OcrOptimizations.DetectScrollingPattern(
+                        recentTextFrames.TakeLast(Configuration.OcrScrollingMinFrames).ToList(),
+                        Configuration.OcrScrollingMinFrames,
+                        Configuration.OcrScrollingOverlapThreshold);
+                    
+                    if (scrollingDetected)
+                    {
+                        LogDebug($"Frame at {FormatTime(timestamp)}: ✓ Scrolling credits pattern detected");
+                    }
+                }
+
+                var structureDetected = false;
+                if (Configuration.OcrEnableCreditStructureDetection)
+                {
+                    structureDetected = DetectCreditStructure(ocrText, Configuration.OcrMinimumStructureLines);
+                    if (structureDetected)
+                    {
+                        LogDebug($"Frame at {FormatTime(timestamp)}: ✓ Credit structure pattern detected");
+                    }
+                }
+
+                bool frameIndicatesCredits = false;
+                if (Configuration.OcrCharacterDensityPrimaryMethod)
+                {
+                    frameIndicatesCredits = densityDetected || matchedKeywords.Count > 0 || scrollingDetected || structureDetected;
+                    if (densityDetected)
+                    {
+                        var keywordBonus = matchedKeywords.Count > 0 ? $" + {matchedKeywords.Count} keyword(s): {string.Join(", ", matchedKeywords)}" : "";
+                        LogDebug($"Frame at {FormatTime(timestamp)}: ✓ MATCH - High text density ({charCount} chars){keywordBonus}");
+                    }
+                }
+                else
+                {
+                    frameIndicatesCredits = matchedKeywords.Count > 0 || scrollingDetected || structureDetected;
+                }
+
+                if (frameIndicatesCredits)
+                {
+                    var matchReasons = new List<string>();
+                    if (matchedKeywords.Count > 0) matchReasons.Add(string.Join(", ", matchedKeywords));
+                    if (densityDetected && matchedKeywords.Count == 0) matchReasons.Add("density");
+                    if (scrollingDetected) matchReasons.Add("scrolling");
+                    if (structureDetected) matchReasons.Add("structure");
+                    
+                    var matchedText = matchReasons.Count > 0 ? string.Join(" | ", matchReasons) : "density";
+                    var matchScore = matchedKeywords.Count > 0 ? matchedKeywords.Count : 1;
+                    if (scrollingDetected) matchScore += 1;
+                    if (structureDetected) matchScore += 1;
+                    
+                    detectionScores.Add((timestamp, matchScore, matchedText));
+
+                    if (matchedKeywords.Count > 0 && !densityDetected)
+                    {
+                        LogDebug($"Frame at {FormatTime(timestamp)}: ✓ MATCH - Found {matchedKeywords.Count} keyword(s): {string.Join(", ", matchedKeywords)}");
+                    }
+                }
+            }
+            else
+            {
+                characterDensityHistory.Add((timestamp, 0));
+            }
+            
+            return Task.CompletedTask;
+        }
+
+        private async Task<double> ProcessFramesDirectFromMemory(
+            string videoPath, 
+            double duration, 
+            double startTime, 
+            double analysisDuration, 
+            double fps, 
+            List<string> keywords,
+            List<(double timestamp, string text)> recentTextFrames,
+            CancellationToken cancellationToken)
+        {
+            var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
+            var preInputArgs = BuildPreInputArgs();
+            var threadArgs = BuildThreadArgs();
+            var filterChain = BuildFilterChain(fps);
+            
+            var imageFormat = Configuration.OcrImageFormat?.ToLowerInvariant() == "jpg" ? "jpg" : "png";
+            var vcodec = imageFormat == "jpg" ? "mjpeg" : "png";
+            var codecArgs = imageFormat == "jpg" ? $"-q:v {Configuration.OcrJpegQuality}" : "";
+            var outputFormat = $"-f image2pipe -vcodec {vcodec} {codecArgs} pipe:1";
+            
+            var extractArgs = $"{preInputArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} {threadArgs}-t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"{filterChain}\" {outputFormat}";
+
+            LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps ({imageFormat.ToUpperInvariant()}{(imageFormat == "jpg" ? $" Q{Configuration.OcrJpegQuality}" : "")}) (Direct Memory Pipeline)");
+            LogDebug($"FFmpeg command: {FFmpegHelper.GetFfmpegPath()} {extractArgs}");
+            UpdateProgress(10, "Starting direct memory frame extraction");
+
+            using (var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = FFmpegHelper.GetFfmpegPath(),
+                    Arguments = extractArgs,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = null
+                }
+            })
+            {
+                try
+                {
+                    process.Start();
+
+                    var timeoutMinutes = Configuration.OcrMaxAnalysisDuration > 0 
+                    ? (Configuration.OcrMaxAnalysisDuration / 60) + 5
+                    : 30;
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMinutes));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+                var effectiveToken = linkedCts.Token;
+
+                var detectionScores = new List<(double timestamp, int matchCount, string matchedKeywords)>();
+                var characterDensityHistory = new List<(double timestamp, int charCount)>();
+                int frameIndex = 0;
+                int maxFramesToProcess = Configuration.OcrMaxFramesToProcess > 0 ? Configuration.OcrMaxFramesToProcess : int.MaxValue;
+                double creditsTimestamp = 0;
+
+                var ffmpegErrorTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var ffmpegError = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
+                        if (!string.IsNullOrWhiteSpace(ffmpegError) && 
+                            (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) || 
+                             ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            LogDebug($"FFmpeg output: {ffmpegError}");
+                        }
+                        return ffmpegError;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWarn($"Error reading FFmpeg output: {ex.Message}");
+                        return string.Empty;
+                    }
+                });
+
+                try
+                {
+                    var stdoutStream = process.StandardOutput.BaseStream;
+                    
+                    byte[] imageSignature;
+                    byte[] imageEndMarker;
+                    
                     if (imageFormat == "jpg")
                     {
-                        var userQuality = Math.Max(1, Math.Min(100, Configuration.OcrJpegQuality));
-                        var ffmpegQuality = 2 + (int)Math.Round((100 - userQuality) * 29.0 / 99.0);
-                        qualityParam = $"-q:v {ffmpegQuality}";
+                        imageSignature = new byte[] { 0xFF, 0xD8, 0xFF };
+                        imageEndMarker = new byte[] { 0xFF, 0xD9 };
+                    }
+                    else
+                    {
+                        imageSignature = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+                        imageEndMarker = new byte[] { 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82 };
+                    }
+                    
+                    var buffer = new List<byte>();
+                    var readBuffer = new byte[65536];
+                    var frameQueue = new List<(byte[] data, double timestamp, int index)>();
+                    var batchSize = Configuration.OcrEnableParallelProcessing ? Configuration.OcrParallelBatchSize : 1;
+                    const int MaxBufferSize = 20 * 1024 * 1024;
+                    
+                    while (!effectiveToken.IsCancellationRequested && frameIndex < maxFramesToProcess)
+                    {
+                        int bytesRead = await stdoutStream.ReadAsync(readBuffer, 0, readBuffer.Length, effectiveToken).ConfigureAwait(false);
+                        
+                        if (bytesRead == 0)
+                        {
+                            if (buffer.Count > 0)
+                            {
+                                int imageStart = FindSequence(buffer, imageSignature, 0);
+                                if (imageStart >= 0)
+                                {
+                                    int endMarker = FindSequence(buffer, imageEndMarker, imageStart);
+                                    if (endMarker >= 0)
+                                    {
+                                        var frameData = buffer.GetRange(imageStart, endMarker + imageEndMarker.Length - imageStart).ToArray();
+                                        var timestamp = startTime + (frameIndex / fps);
+                                        frameQueue.Add((frameData, timestamp, frameIndex));
+                                        frameIndex++;
+                                    }
+                                }
+                            }
+                            
+                            if (frameQueue.Count > 0)
+                            {
+                                await ProcessFrameBatch(frameQueue, keywords, detectionScores, characterDensityHistory, 
+                                    recentTextFrames, analysisDuration, fps, maxFramesToProcess, effectiveToken).ConfigureAwait(false);
+                                frameQueue.Clear();
+                            }
+                            break;
+                        }
+
+                        buffer.AddRange(readBuffer.Take(bytesRead));
+
+                        while (buffer.Count > imageSignature.Length && !effectiveToken.IsCancellationRequested && frameIndex < maxFramesToProcess)
+                        {
+                            int imageStart = FindSequence(buffer, imageSignature, 0);
+                            if (imageStart == -1)
+                            {
+                                if (buffer.Count > imageSignature.Length)
+                                {
+                                    buffer.RemoveRange(0, buffer.Count - imageSignature.Length);
+                                }
+                                break;
+                            }
+
+                            if (imageStart > 0)
+                            {
+                                buffer.RemoveRange(0, imageStart);
+                                imageStart = 0;
+                            }
+
+                            int endMarker = FindSequence(buffer, imageEndMarker, imageStart + imageSignature.Length);
+                            
+                            if (endMarker == -1)
+                            {
+                                if (buffer.Count > MaxBufferSize)
+                                {
+                                    LogWarn($"Frame buffer exceeded {MaxBufferSize / (1024 * 1024)}MB, clearing to prevent memory leak");
+                                    buffer.Clear();
+                                }
+                                break;
+                            }
+
+                            var frameLength = endMarker + imageEndMarker.Length - imageStart;
+                            var frameData = buffer.GetRange(imageStart, frameLength).ToArray();
+                            buffer.RemoveRange(0, imageStart + frameLength);
+
+                            if (frameData.Length < 1024)
+                            {
+                                LogDebug($"Skipping frame {frameIndex} - too small ({frameData.Length} bytes)");
+                                frameIndex++;
+                                continue;
+                            }
+
+                            var timestamp = startTime + (frameIndex / fps);
+                            frameQueue.Add((frameData, timestamp, frameIndex));
+                            frameIndex++;
+
+                            if (frameQueue.Count >= batchSize)
+                            {
+                                await ProcessFrameBatch(frameQueue, keywords, detectionScores, characterDensityHistory, 
+                                    recentTextFrames, analysisDuration, fps, maxFramesToProcess, effectiveToken).ConfigureAwait(false);
+                                frameQueue.Clear();
+                            }
+                        }
                     }
 
-                    var frameOutputPath = $"{tempDir.Replace("\\", "/")}/frame_%04d.{imageExtension}";
-
-                    var ffmpegTempDir = tempDir.Replace("\\", "/");
-                    var ffmpegFramePath = $"{ffmpegTempDir}/frame_%04d.{imageExtension}";
-                    
-                    var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
-                    var extractArgs = $"-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"fps={fps.ToString(CultureInfo.InvariantCulture)}\" {qualityParam} -f image2 \"{ffmpegFramePath}\"";
-
-                    LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps ({imageFormat.ToUpperInvariant()}{(imageFormat == "jpg" ? $" Q{Configuration.OcrJpegQuality}" : "")}) for OCR analysis");
-                    LogDebug($"FFmpeg command: {FFmpegHelper.GetFfmpegPath()} {extractArgs}");
-                    UpdateProgress(10, "Starting frame extraction and OCR processing");
-
-                    using (var process = new Process
+                    if (!process.HasExited)
                     {
-                        StartInfo = new ProcessStartInfo
+                        try
                         {
-                            FileName = FFmpegHelper.GetFfmpegPath(),
-                            Arguments = extractArgs,
-                            UseShellExecute = false,
-                            RedirectStandardOutput = true,
-                            RedirectStandardError = true,
-                            CreateNoWindow = true
+                            process.Kill();
+                            LogDebug("FFmpeg process terminated");
                         }
-                    })
+                        catch (Exception ex)
+                        {
+                            LogDebug($"Error killing FFmpeg process: {ex.Message}");
+                        }
+                    }
+
+                    await ffmpegErrorTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    LogInfo("Frame extraction cancelled");
+                    return 0;
+                }
+
+                UpdateProgress(95, $"Analyzing {detectionScores.Count} OCR detections");
+
+                if (detectionScores.Count == 0)
+                {
+                    LastError = "No credits keywords detected via OCR";
+                    LogWarn("OCR completed but found no matching keywords");
+                    return 0;
+                }
+
+                creditsTimestamp = FindCreditsStartFromOcrScores(detectionScores, duration);
+
+                if (creditsTimestamp > 0)
+                {
+                    CalculateDynamicConfidence(detectionScores.Count);
+                    
+                    DetectionReason = BuildDetectionReason(detectionScores, characterDensityHistory, creditsTimestamp);
+                    UpdateProgress(100, $"Credits detected at {FormatTime(creditsTimestamp)}");
+                    LogInfo($"✓ OCR detected credits starting at {FormatTime(creditsTimestamp)}");
+                    LogInfo($"  Detection based on {detectionScores.Count} keyword matches");
+                    LogInfo($"  Confidence: {_calculatedConfidence:F2} ({(_calculatedConfidence * 100):F0}%)");
+                    return creditsTimestamp;
+                }
+                else
+                {
+                    LastError = "No significant credits pattern found";
+                    LogWarn("OCR found keywords but no clear credits start point");
+                    return 0;
+                }
+                }
+                finally
+                {
+                    try
                     {
-                        process.Start();
+                        if (!process.HasExited)
+                        {
+                            process.Kill();
+                            process.WaitForExit(1000);
+                        }
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        LogDebug($"Error during process cleanup: {cleanupEx.Message}");
+                    }
+                }
+            }
+        }
 
-                        var timeoutMinutes = Configuration.OcrMaxAnalysisDuration > 0 
-                            ? (Configuration.OcrMaxAnalysisDuration / 60) + 5
-                            : 30;
-                        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMinutes));
-                        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-                        var effectiveToken = linkedCts.Token;
+        private async Task ProcessFrameBatch(
+            List<(byte[] data, double timestamp, int index)> frameQueue,
+            List<string> keywords,
+            List<(double timestamp, int matchCount, string matchedKeywords)> detectionScores,
+            List<(double timestamp, int charCount)> characterDensityHistory,
+            List<(double timestamp, string text)> recentTextFrames,
+            double analysisDuration,
+            double fps,
+            int maxFramesToProcess,
+            CancellationToken cancellationToken)
+        {
+            if (frameQueue.Count == 0) return;
 
-                        var detectionScores = new List<(double timestamp, int matchCount, string matchedKeywords)>();
-                        var characterDensityHistory = new List<(double timestamp, int charCount)>();
-                        bool loggedFirstFrame = false;
-                        int frameIndex = 0;
-                        int maxFramesToProcess = Configuration.OcrMaxFramesToProcess > 0 ? Configuration.OcrMaxFramesToProcess : int.MaxValue;
-                        bool creditsFound = false;
-                        double creditsTimestamp = 0;
+            if (Configuration.OcrEnableParallelProcessing && frameQueue.Count > 1)
+            {
+                LogDebug($"Processing {frameQueue.Count} frames in parallel from memory");
+                
+                var ocrTasks = frameQueue.Select(async frame =>
+                {
+                    try
+                    {
+                        var (ocrText, ocrConfidence) = await PerformOcrOnFrameData(frame.data, cancellationToken).ConfigureAwait(false);
+                        
+                        if (ocrConfidence > 0)
+                        {
+                            _ocrTextConfidences.Add(ocrConfidence);
+                        }
+                        
+                        return (frame.timestamp, frame.index, ocrText);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWarn($"Error processing frame {frame.index}: {ex.Message}");
+                        return (frame.timestamp, frame.index, string.Empty);
+                    }
+                }).ToList();
 
-                        var ffmpegTask = Task.Run(async () =>
+                var results = await Task.WhenAll(ocrTasks).ConfigureAwait(false);
+
+                foreach (var (timestamp, index, ocrText) in results.OrderBy(r => r.timestamp))
+                {
+                    await ProcessOcrResult(ocrText, timestamp, index, analysisDuration, fps, keywords,
+                        detectionScores, characterDensityHistory, recentTextFrames, maxFramesToProcess).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                foreach (var frame in frameQueue)
+                {
+                    try
+                    {
+                        var (ocrText, ocrConfidence) = await PerformOcrOnFrameData(frame.data, cancellationToken).ConfigureAwait(false);
+                        
+                        if (ocrConfidence > 0)
+                        {
+                            _ocrTextConfidences.Add(ocrConfidence);
+                        }
+                        
+                        await ProcessOcrResult(ocrText, frame.timestamp, frame.index, analysisDuration, fps, keywords,
+                            detectionScores, characterDensityHistory, recentTextFrames, maxFramesToProcess).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWarn($"Error processing frame {frame.index}: {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        private async Task<double> ProcessFramesFromDisk(
+            string videoPath, 
+            double duration, 
+            double startTime, 
+            double analysisDuration, 
+            double fps, 
+            List<string> keywords,
+            string tempDir,
+            List<(double timestamp, string text)> recentTextFrames,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var imageFormat = Configuration.OcrImageFormat?.ToLowerInvariant() == "jpg" ? "jpg" : "png";
+                var imageExtension = imageFormat;
+
+                var qualityParam = "";
+                if (imageFormat == "jpg")
+                {
+                    var userQuality = Math.Max(1, Math.Min(100, Configuration.OcrJpegQuality));
+                    var ffmpegQuality = 2 + (int)Math.Round((100 - userQuality) * 29.0 / 99.0);
+                    qualityParam = $"-q:v {ffmpegQuality}";
+                }
+
+                var frameOutputPath = $"{tempDir.Replace("\\", "/")}/frame_%04d.{imageExtension}";
+
+                var ffmpegTempDir = tempDir.Replace("\\", "/");
+                var ffmpegFramePath = $"{ffmpegTempDir}/frame_%04d.{imageExtension}";
+                
+                var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
+
+                var preInputArgs = BuildPreInputArgs();
+                var threadArgs = BuildThreadArgs();
+                var filterChain = BuildFilterChain(fps);
+                var extractArgs = $"{preInputArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} {threadArgs}-t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"{filterChain}\" {qualityParam} -f image2 \"{ffmpegFramePath}\"";
+
+                LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps ({imageFormat.ToUpperInvariant()}{(imageFormat == "jpg" ? $" Q{Configuration.OcrJpegQuality}" : "")}) for OCR analysis");
+                LogDebug($"FFmpeg command: {FFmpegHelper.GetFfmpegPath()} {extractArgs}");
+                UpdateProgress(10, "Starting frame extraction and OCR processing");
+
+                using (var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = FFmpegHelper.GetFfmpegPath(),
+                        Arguments = extractArgs,
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true
+                    }
+                })
+                {
+                    process.Start();
+
+                    var timeoutMinutes = Configuration.OcrMaxAnalysisDuration > 0 
+                        ? (Configuration.OcrMaxAnalysisDuration / 60) + 5
+                        : 30;
+                    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMinutes));
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+                    var effectiveToken = linkedCts.Token;
+
+                    var detectionScores = new List<(double timestamp, int matchCount, string matchedKeywords)>();
+                    var characterDensityHistory = new List<(double timestamp, int charCount)>();
+                    bool loggedFirstFrame = false;
+                    int frameIndex = 0;
+                    int maxFramesToProcess = Configuration.OcrMaxFramesToProcess > 0 ? Configuration.OcrMaxFramesToProcess : int.MaxValue;
+                    bool creditsFound = false;
+                    double creditsTimestamp = 0;
+
+                    var ffmpegTask = Task.Run(async () =>
                     {
                         try
                         {
@@ -283,8 +809,13 @@ namespace EmbyCredits.Services.DetectionMethods
                                     batchSize
                                 ).ConfigureAwait(false);
 
-                                foreach (var (framePath, ocrText, timestamp) in batchResults)
+                                foreach (var (framePath, ocrText, ocrConfidence, timestamp) in batchResults)
                                 {
+                                    if (ocrConfidence > 0)
+                                    {
+                                        _ocrTextConfidences.Add(ocrConfidence);
+                                    }
+                                    
                                     if (!loggedFirstFrame)
                                     {
                                         LogInfo($"Processing first frame: {framePath}");
@@ -342,6 +873,11 @@ namespace EmbyCredits.Services.DetectionMethods
                                             consecutiveMatches++;
                                             recentMatches.Add((timestamp, matchedKeywords.Count > 0 ? matchedKeywords.Count : 1));
 
+                                            if (matchedKeywords.Count > 0)
+                                            {
+                                                _totalKeywordMatches += matchedKeywords.Count;
+                                            }
+
                                             if (matchedKeywords.Count > 0 && !densityDetected)
                                             {
                                                 LogDebug($"Frame at {FormatTime(timestamp)}: ✓ MATCH - Found {matchedKeywords.Count} keyword(s): {string.Join(", ", matchedKeywords)}");
@@ -358,6 +894,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                         characterDensityHistory.Add((timestamp, 0));
                                     }
 
+                                    _totalFramesProcessed++;
                                     frameIndex++;
                                 }
 
@@ -458,7 +995,13 @@ namespace EmbyCredits.Services.DetectionMethods
                                     }
 
                                     LogDebug($"Sending frame {frameIndex + 1} to OCR API: {frameFile}");
-                                    var ocrText = await PerformOcr(frameFile, effectiveToken).ConfigureAwait(false);
+                                    var (ocrText, ocrConfidence) = await PerformOcr(frameFile, effectiveToken).ConfigureAwait(false);
+                                    
+                                    if (ocrConfidence > 0)
+                                    {
+                                        _ocrTextConfidences.Add(ocrConfidence);
+                                    }
+                                    
                                     LogDebug($"OCR response for frame {frameIndex + 1}: {(string.IsNullOrWhiteSpace(ocrText) ? "empty" : $"{ocrText.Length} chars")}");;
 
                                     if (!string.IsNullOrWhiteSpace(ocrText))
@@ -605,125 +1148,453 @@ namespace EmbyCredits.Services.DetectionMethods
                         }
                     });
 
-                        await processingTask.ConfigureAwait(false);
+                    await processingTask.ConfigureAwait(false);
 
-                        if (creditsFound)
-                        {
-                            return creditsTimestamp;
-                        }
-
-                        var ffmpegError = await ffmpegTask.ConfigureAwait(false);
-
-                        if (!process.HasExited)
-                        {
-                            try
-                            {
-                                process.Kill();
-                                LogDebug("Terminated FFmpeg process");
-                            }
-                            catch (Exception ex)
-                            {
-                                LogWarn($"Error terminating FFmpeg process: {ex.Message}");
-                            }
-                        }
-
-                        await process.WaitForExitAsync().ConfigureAwait(false);
-
-                        if (process.ExitCode != 0 && !creditsFound)
-                        {
-                            LastError = $"FFmpeg frame extraction failed (exit code {process.ExitCode})";
-                            LogError($"FFmpeg frame extraction failed with exit code {process.ExitCode}");
-                            if (!string.IsNullOrWhiteSpace(ffmpegError))
-                            {
-                                LogError($"FFmpeg error output: {ffmpegError}");
-                            }
-                            return 0;
-                        }
-
-                        if (frameIndex == 0)
-                        {
-                            LastError = "No frames extracted for OCR analysis";
-                            LogWarn("No frames extracted for OCR analysis");
-                            return 0;
-                        }
-
-                        LogDebug($"Extracted and processed {frameIndex} frames for OCR analysis");
-
-                        LogDebug($"Extracted and processed {frameIndex} frames for OCR analysis");
-                        UpdateProgress(95, $"OCR: {frameIndex} frames (100%)");
-
-                        LogDebug($"OCR analysis complete: Found {detectionScores.Count} frames with keyword matches");
-                        UpdateProgress(98, "Analyzing results");
-
-                        if (detectionScores.Count > 0)
-                        {
-                            var creditsStart = FindCreditsStartFromOcrScores(detectionScores, duration);
-                            if (creditsStart > 0)
-                            {
-                                DetectionReason = BuildDetectionReason(detectionScores, characterDensityHistory, creditsStart);
-                                LogInfo($"Credits detected at {FormatTime(creditsStart)} via OCR keyword matching");
-                                return creditsStart;
-                            }
-                        }
-
-                        LastError = $"No OCR keywords found in {frameIndex} frames analyzed";
-                        LogDebug("No sustained keyword matches found for credits");
-                        return 0;
+                    if (creditsFound)
+                    {
+                        return creditsTimestamp;
                     }
-                }
-                finally
-                {
 
-                    var maxRetries = 5;
-                    var retryDelay = 200;
+                    var ffmpegError = await ffmpegTask.ConfigureAwait(false);
 
-                    for (int attempt = 0; attempt < maxRetries; attempt++)
+                    if (!process.HasExited)
                     {
                         try
                         {
-                            if (Directory.Exists(tempDir))
-                            {
-
-                                GC.Collect();
-                                GC.WaitForPendingFinalizers();
-
-                                Directory.Delete(tempDir, true);
-                                LogDebug($"Successfully cleaned up temp directory: {tempDir}");
-                                break;
-                            }
-                        }
-                        catch (IOException) when (attempt < maxRetries - 1)
-                        {
-
-                            LogDebug($"Temp directory cleanup attempt {attempt + 1} failed (file locked), retrying in {retryDelay}ms...");
-                            try
-                            {
-                                await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
-                            }
-                            catch (OperationCanceledException)
-                            {
-
-                                LogDebug("Cleanup cancelled, stopping retry attempts");
-                                break;
-                            }
-                            retryDelay *= 2;
+                            process.Kill();
+                            LogDebug("Terminated FFmpeg process");
                         }
                         catch (Exception ex)
                         {
-                            if (attempt == maxRetries - 1)
-                            {
-                                LogError($"Failed to cleanup temp directory after {maxRetries} attempts: {ex.GetType().Name}: {ex.Message}. Directory: {tempDir}", ex);
-                            }
+                            LogWarn($"Error terminating FFmpeg process: {ex.Message}");
                         }
                     }
+
+                    await process.WaitForExitAsync().ConfigureAwait(false);
+
+                    if (process.ExitCode != 0 && !creditsFound)
+                    {
+                        LastError = $"FFmpeg frame extraction failed (exit code {process.ExitCode})";
+                        LogError($"FFmpeg frame extraction failed with exit code {process.ExitCode}");
+                        if (!string.IsNullOrWhiteSpace(ffmpegError))
+                        {
+                            LogError($"FFmpeg error output: {ffmpegError}");
+                        }
+                        return 0;
+                    }
+
+                    if (frameIndex == 0)
+                    {
+                        LastError = "No frames extracted for OCR analysis";
+                        LogWarn("No frames extracted for OCR analysis");
+                        return 0;
+                    }
+
+                    LogDebug($"Extracted and processed {frameIndex} frames for OCR analysis");
+                    UpdateProgress(95, $"OCR: {frameIndex} frames (100%)");
+
+                    LogDebug($"OCR analysis complete: Found {detectionScores.Count} frames with keyword matches");
+                    UpdateProgress(98, "Analyzing results");
+
+                    if (detectionScores.Count > 0)
+                    {
+                        var creditsStart = FindCreditsStartFromOcrScores(detectionScores, duration);
+                        if (creditsStart > 0)
+                        {
+                            DetectionReason = BuildDetectionReason(detectionScores, characterDensityHistory, creditsStart);
+                            LogInfo($"Credits detected at {FormatTime(creditsStart)} via OCR keyword matching");
+                            return creditsStart;
+                        }
+                    }
+
+                    LastError = $"No OCR keywords found in {frameIndex} frames analyzed";
+                    LogDebug("No sustained keyword matches found for credits");
+                    return 0;
                 }
             }
             catch (Exception ex)
             {
                 LastError = $"OCR detection error: {ex.Message}";
-                LogError("Error in OCR detection", ex);
+                LogError("Error in disk-based frame extraction", ex);
                 return 0;
             }
+        }
+
+        private int FindSequence(List<byte> haystack, byte[] needle, int startIndex)
+        {
+            for (int i = startIndex; i <= haystack.Count - needle.Length; i++)
+            {
+                bool found = true;
+                for (int j = 0; j < needle.Length; j++)
+                {
+                    if (haystack[i + j] != needle[j])
+                    {
+                        found = false;
+                        break;
+                    }
+                }
+                if (found)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        private async Task<(string text, double confidence)> PerformOcrOnFrameData(byte[] frameData, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var endpoint = Configuration.OcrEndpoint.TrimEnd('/') + "/tesseract";
+                var imageFormat = Configuration.OcrImageFormat?.ToLowerInvariant() == "jpg" ? "jpg" : "png";
+                
+                LogDebug($"Sending {frameData.Length} bytes to OCR endpoint {endpoint} as {imageFormat}");
+                
+                using (var content = new MultipartFormDataContent())
+                {
+                    var imageContent = new ByteArrayContent(frameData);
+                    var contentType = imageFormat == "jpg" ? "image/jpeg" : "image/png";
+                    var filename = imageFormat == "jpg" ? "frame.jpg" : "frame.png";
+                    imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+                    content.Add(imageContent, "file", filename);
+                    
+                    var optionsDict = new Dictionary<string, object>
+                    {
+                        { "languages", new[] { "eng" } }
+                    };
+                    
+                    
+                    var options = JsonSerializer.Serialize(optionsDict);
+                    content.Add(new StringContent(options), "options");
+
+                    var response = await _httpClient.PostAsync(endpoint, content, cancellationToken).ConfigureAwait(false);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var jsonResponse = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        LogDebug($"OCR response: {jsonResponse}");
+                        var ocrResult = JsonSerializer.Deserialize<OcrResponse>(jsonResponse, new JsonSerializerOptions 
+                        { 
+                            PropertyNameCaseInsensitive = true 
+                        });
+
+                        if (ocrResult?.Data?.Stdout != null)
+                        {
+                            var ocrText = ocrResult.Data.Stdout.Trim();
+                            var (parsedText, confidence) = ParseOcrResponse(jsonResponse);
+                            LogDebug($"OCR extracted text length: {ocrText.Length}, confidence: {confidence:F2}");
+                            return (ocrText, confidence);
+                        }
+                        else
+                        {
+                            LogDebug("OCR result Data.Stdout was null or empty");
+                        }
+                    }
+                    else
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        LogDebug($"OCR request failed with status: {response.StatusCode}, body: {errorContent}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogDebug($"OCR request error: {ex.Message}");
+            }
+
+            return (string.Empty, 0);
+        }
+
+        private class OcrResponse
+        {
+            public OcrData? Data { get; set; }
+        }
+
+        private class OcrData
+        {
+            public string? Stdout { get; set; }
+            public string? Stderr { get; set; }
+        }
+
+        private string BuildPreInputArgs()
+        {
+            var args = new List<string>();
+
+            if (Configuration.OcrEnableHardwareAcceleration && 
+                !string.IsNullOrWhiteSpace(Configuration.OcrHardwareAccelerationType))
+            {
+                var hwAccelType = Configuration.OcrHardwareAccelerationType.ToLowerInvariant();
+                
+                if (hwAccelType == "nvdec" || hwAccelType == "cuda")
+                {
+                    int threadLimit;
+                    if (Configuration.OcrFfmpegThreads > 0)
+                    {
+                        threadLimit = Math.Min(Configuration.OcrFfmpegThreads, 8);
+                        if (Configuration.OcrFfmpegThreads > 8)
+                        {
+                            LogWarn($"OcrFfmpegThreads={Configuration.OcrFfmpegThreads} exceeds NVDEC safe limit (32 decode surfaces). Capping at 8 threads.");
+                        }
+                    }
+                    else
+                    {
+                        threadLimit = 4;
+                    }
+                    args.Add($"-threads {threadLimit}");
+                    LogDebug($"NVIDIA hardware - limiting to {threadLimit} threads (max 32 decode surfaces)");
+                }
+                else if (Configuration.OcrFfmpegThreads > 0)
+                {
+                    args.Add($"-threads {Configuration.OcrFfmpegThreads}");
+                    LogDebug($"Limiting FFmpeg to {Configuration.OcrFfmpegThreads} threads");
+                }
+            }
+            else if (Configuration.OcrFfmpegThreads > 0)
+            {
+                args.Add($"-threads {Configuration.OcrFfmpegThreads}");
+                LogDebug($"Limiting FFmpeg to {Configuration.OcrFfmpegThreads} threads");
+            }
+
+            if (!string.IsNullOrWhiteSpace(Configuration.OcrFfmpegPreInputArgs))
+            {
+                args.Add(Configuration.OcrFfmpegPreInputArgs.Trim());
+                LogDebug($"Using custom FFmpeg pre-input args: {Configuration.OcrFfmpegPreInputArgs}");
+            }
+            else if (Configuration.OcrEnableHardwareAcceleration && 
+                     !string.IsNullOrWhiteSpace(Configuration.OcrHardwareAccelerationType) && 
+                     Configuration.OcrHardwareAccelerationType != "none")
+            {
+                var hwAccelType = Configuration.OcrHardwareAccelerationType.ToLowerInvariant();
+                
+                switch (hwAccelType)
+                {
+                    case "vaapi":
+                        args.Add("-hwaccel vaapi");
+                        var vaapiDevice = string.IsNullOrWhiteSpace(Configuration.OcrHardwareDevice) 
+                            ? "/dev/dri/renderD128" 
+                            : Configuration.OcrHardwareDevice;
+                        args.Add($"-vaapi_device {vaapiDevice}");
+                        if (Configuration.OcrUseHardwareOutputFormat)
+                        {
+                            args.Add("-hwaccel_output_format vaapi");
+                            LogDebug($"Using VAAPI hardware acceleration with device: {vaapiDevice} (output format: vaapi)");
+                        }
+                        else
+                        {
+                            LogDebug($"Using VAAPI hardware acceleration with device: {vaapiDevice} (output format: software)");
+                        }
+                        break;
+                    
+                    case "qsv":
+                        args.Add("-hwaccel qsv");
+                        if (!string.IsNullOrWhiteSpace(Configuration.OcrHardwareDevice))
+                        {
+                            args.Add($"-qsv_device {Configuration.OcrHardwareDevice}");
+                        }
+                        if (Configuration.OcrUseHardwareOutputFormat)
+                        {
+                            args.Add("-hwaccel_output_format qsv");
+                            LogDebug("Using Intel Quick Sync Video (QSV) hardware acceleration (output format: qsv)");
+                        }
+                        else
+                        {
+                            LogDebug("Using Intel Quick Sync Video (QSV) hardware acceleration (output format: software)");
+                        }
+                        break;
+                    
+                    case "cuda":
+                        args.Add("-hwaccel cuda");
+                        if (!string.IsNullOrWhiteSpace(Configuration.OcrHardwareDevice))
+                        {
+                            args.Add($"-hwaccel_device {Configuration.OcrHardwareDevice}");
+                        }
+                        if (Configuration.OcrUseHardwareOutputFormat)
+                        {
+                            args.Add("-hwaccel_output_format cuda");
+                            LogDebug("Using NVIDIA CUDA hardware acceleration (output format: cuda)");
+                        }
+                        else
+                        {
+                            LogDebug("Using NVIDIA CUDA hardware acceleration (output format: software)");
+                        }
+                        break;
+                    
+                    case "nvdec":
+                        args.Add("-hwaccel nvdec");
+                        if (!string.IsNullOrWhiteSpace(Configuration.OcrHardwareDevice))
+                        {
+                            args.Add($"-hwaccel_device {Configuration.OcrHardwareDevice}");
+                        }
+                        if (Configuration.OcrUseHardwareOutputFormat)
+                        {
+                            args.Add("-hwaccel_output_format cuda");
+                            LogDebug("Using NVIDIA NVDEC hardware acceleration (output format: cuda)");
+                        }
+                        else
+                        {
+                            LogDebug("Using NVIDIA NVDEC hardware acceleration (output format: software)");
+                        }
+                        break;
+                    
+                    case "d3d11va":
+                        args.Add("-hwaccel d3d11va");
+                        if (!string.IsNullOrWhiteSpace(Configuration.OcrHardwareDevice))
+                        {
+                            args.Add($"-hwaccel_device {Configuration.OcrHardwareDevice}");
+                        }
+                        if (Configuration.OcrUseHardwareOutputFormat)
+                        {
+                            args.Add("-hwaccel_output_format d3d11");
+                            LogDebug("Using Direct3D 11 hardware acceleration (output format: d3d11)");
+                        }
+                        else
+                        {
+                            LogDebug("Using Direct3D 11 hardware acceleration (output format: software)");
+                        }
+                        break;
+                    
+                    case "dxva2":
+                        args.Add("-hwaccel dxva2");
+                        if (Configuration.OcrUseHardwareOutputFormat)
+                        {
+                            args.Add("-hwaccel_output_format dxva2_vld");
+                            LogDebug("Using DXVA2 hardware acceleration (output format: dxva2_vld)");
+                        }
+                        else
+                        {
+                            LogDebug("Using DXVA2 hardware acceleration (output format: software)");
+                        }
+                        break;
+                    
+                    case "videotoolbox":
+                        args.Add("-hwaccel videotoolbox");
+                        if (Configuration.OcrUseHardwareOutputFormat)
+                        {
+                            args.Add("-hwaccel_output_format videotoolbox_vld");
+                            LogDebug("Using macOS VideoToolbox hardware acceleration (output format: videotoolbox_vld)");
+                        }
+                        else
+                        {
+                            LogDebug("Using macOS VideoToolbox hardware acceleration (output format: software)");
+                        }
+                        break;
+                    
+                    default:
+                        LogWarn($"Unknown hardware acceleration type: {Configuration.OcrHardwareAccelerationType}");
+                        break;
+                }
+            }
+
+            return args.Count > 0 ? string.Join(" ", args) + " " : "";
+        }
+
+        private string BuildFilterChain(double fps)
+        {
+            var filters = new List<string>();
+            
+            bool useHwFilters = Configuration.OcrEnableHardwareAcceleration && 
+                               Configuration.OcrUseHardwareOutputFormat && 
+                               Configuration.OcrUseHardwareFilters &&
+                               !string.IsNullOrWhiteSpace(Configuration.OcrHardwareAccelerationType) &&
+                               Configuration.OcrHardwareAccelerationType != "none";
+            
+            filters.Add($"fps={fps.ToString(CultureInfo.InvariantCulture)}");
+            
+            if (useHwFilters)
+            {
+                var hwAccelType = Configuration.OcrHardwareAccelerationType.ToLowerInvariant();
+                
+                switch (hwAccelType)
+                {
+                    case "vaapi":
+                        filters.Add("scale_vaapi=format=nv12");
+                        LogDebug($"Using VAAPI hardware scaling");
+                        break;
+                    
+                    case "qsv":
+                        filters.Add("scale_qsv=format=nv12");
+                        LogDebug($"Using QSV hardware scaling");
+                        break;
+                    
+                    case "cuda":
+                    case "nvdec":
+                        filters.Add("scale_cuda=format=nv12");
+                        LogDebug($"Using CUDA hardware scaling");
+                        break;
+                }
+                
+                filters.Add("hwdownload");
+                filters.Add("format=nv12");
+                LogDebug($"Hardware filters: fps -> {hwAccelType} scale -> hwdownload -> software filters");
+            }
+            else if (Configuration.OcrEnableHardwareAcceleration)
+            {
+                LogDebug($"Using software filters (HW filters disabled in config)");
+            }
+            
+            if (Configuration.OcrEnableRoiDetection && !string.IsNullOrWhiteSpace(Configuration.OcrRoiRegion))
+            if (Configuration.OcrEnableRoiDetection && !string.IsNullOrWhiteSpace(Configuration.OcrRoiRegion))
+            {
+                var roi = Configuration.OcrRoiRegion.ToLowerInvariant();
+                switch (roi)
+                {
+                    case "bottom_third":
+                        filters.Add("crop=iw:ih/3:0:ih*2/3");
+                        LogDebug("ROI: Cropping to bottom third of frame");
+                        break;
+                    case "bottom_half":
+                        filters.Add("crop=iw:ih/2:0:ih/2");
+                        LogDebug("ROI: Cropping to bottom half of frame");
+                        break;
+                    case "center":
+                        filters.Add("crop=iw:ih*0.6:0:ih*0.2");
+                        LogDebug("ROI: Cropping to center 60% of frame");
+                        break;
+                    case "top_third":
+                        filters.Add("crop=iw:ih/3:0:0");
+                        LogDebug("ROI: Cropping to top third of frame");
+                        break;
+                    case "full":
+                    default:
+                        break;
+                }
+            }
+            
+            if (Configuration.OcrEnableImagePreprocessing)
+            {
+                var preprocessFilters = new List<string>();
+                
+                if (Configuration.OcrContrastEnhancement != 1.0 || Configuration.OcrBrightnessAdjustment != 0.0)
+                {
+                    preprocessFilters.Add($"eq=contrast={Configuration.OcrContrastEnhancement.ToString(CultureInfo.InvariantCulture)}:brightness={Configuration.OcrBrightnessAdjustment.ToString(CultureInfo.InvariantCulture)}");
+                }
+                
+                if (Configuration.OcrEnableSharpening)
+                {
+                    preprocessFilters.Add($"unsharp=5:5:{Configuration.OcrSharpenAmount.ToString(CultureInfo.InvariantCulture)}");
+                }
+                
+                if (preprocessFilters.Count > 0)
+                {
+                    filters.AddRange(preprocessFilters);
+                    LogDebug($"Image preprocessing: {string.Join(", ", preprocessFilters)}");
+                }
+            }
+            
+            return string.Join(",", filters);
+        }
+
+        private string BuildThreadArgs()
+        {
+            var args = new List<string>();
+
+            if (Configuration.OcrFfmpegFilterThreads > 0)
+            {
+                args.Add($"-filter_threads {Configuration.OcrFfmpegFilterThreads}");
+                LogDebug($"Limiting FFmpeg filter threads to {Configuration.OcrFfmpegFilterThreads}");
+            }
+
+            return args.Count > 0 ? string.Join(" ", args) + " " : "";
         }
 
         private async Task<bool> TestOcrEndpoint(CancellationToken cancellationToken = default)
@@ -762,7 +1633,7 @@ namespace EmbyCredits.Services.DetectionMethods
             }
         }
 
-        private async Task<string> PerformOcr(string imagePath, CancellationToken cancellationToken = default)
+        private async Task<(string text, double confidence)> PerformOcr(string imagePath, CancellationToken cancellationToken = default)
         {
             var maxRetries = Configuration.OcrRetryAttempts;
             var retryDelay = Configuration.OcrRetryDelayMs;
@@ -771,12 +1642,12 @@ namespace EmbyCredits.Services.DetectionMethods
             {
                 try
                 {
-                    var result = await PerformOcrInternal(imagePath, cancellationToken).ConfigureAwait(false);
+                    var (text, confidence) = await PerformOcrInternal(imagePath, cancellationToken).ConfigureAwait(false);
                     if (attempt > 1)
                     {
                         LogInfo($"OCR succeeded on attempt {attempt}/{maxRetries}");
                     }
-                    return result;
+                    return (text, confidence);
                 }
                 catch (HttpRequestException ex)
                 {
@@ -788,13 +1659,13 @@ namespace EmbyCredits.Services.DetectionMethods
                     else
                     {
                         LogError($"OCR failed after {maxRetries} attempts: {ex.Message}", ex);
-                        return string.Empty;
+                        return (string.Empty, 0);
                     }
                 }
                 catch (TaskCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     LogWarn("OCR request cancelled");
-                    return string.Empty;
+                    return (string.Empty, 0);
                 }
                 catch (TaskCanceledException)
                 {
@@ -806,7 +1677,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     else
                     {
                         LogError($"OCR timed out after {maxRetries} attempts");
-                        return string.Empty;
+                        return (string.Empty, 0);
                     }
                 }
                 catch (Exception ex)
@@ -819,15 +1690,15 @@ namespace EmbyCredits.Services.DetectionMethods
                     else
                     {
                         LogError($"OCR failed after {maxRetries} attempts: {ex.Message}", ex);
-                        return string.Empty;
+                        return (string.Empty, 0);
                     }
                 }
             }
 
-            return string.Empty;
+            return (string.Empty, 0);
         }
 
-        private async Task<string> PerformOcrInternal(string imagePath, CancellationToken cancellationToken = default)
+        private async Task<(string text, double confidence)> PerformOcrInternal(string imagePath, CancellationToken cancellationToken = default)
         {
             var endpoint = Configuration.OcrEndpoint.TrimEnd('/') + "/tesseract";
 
@@ -841,7 +1712,12 @@ namespace EmbyCredits.Services.DetectionMethods
                 imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
                 content.Add(imageContent, "file", Path.GetFileName(imagePath));
 
-                var options = "{\"languages\":[\"eng\"]}";
+                var optionsDict = new Dictionary<string, object>
+                {
+                    { "languages", new[] { "eng" } }
+                };
+                
+                var options = JsonSerializer.Serialize(optionsDict);
                 content.Add(new StringContent(options), "options");
 
                 LogDebug($"Sending POST request to {endpoint}...");
@@ -851,17 +1727,22 @@ namespace EmbyCredits.Services.DetectionMethods
                 if (!response.IsSuccessStatusCode)
                 {
                     LogWarn($"OCR API returned error: {response.StatusCode}");
-                    return string.Empty;
+                    return (string.Empty, 0);
                 }
 
                 var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                 var (text, confidence) = ParseOcrResponse(responseText);
 
+                if (confidence > 0)
+                {
+                    _ocrTextConfidences.Add(confidence);
+                }
+
                 if (Configuration.OcrMinimumConfidence > 0 && confidence > 0 && confidence < Configuration.OcrMinimumConfidence)
                 {
                     LogDebug($"OCR result rejected due to low confidence: {confidence:F2} < {Configuration.OcrMinimumConfidence:F2}");
-                    return string.Empty;
+                    return (string.Empty, 0);
                 }
 
                 if (confidence > 0)
@@ -869,7 +1750,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     LogDebug($"OCR confidence: {confidence:F2}");
                 }
 
-                return text;
+                return (text, confidence);
             }
         }
 
@@ -933,6 +1814,17 @@ namespace EmbyCredits.Services.DetectionMethods
                                 var text = response.Substring(quoteStart + 1, quoteEnd - quoteStart - 1);
                                 text = text.Replace("\\n", "\n").Replace("\\r", "\r").Replace("\\t", "\t").Replace("\\\"", "\"").Replace("\\\\", "\\");
                                 text = SanitizeOcrText(text);
+                                
+                                if (confidence == 0 && !string.IsNullOrWhiteSpace(text))
+                                {
+                                    confidence = CalculateSyntheticConfidence(text);
+                                    LogDebug($"OCR server provided no confidence, calculated synthetic: {confidence:F2}");
+                                }
+                                else if (confidence > 0)
+                                {
+                                    LogDebug($"OCR server provided confidence: {confidence:F2}");
+                                }
+                                
                                 return (text, confidence);
                             }
                         }
@@ -946,7 +1838,53 @@ namespace EmbyCredits.Services.DetectionMethods
             }
 
             var sanitized = SanitizeOcrText(response.Trim());
+            
+            if (!string.IsNullOrWhiteSpace(sanitized))
+            {
+                var syntheticConf = CalculateSyntheticConfidence(sanitized);
+                LogDebug($"Using fallback parsing with synthetic confidence: {syntheticConf:F2}");
+                return (sanitized, syntheticConf);
+            }
+            
             return (sanitized, 0);
+        }
+        
+        private double CalculateSyntheticConfidence(string text)
+        {
+            double conf = 0.85;
+            
+            int length = text.Length;
+            if (length < 5)
+                conf -= 0.15;
+            else if (length < 20)
+                conf -= 0.05;
+            else if (length > 200)
+                conf += 0.05;
+            
+            var words = text.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length >= 3)
+                conf += 0.03;
+            if (words.Length >= 10)
+                conf += 0.02;
+            
+            int letterCount = text.Count(c => char.IsLetter(c));
+            double letterRatio = length > 0 ? (double)letterCount / length : 0;
+            if (letterRatio > 0.7)
+                conf += 0.03;
+            else if (letterRatio < 0.3)
+                conf -= 0.10;
+            
+            var lowerText = text.ToLowerInvariant();
+            var creditIndicators = new[] { "directed", "produced", "written", "cast", "music", "editor", "starring" };
+            if (creditIndicators.Any(w => lowerText.Contains(w)))
+                conf += 0.05;
+            
+            int specialCount = text.Count(c => !char.IsLetterOrDigit(c) && !char.IsWhiteSpace(c));
+            double specialRatio = length > 0 ? (double)specialCount / length : 0;
+            if (specialRatio > 0.3)
+                conf -= 0.10;
+            
+            return Math.Max(0.50, Math.Min(0.95, conf));
         }
         
         private string SanitizeOcrText(string text)
@@ -1001,6 +1939,64 @@ namespace EmbyCredits.Services.DetectionMethods
             }
 
             return matches;
+        }
+
+        private List<string> FindKeywordMatchesFuzzy(string text, List<string> keywords, int maxDistance = 2)
+        {
+            var matches = new List<string>();
+            var lowerText = text.ToLowerInvariant();
+            var words = lowerText.Split(new[] { ' ', '\n', '\r', '\t', ',', '.', ';', ':', '-' }, StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var keyword in keywords)
+            {
+                var lowerKeyword = keyword.ToLowerInvariant();
+
+                if (lowerText.Contains(lowerKeyword))
+                {
+                    matches.Add(keyword);
+                    continue;
+                }
+
+                foreach (var word in words)
+                {
+                    if (OcrOptimizations.LevenshteinDistance(word, lowerKeyword) <= maxDistance)
+                    {
+                        matches.Add(keyword);
+                        LogDebug($"Fuzzy match: '{word}' ≈ '{keyword}' (distance: {OcrOptimizations.LevenshteinDistance(word, lowerKeyword)})");
+                        break;
+                    }
+                }
+            }
+
+            return matches.Distinct().ToList();
+        }
+
+        private bool DetectCreditStructure(string text, int minimumLines = 4)
+        {
+            var lines = text.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).ToArray();
+
+            if (lines.Length < minimumLines)
+                return false;
+
+            int upperCaseLines = 0;
+            int mixedCaseLines = 0;
+
+            foreach (var line in lines)
+            {
+                var letters = line.Where(char.IsLetter).ToArray();
+                if (letters.Length == 0) continue;
+
+                var trimmedLine = line.Trim();
+                if (trimmedLine.Length < 3) continue;
+
+                if (letters.All(char.IsUpper))
+                    upperCaseLines++;
+                else if (letters.Any(char.IsUpper) && letters.Any(char.IsLower))
+                    mixedCaseLines++;
+            }
+
+            return (upperCaseLines >= 2 && mixedCaseLines >= 2) || 
+                   (upperCaseLines >= minimumLines / 2);
         }
 
         private bool CheckCharacterDensity(List<(double timestamp, int charCount)> history, List<(double timestamp, int matchCount, string matchedKeywords)> detectionScores, double currentTimestamp, int currentCharCount, string currentText)
@@ -1088,7 +2084,7 @@ namespace EmbyCredits.Services.DetectionMethods
             
             var timeSpan = currentTimestamp - relevantFrames.First().timestamp;
             
-            if (timeSpan < minDuration * 0.8) // Allow 20% tolerance
+            if (timeSpan < minDuration * 0.8)
                 return false;
             
             var framesAboveThreshold = relevantFrames.Count(f => f.charCount >= threshold);
@@ -1208,6 +2204,33 @@ namespace EmbyCredits.Services.DetectionMethods
             }
 
             return 0;
+        }
+
+        private void CalculateDynamicConfidence(int detectionMatches)
+        {
+            double confidence = 0.70;
+
+            if (_ocrTextConfidences.Count > 0)
+            {
+                var avgOcrConfidence = _ocrTextConfidences.Average();
+                confidence += avgOcrConfidence * 0.15;
+                LogDebug($"OCR text confidence contribution: {avgOcrConfidence:F2} -> +{(avgOcrConfidence * 0.15):F2}");
+            }
+
+            if (_totalFramesProcessed > 0)
+            {
+                var matchDensity = Math.Min(1.0, (double)_totalKeywordMatches / _totalFramesProcessed);
+                confidence += matchDensity * 0.10;
+                LogDebug($"Keyword match density: {matchDensity:F2} ({_totalKeywordMatches}/{_totalFramesProcessed}) -> +{(matchDensity * 0.10):F2}");
+            }
+
+            var matchFactor = Math.Min(1.0, detectionMatches / 10.0);
+            confidence += matchFactor * 0.05;
+            LogDebug($"Detection matches: {detectionMatches} -> +{(matchFactor * 0.05):F2}");
+
+            _calculatedConfidence = Math.Max(0.70, Math.Min(0.98, confidence));
+            
+            LogInfo($"Dynamic confidence calculated: {_calculatedConfidence:F2} (Base: 0.70, OCR: {(_ocrTextConfidences.Count > 0 ? _ocrTextConfidences.Average() : 0):F2}, Density: {(_totalFramesProcessed > 0 ? (double)_totalKeywordMatches / _totalFramesProcessed : 0):F2}, Matches: {detectionMatches})");
         }
     }
 }

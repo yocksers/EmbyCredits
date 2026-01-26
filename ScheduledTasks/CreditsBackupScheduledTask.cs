@@ -52,12 +52,13 @@ namespace EmbyCredits.ScheduledTasks
                 var backupService = new CreditsBackupService(_logger, _libraryManager, _itemRepository);
                 
                 var config = Plugin.Instance.Configuration;
-                var libraryIds = config.LibraryIds;
+                
+                _logger.Info("Scheduled backup will include all TV show libraries (no library ID filtering)");
 
                 progress.Report(10);
 
                 var result = await backupService.ExportCreditsMarkers(
-                    libraryIds?.Length > 0 ? new List<string>(libraryIds) : null,
+                    null,
                     null,
                     cancellationToken);
 

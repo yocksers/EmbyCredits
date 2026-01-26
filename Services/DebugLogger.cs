@@ -5,13 +5,15 @@ using System.Threading.Tasks;
 
 namespace EmbyCredits.Services
 {
-    public class DebugLogger
+    public class DebugLogger : IDisposable
     {
         private readonly ILogger _logger;
         private readonly PluginConfiguration _configuration;
         private StringBuilder? _debugLog;
         private bool _isDebugMode;
         private const int MaxDebugLogSize = 10 * 1024 * 1024;
+        private System.Threading.CancellationTokenSource? _cleanupCts;
+        private bool _disposed = false;
 
         public DebugLogger(ILogger logger, PluginConfiguration configuration)
         {
@@ -133,28 +135,64 @@ namespace EmbyCredits.Services
 
         public void ScheduleDebugLogCleanup()
         {
-            Task.Run(async () =>
+            _cleanupCts?.Cancel();
+            _cleanupCts?.Dispose();
+            _cleanupCts = new System.Threading.CancellationTokenSource();
+            
+            _ = Task.Run(async () =>
             {
-                await Task.Delay(TimeSpan.FromMinutes(5));
-                if (_isDebugMode)
+                try
                 {
-                    _logger.Info("Debug log auto-cleanup: Debug log was not downloaded within 5 minutes, clearing from memory");
-                    Cleanup();
+                    await Task.Delay(TimeSpan.FromMinutes(5), _cleanupCts.Token).ConfigureAwait(false);
+                    if (_isDebugMode && !_cleanupCts.Token.IsCancellationRequested)
+                    {
+                        _logger.Info("Debug log auto-cleanup: Debug log was not downloaded within 5 minutes, clearing from memory");
+                        Cleanup();
+                    }
                 }
-            });
+                catch (System.Threading.Tasks.TaskCanceledException)
+                {
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Error in debug log cleanup: {ex.Message}");
+                }
+            }, _cleanupCts.Token);
         }
 
         private void TruncateIfNeeded()
         {
             if (_debugLog != null && _debugLog.Length > MaxDebugLogSize)
             {
-
                 var keepSize = (int)(MaxDebugLogSize * 0.8);
                 var removeSize = _debugLog.Length - keepSize;
                 _debugLog.Remove(0, removeSize);
                 _debugLog.Insert(0, $"[TRUNCATED: Removed {removeSize} characters to prevent memory growth]\n\n");
                 _logger.Info($"Debug log truncated to prevent memory growth (was {_debugLog.Length + removeSize} bytes)");
             }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed)
+                return;
+
+            if (disposing)
+            {
+                _cleanupCts?.Cancel();
+                _cleanupCts?.Dispose();
+                _cleanupCts = null;
+                
+                Cleanup();
+            }
+
+            _disposed = true;
         }
     }
 }

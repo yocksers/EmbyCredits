@@ -40,7 +40,7 @@
                     <i class="md-icon">folder_open</i>
                 </button>
             </div>
-            <div class="fieldDescription"><strong>⚠️ CRITICAL FOR DOCKER USERS:</strong> Set this to prevent filling your Docker image! Leave empty only if running Emby natively on host OS. Temp files are automatically cleaned up after processing.</div>
+            <div class="fieldDescription"><strong>CRITICAL FOR DOCKER USERS:</strong> Set this to prevent filling your Docker image! Leave empty only if running Emby natively on host OS. Temp files are automatically cleaned up after processing.</div>
         </div>
 
         <div class="inputContainer">
@@ -58,6 +58,21 @@
             <label class="inputLabel inputLabelUnfocused" for="txtMaxScheduledBackups">Maximum Backup Files</label>
             <input is="emby-input" type="number" id="txtMaxScheduledBackups" data-config-key="MaxScheduledBackups" min="1" max="100" />
             <div class="fieldDescription">Maximum number of scheduled backup files to keep. Older backups will be automatically deleted. Default: 10</div>
+        </div>
+
+        <div style="margin-top: 2em; padding: 1em; background: rgba(0,0,0,0.1); border-radius: 4px;">
+            <h3 style="margin-top: 0; margin-bottom: 0.5em;">Quick Presets</h3>
+            <div class="fieldDescription" style="margin-bottom: 1em;">Reset all detection settings to optimized presets</div>
+            <div style="display: flex; gap: 1em;">
+                <button is="emby-button" type="button" class="raised button-submit" id="btnPresetQuality" style="flex: 1;">
+                    <i class="md-icon">high_quality</i>
+                    <span>Best Quality</span>
+                </button>
+                <button is="emby-button" type="button" class="raised" id="btnPresetSpeed" style="flex: 1;">
+                    <i class="md-icon">speed</i>
+                    <span>Best Speed</span>
+                </button>
+            </div>
         </div>
 
         <div class="checkboxContainer" style="margin-top: 1.5em;">
@@ -176,7 +191,7 @@
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrFrameRate">Frame Rate (fps)</label>
-            <input is="emby-input" type="number" step="0.25" id="txtOcrFrameRate" data-config-key="OcrFrameRate" min="0.25" max="3" />
+            <input is="emby-input" type="number" step="0.01" id="txtOcrFrameRate" data-config-key="OcrFrameRate" min="0.25" max="3" />
             <div class="fieldDescription"><strong>Recommended: 0.5 fps</strong> (1 frame every 2 seconds - fast & sufficient). Credits are static for several seconds, so no need to check every frame. Lower = faster!</div>
         </div>
 
@@ -305,6 +320,88 @@
         </div>
 
         <div style="margin-top: 2em; padding-top: 1.5em; border-top: 2px solid rgba(82, 181, 75, 0.3);">
+            <h3 style="margin-top: 0;">FFmpeg Performance & Hardware Acceleration</h3>
+            <div class="fieldDescription" style="margin-bottom: 1em;">Configure CPU thread limits and hardware acceleration for FFmpeg frame extraction. These settings only affect OCR frame extraction, not Emby's transcoding.</div>
+            
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrFfmpegThreads">FFmpeg Thread Limit</label>
+                <input is="emby-input" type="number" id="txtOcrFfmpegThreads" data-config-key="OcrFfmpegThreads" min="0" max="32" />
+                <div class="fieldDescription"><strong>Recommended: 2-4 for shared servers, 0 for unlimited (default).</strong> Limits the number of CPU threads FFmpeg uses for decoding. Set to 2-4 to prevent FFmpeg from saturating all cores. Set to 0 for no limit.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrFfmpegFilterThreads">FFmpeg Filter Thread Limit</label>
+                <input is="emby-input" type="number" id="txtOcrFfmpegFilterThreads" data-config-key="OcrFfmpegFilterThreads" min="0" max="16" />
+                <div class="fieldDescription"><strong>Recommended: 1 for shared servers, 0 for unlimited (default).</strong> Limits threads for FFmpeg filters (like fps). Set to 1 to reduce CPU usage. Set to 0 for no limit.</div>
+            </div>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkOcrEnableHardwareAcceleration" data-config-key="OcrEnableHardwareAcceleration" />
+                    <span>Enable Hardware Acceleration</span>
+                </label>
+                <div class="fieldDescription"><strong>Advanced - Test carefully!</strong> Use GPU for video decoding to reduce CPU usage. Requires compatible GPU and drivers.</div>
+            </div>
+
+            <div class="selectContainer" id="containerOcrHardwareAccelerationType">
+                <label class="selectLabel" for="selectOcrHardwareAccelerationType">Hardware Acceleration Type</label>
+                <select id="selectOcrHardwareAccelerationType" data-config-key="OcrHardwareAccelerationType" class="emby-select-withcolor emby-select" style="max-width: 300px;">
+                    <option value="none">None (Software Only)</option>
+                    <option value="vaapi">VAAPI (Intel/AMD on Linux)</option>
+                    <option value="qsv">Intel Quick Sync Video (QSV)</option>
+                    <option value="cuda">NVIDIA CUDA</option>
+                    <option value="nvdec">NVIDIA NVDEC</option>
+                    <option value="d3d11va">Direct3D 11 (Windows Intel/AMD/NVIDIA)</option>
+                    <option value="dxva2">DXVA2 (Windows - Legacy)</option>
+                    <option value="videotoolbox">VideoToolbox (macOS)</option>
+                </select>
+                <div class="fieldDescription">
+                    <strong>VAAPI:</strong> Intel UHD/AMD on Linux (use /dev/dri/renderD128)<br>
+                    <strong>QSV:</strong> Intel Quick Sync (Windows/Linux)<br>
+                    <strong>CUDA/NVDEC:</strong> NVIDIA GPUs (CUDA for older, NVDEC for newer)<br>
+                    <strong>D3D11VA:</strong> Windows modern hardware acceleration<br>
+                    <strong>VideoToolbox:</strong> macOS Apple Silicon or Intel Macs
+                </div>
+            </div>
+
+            <div class="inputContainer" id="containerOcrHardwareDevice">
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrHardwareDevice">Hardware Device Path (Optional)</label>
+                <input is="emby-input" type="text" id="txtOcrHardwareDevice" data-config-key="OcrHardwareDevice" placeholder="e.g., /dev/dri/renderD128" />
+                <div class="fieldDescription"><strong>Usually leave empty to use defaults.</strong> For VAAPI on Linux, use /dev/dri/renderD128 (or renderD129 for second GPU). For QSV, specify device index if needed. For CUDA, specify GPU index (0, 1, etc.).</div>
+            </div>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkOcrUseHardwareOutputFormat" data-config-key="OcrUseHardwareOutputFormat" />
+                    <span>Use Hardware Output Format (Recommended)</span>
+                </label>
+                <div class="fieldDescription"><strong>Keep this ENABLED for maximum performance!</strong> Keeps decoded frames in GPU memory instead of copying to CPU. Provides significant speed boost. Disable only if you get FFmpeg errors with your GPU.</div>
+            </div>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkOcrUseHardwareFilters" data-config-key="OcrUseHardwareFilters" />
+                    <span>Use Hardware Filters (Recommended)</span>
+                </label>
+                <div class="fieldDescription"><strong>Keep this ENABLED for best performance!</strong> Uses GPU-accelerated filters (scale_vaapi, scale_qsv, scale_cuda) for frame processing. Significantly reduces CPU usage. Disable only if you encounter compatibility issues.</div>
+            </div>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkOcrUseDirectMemoryPipeline" data-config-key="OcrUseDirectMemoryPipeline" />
+                    <span>Use Direct Memory Pipeline (Recommended - MAJOR Performance Boost!)</span>
+                </label>
+                <div class="fieldDescription"><strong>NEW! Keep this ENABLED for 3-5x speed improvement!</strong> Streams frames directly from FFmpeg to memory, eliminating disk I/O bottleneck. This provides massive performance gains by avoiding writing/reading thousands of image files to disk. Disable only if you encounter stability issues or want to troubleshoot using the legacy disk-based method.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrFfmpegPreInputArgs">Advanced: Custom FFmpeg Pre-Input Arguments</label>
+                <input is="emby-input" type="text" id="txtOcrFfmpegPreInputArgs" data-config-key="OcrFfmpegPreInputArgs" placeholder="e.g., -hwaccel vaapi -vaapi_device /dev/dri/renderD128" />
+                <div class="fieldDescription"><strong>Expert users only!</strong> Custom FFmpeg arguments inserted before the input file. This overrides hardware acceleration settings above. Example: <code>-hwaccel vaapi -vaapi_device /dev/dri/renderD128</code></div>
+            </div>
+        </div>
+
+        <div style="margin-top: 2em; padding-top: 1.5em; border-top: 2px solid rgba(82, 181, 75, 0.3);">
             <h3 style="margin-top: 0;">Performance Optimizations</h3>
             
             <div class="checkboxContainer">
@@ -312,7 +409,7 @@
                     <input is="emby-checkbox" type="checkbox" id="chkOcrEnableParallelProcessing" data-config-key="OcrEnableParallelProcessing" />
                     <span>Enable Parallel OCR Processing</span>
                 </label>
-                <div class="fieldDescription"><strong>⚠️ Advanced - Disabled by default.</strong> Process multiple frames simultaneously for 2-3x speed improvement. May stress slower systems or OCR servers. Only enable if you have a powerful system and OCR server.</div>
+                <div class="fieldDescription"><strong>Advanced - Disabled by default.</strong> Process multiple frames simultaneously for 2-3x speed improvement. May stress slower systems or OCR servers. Only enable if you have a powerful system and OCR server.</div>
             </div>
 
             <div class="inputContainer">
@@ -339,6 +436,145 @@
                 <label class="inputLabel inputLabelUnfocused" for="txtOcrMinimumConfidence">Minimum OCR Confidence (0-1)</label>
                 <input is="emby-input" type="number" step="0.1" id="txtOcrMinimumConfidence" data-config-key="OcrMinimumConfidence" min="0" max="1" />
                 <div class="fieldDescription"><strong>Recommended: 0 (disabled).</strong> Minimum OCR confidence score to accept a match (0 = accept all). Set to 0.6-0.8 to filter out false positives. Requires OCR API that returns confidence scores.</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 2em; padding-top: 1.5em; border-top: 2px solid rgba(82, 181, 75, 0.3);">
+            <h3 style="margin-top: 0;">🆕 OCR Enhancements</h3>
+            <p class="fieldDescription">Advanced features to improve OCR detection accuracy and performance. All features are disabled by default for backward compatibility.</p>
+
+            <h4 style="margin-top: 1.5em; color: #52b54b;">Image Preprocessing</h4>
+            <p class="fieldDescription">Enhance frame quality before OCR to improve text recognition, especially for low-quality sources.</p>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkOcrEnableImagePreprocessing" data-config-key="OcrEnableImagePreprocessing" />
+                    <span>Enable Image Preprocessing</span>
+                </label>
+                <div class="fieldDescription">Apply contrast, brightness, and sharpening filters to improve OCR accuracy</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrContrastEnhancement">Contrast Enhancement</label>
+                <input is="emby-input" type="number" step="0.1" id="txtOcrContrastEnhancement" data-config-key="OcrContrastEnhancement" min="0.5" max="3.0" />
+                <div class="fieldDescription"><strong>Default: 1.5.</strong> Adjust image contrast (1.0 = no change, >1.0 = increase). Range: 1.2-2.0 for most videos</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrBrightnessAdjustment">Brightness Adjustment</label>
+                <input is="emby-input" type="number" step="0.01" id="txtOcrBrightnessAdjustment" data-config-key="OcrBrightnessAdjustment" min="-0.5" max="0.5" />
+                <div class="fieldDescription"><strong>Default: 0.05.</strong> Adjust brightness (-1.0 to 1.0). Use 0.1 for dark videos, -0.1 for bright ones</div>
+            </div>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkOcrEnableSharpening" data-config-key="OcrEnableSharpening" />
+                    <span>Enable Sharpening</span>
+                </label>
+                <div class="fieldDescription">Apply unsharp mask to enhance text edges for better recognition</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrSharpenAmount">Sharpen Amount</label>
+                <input is="emby-input" type="number" step="0.1" id="txtOcrSharpenAmount" data-config-key="OcrSharpenAmount" min="0.0" max="2.0" />
+                <div class="fieldDescription"><strong>Default: 1.0.</strong> Sharpening intensity (0.0-2.0). Higher values = sharper but may introduce artifacts</div>
+            </div>
+
+            <h4 style="margin-top: 2em; color: #52b54b;">Region of Interest (ROI)</h4>
+            <p class="fieldDescription">Focus OCR on specific screen regions where credits typically appear for faster processing.</p>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkOcrEnableRoiDetection" data-config-key="OcrEnableRoiDetection" />
+                    <span>Enable ROI Detection</span>
+                </label>
+                <div class="fieldDescription">Crop frames to focus on regions where credits typically appear</div>
+            </div>
+
+            <div class="selectContainer">
+                <label class="selectLabel" for="selectOcrRoiRegion">ROI Region</label>
+                <select is="emby-select" id="selectOcrRoiRegion" data-config-key="OcrRoiRegion">
+                    <option value="full">Full Frame (no cropping)</option>
+                    <option value="bottom_third">Bottom Third (scrolling credits)</option>
+                    <option value="bottom_half">Bottom Half</option>
+                    <option value="center">Center 60% (credit cards)</option>
+                    <option value="top_third">Top Third</option>
+                </select>
+                <div class="fieldDescription">Choose the screen region to analyze. Bottom third is best for scrolling credits</div>
+            </div>
+
+            <h4 style="margin-top: 2em; color: #52b54b;">Fuzzy Keyword Matching</h4>
+            <p class="fieldDescription">Match keywords even when OCR makes minor errors (e.g., "directed" matches "dinected").</p>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkOcrEnableFuzzyMatching" data-config-key="OcrEnableFuzzyMatching" />
+                    <span>Enable Fuzzy Matching</span>
+                </label>
+                <div class="fieldDescription">Use Levenshtein distance to match keywords with minor OCR errors</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrFuzzyMatchMaxDistance">Max Edit Distance</label>
+                <input is="emby-input" type="number" id="txtOcrFuzzyMatchMaxDistance" data-config-key="OcrFuzzyMatchMaxDistance" min="1" max="3" />
+                <div class="fieldDescription"><strong>Default: 2.</strong> Maximum character differences allowed (1-3). Distance 2: "produced" matches "produccd"</div>
+            </div>
+
+            <h4 style="margin-top: 2em; color: #52b54b;">Scrolling Pattern Detection</h4>
+            <p class="fieldDescription">Detect rolling credits by analyzing text movement across frames, even without keywords.</p>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkOcrEnableScrollingDetection" data-config-key="OcrEnableScrollingDetection" />
+                    <span>Enable Scrolling Detection</span>
+                </label>
+                <div class="fieldDescription">Detect credits by identifying continuous scrolling text motion</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrScrollingMinFrames">Minimum Scrolling Frames</label>
+                <input is="emby-input" type="number" id="txtOcrScrollingMinFrames" data-config-key="OcrScrollingMinFrames" min="3" max="10" />
+                <div class="fieldDescription"><strong>Default: 5.</strong> Consecutive frames needed to confirm scrolling pattern</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrScrollingOverlapThreshold">Text Overlap Threshold</label>
+                <input is="emby-input" type="number" step="0.05" id="txtOcrScrollingOverlapThreshold" data-config-key="OcrScrollingOverlapThreshold" min="0.1" max="0.9" />
+                <div class="fieldDescription"><strong>Default: 0.3.</strong> Text overlap ratio to qualify as scrolling (0.3 = 30% overlap between frames)</div>
+            </div>
+
+            <h4 style="margin-top: 2em; color: #52b54b;">Adaptive Frame Rate</h4>
+            <p class="fieldDescription">Dynamically reduce sampling rate once credits are detected to improve performance.</p>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkOcrEnableAdaptiveFrameRate" data-config-key="OcrEnableAdaptiveFrameRate" />
+                    <span>Enable Adaptive Frame Rate</span>
+                </label>
+                <div class="fieldDescription">Reduce frame sampling after initial detection while maintaining accuracy</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrAdaptiveFrameRateMin">Minimum Frame Rate</label>
+                <input is="emby-input" type="number" step="0.05" id="txtOcrAdaptiveFrameRateMin" data-config-key="OcrAdaptiveFrameRateMin" min="0.1" max="1.0" />
+                <div class="fieldDescription"><strong>Default: 0.25.</strong> Minimum FPS to drop to (prevents under-sampling)</div>
+            </div>
+
+            <h4 style="margin-top: 2em; color: #52b54b;">Credit Structure Detection</h4>
+            <p class="fieldDescription">Recognize typical credit formatting (uppercase roles + mixed case names) without keywords.</p>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkOcrEnableCreditStructureDetection" data-config-key="OcrEnableCreditStructureDetection" />
+                    <span>Enable Structure Detection</span>
+                </label>
+                <div class="fieldDescription">Detect credits by formatting patterns (e.g., "DIRECTOR" followed by "John Smith")</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrMinimumStructureLines">Minimum Structure Lines</label>
+                <input is="emby-input" type="number" id="txtOcrMinimumStructureLines" data-config-key="OcrMinimumStructureLines" min="2" max="10" />
+                <div class="fieldDescription"><strong>Default: 4.</strong> Minimum text lines required to analyze structure</div>
             </div>
         </div>
     </div>

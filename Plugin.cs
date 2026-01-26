@@ -17,7 +17,7 @@ using EmbyCredits.Services;
 
 namespace EmbyCredits
 {
-    public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IHasThumbImage, IServerEntryPoint
+    public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IHasThumbImage, IServerEntryPoint, IDisposable
     {
         private readonly ILogger _logger;
         private readonly IApplicationPaths _appPaths;
@@ -26,6 +26,8 @@ namespace EmbyCredits
         private readonly IFfmpegManager _ffmpegManager;
         private readonly IMediaEncoder _mediaEncoder;
         private readonly INotificationManager _notificationManager;
+        private bool _disposed = false;
+        
         public static Plugin? Instance { get; private set; }
         public static CreditsDetectionProgress Progress { get; } = new CreditsDetectionProgress();
         public static CreditsDetectionProgress BackupExportProgress { get; } = new CreditsDetectionProgress();
@@ -174,20 +176,36 @@ namespace EmbyCredits
 
         public void Dispose()
         {
-            CreditsDetectionService.Stop();
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
 
-            try
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed)
+                return;
+
+            if (disposing)
             {
-                var cleanedCount = Services.Utilities.FFmpegHelper.CleanupOrphanedTempDirectories();
-                if (cleanedCount > 0)
+                CreditsDetectionService.Stop();
+
+                try
                 {
-                    _logger.Info($"Final cleanup: removed {cleanedCount} temp directories");
+                    var cleanedCount = Services.Utilities.FFmpegHelper.CleanupOrphanedTempDirectories();
+                    if (cleanedCount > 0)
+                    {
+                        _logger.Info($"Final cleanup: removed {cleanedCount} temp directories");
+                    }
                 }
+                catch (Exception ex)
+                {
+                    _logger.Warn($"Error during final temp directory cleanup: {ex.Message}");
+                }
+
+                _logger?.Info("Credits Detector plugin disposed");
             }
-            catch (Exception ex)
-            {
-                _logger.Warn($"Error during final temp directory cleanup: {ex.Message}");
-            }
+
+            _disposed = true;
         }
 
         public INotificationManager GetNotificationManager()

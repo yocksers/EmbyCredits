@@ -167,7 +167,7 @@ namespace EmbyCredits.Services
                                 {
                                     agreementMethods.Add(otherMethod);
                                 }
-                                break; 
+                                break;
                             }
                         }
                     }

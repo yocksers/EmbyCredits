@@ -38,6 +38,13 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 dataManager.browseBackupFolder(view);
             });
 
+            view.querySelector('#btnPresetQuality').addEventListener('click', () => {
+                dataManager.applyQualityPreset(view);
+            });
+
+            view.querySelector('#btnPresetSpeed').addEventListener('click', () => {
+                dataManager.applySpeedPreset(view);
+            });
 
             view.querySelector('#btnProcessSeries').addEventListener('click', () => {
                 processingActions.processSeries(this, view);

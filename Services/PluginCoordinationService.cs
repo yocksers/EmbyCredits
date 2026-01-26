@@ -8,15 +8,16 @@ using System.Threading.Tasks;
 
 namespace EmbyCredits.Services
 {
-    public class PluginCoordinationService
+    public class PluginCoordinationService : IDisposable
     {
         private readonly ILogger _logger;
         private readonly PluginConfiguration _configuration;
         private DateTime _lastIntroSkipperCheck = DateTime.MinValue;
         private bool _introSkipperInstalled = false;
-        private object? _introSkipperInstance = null;
+        private WeakReference? _introSkipperWeakRef = null;
         private PropertyInfo? _introSkipperProcessingProperty = null;
         private const int CheckCacheSeconds = 30;
+        private bool _disposed = false;
 
         public PluginCoordinationService(ILogger logger, PluginConfiguration configuration)
         {
@@ -75,14 +76,23 @@ namespace EmbyCredits.Services
                     _lastIntroSkipperCheck = DateTime.UtcNow;
                 }
 
-                if (!_introSkipperInstalled || _introSkipperInstance == null)
+                if (!_introSkipperInstalled || _introSkipperWeakRef == null)
                 {
+                    return false;
+                }
+
+                var introSkipperInstance = _introSkipperWeakRef.Target;
+                if (introSkipperInstance == null)
+                {
+                    _introSkipperInstalled = false;
+                    _introSkipperWeakRef = null;
+                    _introSkipperProcessingProperty = null;
                     return false;
                 }
 
                 if (_introSkipperProcessingProperty != null && _introSkipperProcessingProperty.CanRead)
                 {
-                    var value = _introSkipperProcessingProperty.GetValue(_introSkipperInstance);
+                    var value = _introSkipperProcessingProperty.GetValue(introSkipperInstance);
                     if (value is bool isProcessing)
                     {
                         return isProcessing;
@@ -116,7 +126,7 @@ namespace EmbyCredits.Services
                 if (introSkipperAssembly == null)
                 {
                     _introSkipperInstalled = false;
-                    _introSkipperInstance = null;
+                    _introSkipperWeakRef = null;
                     _introSkipperProcessingProperty = null;
                     return;
                 }
@@ -134,11 +144,13 @@ namespace EmbyCredits.Services
                     
                     if (instanceProperty != null && instanceProperty.CanRead)
                     {
-                        _introSkipperInstance = instanceProperty.GetValue(null);
+                        var introSkipperInstance = instanceProperty.GetValue(null);
                         
-                        if (_introSkipperInstance != null)
+                        if (introSkipperInstance != null)
                         {
-                            var instanceType = _introSkipperInstance.GetType();
+                            _introSkipperWeakRef = new WeakReference(introSkipperInstance);
+                            
+                            var instanceType = introSkipperInstance.GetType();
                             
                             string[] processingPropertyNames = { 
                                 "IsProcessing", 
@@ -173,7 +185,7 @@ namespace EmbyCredits.Services
             {
                 _logger.Debug($"Error discovering Intro Skipper: {ex.Message}");
                 _introSkipperInstalled = false;
-                _introSkipperInstance = null;
+                _introSkipperWeakRef = null;
                 _introSkipperProcessingProperty = null;
             }
         }
@@ -205,6 +217,26 @@ namespace EmbyCredits.Services
             }
 
             return _introSkipperInstalled;
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed)
+                return;
+
+            if (disposing)
+            {
+                _introSkipperWeakRef = null;
+                _introSkipperProcessingProperty = null;
+            }
+
+            _disposed = true;
         }
     }
 }

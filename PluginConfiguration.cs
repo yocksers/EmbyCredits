@@ -92,6 +92,38 @@ namespace EmbyCredits
         public int OcrRetryAttempts { get; set; } = 5;
         public int OcrRetryDelayMs { get; set; } = 2000;
 
+        public string OcrFfmpegPreInputArgs { get; set; } = "";
+        public int OcrFfmpegThreads { get; set; } = 0;
+        public int OcrFfmpegFilterThreads { get; set; } = 0;
+        public bool OcrEnableHardwareAcceleration { get; set; } = false;
+        public string OcrHardwareAccelerationType { get; set; } = "none";
+        public string OcrHardwareDevice { get; set; } = "";
+        public bool OcrUseHardwareOutputFormat { get; set; } = true;
+        public bool OcrUseHardwareFilters { get; set; } = true;
+        public bool OcrUseDirectMemoryPipeline { get; set; } = true;
+
+        public bool OcrEnableImagePreprocessing { get; set; } = false;
+        public double OcrContrastEnhancement { get; set; } = 1.5;
+        public double OcrBrightnessAdjustment { get; set; } = 0.05;
+        public bool OcrEnableSharpening { get; set; } = true;
+        public double OcrSharpenAmount { get; set; } = 1.0;
+
+        public bool OcrEnableRoiDetection { get; set; } = false;
+        public string OcrRoiRegion { get; set; } = "full";
+
+        public bool OcrEnableFuzzyMatching { get; set; } = false;
+        public int OcrFuzzyMatchMaxDistance { get; set; } = 2;
+
+        public bool OcrEnableScrollingDetection { get; set; } = false;
+        public int OcrScrollingMinFrames { get; set; } = 5;
+        public double OcrScrollingOverlapThreshold { get; set; } = 0.3;
+
+        public bool OcrEnableAdaptiveFrameRate { get; set; } = false;
+        public double OcrAdaptiveFrameRateMin { get; set; } = 0.25;
+
+        public bool OcrEnableCreditStructureDetection { get; set; } = false;
+        public int OcrMinimumStructureLines { get; set; } = 4;
+
         public bool UseCorrelationScoring { get; set; } = true;
         public int CorrelationWindowSeconds { get; set; } = 5;
 

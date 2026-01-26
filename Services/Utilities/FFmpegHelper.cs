@@ -119,25 +119,19 @@ namespace EmbyCredits.Services.Utilities
             return config.ProbePath;
         }
 
-        /// <summary>
-        /// Gets the properly formatted input argument for FFmpeg using Emby's MediaEncoder.
-        /// This handles SMB paths the same way Emby's transcoding does.
-        /// </summary>
         public static string GetInputArgument(string path)
         {
             if (_mediaEncoder == null)
             {
-                // MediaEncoder not available, return normalized path
                 return NormalizeFilePath(path);
             }
 
             var normalizedPath = NormalizeFilePath(path);
             
-            // Determine the protocol
             MediaProtocol protocol;
             if (normalizedPath.StartsWith("smb://", StringComparison.OrdinalIgnoreCase))
             {
-                protocol = MediaProtocol.File; // SMB is treated as File protocol
+                protocol = MediaProtocol.File;
             }
             else if (normalizedPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                      normalizedPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
@@ -153,8 +147,6 @@ namespace EmbyCredits.Services.Utilities
                 protocol = MediaProtocol.File;
             }
 
-            // Use Emby's GetInputArgument to format the path properly for FFmpeg
-            // This is the same method Emby uses internally for transcoding
             return _mediaEncoder.GetInputArgument(normalizedPath.AsSpan(), protocol);
         }
 

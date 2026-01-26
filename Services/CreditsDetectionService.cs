@@ -38,6 +38,7 @@ namespace EmbyCredits.Services
 
         private const int MaxQueueSize = 1000;
         private const int MaxProcessedEpisodesCache = 10000;
+        private const int MaxBatchDetectionCacheSize = 5000;
 
         private static DetectionCoordinator? _detectionCoordinator;
         private static DebugLogger? _debugLogger;
@@ -150,11 +151,13 @@ namespace EmbyCredits.Services
         {
             try
             {
-
                 _detectionCoordinator?.ClearCache();
                 _batchDetectionCache.Clear();
                 CleanupOldProcessedEpisodes();
-                _logger?.Info("Cleared in-memory batch detection cache for fresh detection");
+                
+                while (_processingQueue.TryDequeue(out _)) { }
+                
+                _logger?.Info("Cleared in-memory batch detection cache and processing queue for fresh detection");
             }
             catch (Exception ex)
             {
@@ -193,15 +196,37 @@ namespace EmbyCredits.Services
             }
         }
 
+        private static void CleanupBatchDetectionCache()
+        {
+            if (_batchDetectionCache.Count <= MaxBatchDetectionCacheSize)
+                return;
+
+var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
+            var keysToRemove = _batchDetectionCache.Keys.Take(entriesToRemove).ToList();
+            
+            foreach (var key in keysToRemove)
+            {
+                _batchDetectionCache.TryRemove(key, out _);
+            }
+            
+            LogDebug($"Cleaned up batch detection cache: removed {keysToRemove.Count} entries");
+        }
+
         public static void Stop()
         {
             _isRunning = false;
-
             _isProcessing = false;
 
             if (_libraryManager != null)
             {
-                _libraryManager.ItemAdded -= OnItemAdded;
+                try
+                {
+                    _libraryManager.ItemAdded -= OnItemAdded;
+                }
+                catch (Exception ex)
+                {
+                    LogError("Error unregistering ItemAdded event", ex);
+                }
             }
 
             _detectionCoordinator?.Dispose();
@@ -216,6 +241,13 @@ namespace EmbyCredits.Services
             {
                 LogError("Error disposing semaphore", ex);
             }
+            
+            _debugLogger?.Dispose();
+            
+            _pluginCoordination?.Dispose();
+            
+            while (_processingQueue.TryDequeue(out _)) { }
+            _batchDetectionCache.Clear();
 
             LogInfo("Credits Detection Service stopped");
         }
@@ -275,20 +307,26 @@ namespace EmbyCredits.Services
 
                     LogInfo($"New episode detected: {episode.SeriesName} - {episode.Name}");
 
-                    Task.Delay(15000).ContinueWith(_ =>
+                    var episodeId = episode.Id;
+                    var episodeName = episode.Name;
+                    var episodePath = episode.Path;
+
+                    Task.Run(async () =>
                     {
                         try
                         {
+                            await Task.Delay(15000).ConfigureAwait(false);
+                            
                             if (_libraryManager == null)
                             {
-                                LogWarn($"LibraryManager not available for delayed processing of {episode.Name}");
+                                LogWarn($"LibraryManager not available for delayed processing of {episodeName}");
                                 return;
                             }
 
-                            var refreshedEpisode = _libraryManager.GetItemById(episode.Id) as Episode;
+                            var refreshedEpisode = _libraryManager.GetItemById(episodeId) as Episode;
                             if (refreshedEpisode == null)
                             {
-                                LogWarn($"Episode {episode.Name} no longer exists after delay");
+                                LogWarn($"Episode {episodeName} no longer exists after delay");
                                 return;
                             }
 
@@ -316,7 +354,13 @@ namespace EmbyCredits.Services
                         }
                         catch (Exception delayEx)
                         {
-                            LogError($"Error in delayed processing for {episode.Name}", delayEx);
+                            LogError($"Error in delayed episode processing: {episodeName}", delayEx);
+                        }
+                    }).ContinueWith(t =>
+                    {
+                        if (t.IsFaulted && t.Exception != null)
+                        {
+                            LogError($"Delayed episode processing failed: {episodeName}", t.Exception.GetBaseException());
                         }
                     }, TaskScheduler.Default);
                 }
@@ -416,7 +460,13 @@ namespace EmbyCredits.Services
                     Plugin.Progress.StartTime = DateTime.Now;
 
                     LogInfo("Starting ProcessQueue task");
-                    Task.Run(ProcessQueue);
+                    _ = Task.Run(ProcessQueue).ContinueWith(t =>
+                    {
+                        if (t.IsFaulted && t.Exception != null)
+                        {
+                            LogError("ProcessQueue task failed", t.Exception.GetBaseException());
+                        }
+                    }, TaskScheduler.Default);
                 }
                 else if (_isProcessing && Plugin.Instance != null)
                 {
@@ -489,11 +539,23 @@ namespace EmbyCredits.Services
             if (_isBatchMode)
             {
                 LogInfo($"Batch mode enabled: Pre-computing detections for {queuedCount} episodes");
-                Task.Run(() => PreComputeBatchDetections(validEpisodes.ToList()));
+                _ = Task.Run(() => PreComputeBatchDetections(validEpisodes.ToList())).ContinueWith(t =>
+                {
+                    if (t.IsFaulted && t.Exception != null)
+                    {
+                        LogError("Batch pre-computation task failed", t.Exception.GetBaseException());
+                    }
+                }, TaskScheduler.Default);
             }
             else
             {
-                Task.Run(ProcessQueue);
+                _ = Task.Run(ProcessQueue).ContinueWith(t =>
+                {
+                    if (t.IsFaulted && t.Exception != null)
+                    {
+                        LogError("ProcessQueue task failed", t.Exception.GetBaseException());
+                    }
+                }, TaskScheduler.Default);
             }
         }
 
@@ -779,7 +841,6 @@ namespace EmbyCredits.Services
                         break;
                     }
 
-                    // Wait if other plugins (like Intro Skipper) are processing
                     if (_pluginCoordination != null)
                     {
                         try
@@ -949,6 +1010,8 @@ namespace EmbyCredits.Services
                         Plugin.Progress.IsRunning = false;
                         Plugin.Progress.EndTime = DateTime.Now;
                         Plugin.Progress.CurrentItem = "Complete";
+                        
+
                     }
                 }
             }

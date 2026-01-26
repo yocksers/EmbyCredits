@@ -41,16 +41,58 @@ namespace EmbyCredits.Services
 
                 var query = new InternalItemsQuery
                 {
-                    IncludeItemTypes = new[] { typeof(Episode).Name },
+                    IncludeItemTypes = new[] { "Episode" },
                     Recursive = true,
-                    IsVirtualItem = false
+                    IsVirtualItem = false,
+                    HasPath = true
                 };
 
-                var allEpisodes = _libraryManager.GetItemList(query).Cast<Episode>();
+                _logger.Info($"Querying library for episodes with filter - Recursive: true, IsVirtualItem: false, HasPath: true");
+                var allItems = _libraryManager.GetItemList(query);
+                _logger.Info($"Raw query returned {allItems.Length} items");
+                
+                var allEpisodes = allItems.OfType<Episode>().ToList();
+                _logger.Info($"After filtering to Episode type: {allEpisodes.Count} episodes");
+
+                if (allEpisodes.Count == 0)
+                {
+                    _logger.Warn("No episodes found in library. Make sure you have TV shows in your Emby library.");
+                    result.Success = true;
+                    result.TotalEpisodes = 0;
+                    result.EpisodesWithCredits = 0;
+                    result.Message = "No episodes found in library";
+                    
+                    var emptyBackup = new CreditsBackup
+                    {
+                        Version = "1.0",
+                        BackupDate = DateTime.UtcNow,
+                        TotalEpisodes = 0,
+                        EpisodesWithCredits = 0,
+                        Entries = new List<CreditsBackupEntry>()
+                    };
+                    
+                    result.JsonData = JsonSerializer.Serialize(emptyBackup, new JsonSerializerOptions 
+                    { 
+                        WriteIndented = true,
+                        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+                    });
+                    
+                    return Task.FromResult(result);
+                }
 
                 if (libraryIds != null && libraryIds.Count > 0)
                 {
-                    allEpisodes = allEpisodes.Where(e =>
+                    _logger.Info($"Filtering by {libraryIds.Count} library IDs: {string.Join(", ", libraryIds)}");
+                    
+                    var sampleSize = Math.Min(5, allEpisodes.Count);
+                    for (int i = 0; i < sampleSize; i++)
+                    {
+                        var e = allEpisodes[i];
+                        var topParent = e.GetTopParent();
+                        _logger.Info($"Sample episode {i+1}: '{e.Name}' - TopParent: {topParent?.Name} (ID: {topParent?.InternalId}, Type: {topParent?.GetType().Name})");
+                    }
+                    
+                    var filteredEpisodes = allEpisodes.Where(e =>
                     {
                         var topParent = e.GetTopParent();
                         var internalIdStr = topParent?.InternalId.ToString();
@@ -69,15 +111,21 @@ namespace EmbyCredits.Services
                         }
                         
                         return false;
-                    });
+                    }).ToList();
+                    
+                    _logger.Info($"After library filtering: {filteredEpisodes.Count} episodes");
+                    allEpisodes = filteredEpisodes;
                 }
 
                 if (seriesIds != null && seriesIds.Count > 0)
                 {
-                    allEpisodes = allEpisodes.Where(e => seriesIds.Contains(e.Series?.Id.ToString() ?? ""));
+                    _logger.Info($"Filtering by {seriesIds.Count} series IDs");
+                    var filteredEpisodes = allEpisodes.Where(e => seriesIds.Contains(e.Series?.Id.ToString() ?? "")).ToList();
+                    _logger.Info($"After series filtering: {filteredEpisodes.Count} episodes");
+                    allEpisodes = filteredEpisodes;
                 }
 
-                var episodesList = allEpisodes.ToList();
+                var episodesList = allEpisodes;
                 _logger.Info($"Scanning {episodesList.Count} episodes for credits markers");
 
                 var progress = Plugin.Instance?.GetType().GetProperty("BackupExportProgress")?.GetValue(null) as CreditsDetectionProgress;
@@ -236,11 +284,11 @@ namespace EmbyCredits.Services
                     Recursive = true
                 }).Cast<Episode>().ToList();
 
-                var episodesByTvdbId = new Dictionary<string, Episode>();
-                var episodesByTmdbId = new Dictionary<string, Episode>();
-                var episodesByImdbId = new Dictionary<string, Episode>();
-                var episodesBySeriesAndNumber = new Dictionary<string, List<Episode>>();
-                var episodesByPath = new Dictionary<string, Episode>(StringComparer.OrdinalIgnoreCase);
+                var episodesByTvdbId = new Dictionary<string, Episode>(allEpisodes.Count / 2);
+                var episodesByTmdbId = new Dictionary<string, Episode>(allEpisodes.Count / 2);
+                var episodesByImdbId = new Dictionary<string, Episode>(allEpisodes.Count / 10);
+                var episodesBySeriesAndNumber = new Dictionary<string, List<Episode>>(allEpisodes.Count);
+                var episodesByPath = new Dictionary<string, Episode>(allEpisodes.Count, StringComparer.OrdinalIgnoreCase);
 
                 foreach (var ep in allEpisodes)
                 {
