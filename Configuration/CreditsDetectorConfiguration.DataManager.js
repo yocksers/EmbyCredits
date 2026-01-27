@@ -230,9 +230,6 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrEnableSharpening = view.querySelector('#chkOcrEnableSharpening').checked;
         instance.config.OcrSharpenAmount = Number.parseFloat(view.querySelector('#txtOcrSharpenAmount').value) || 1.0;
 
-        // Multi-Language Support
-        instance.config.OcrLanguages = view.querySelector('#txtOcrLanguages').value || 'eng';
-
         // Region of Interest
         instance.config.OcrEnableRoiDetection = view.querySelector('#chkOcrEnableRoiDetection').checked;
         instance.config.OcrRoiRegion = view.querySelector('#selectOcrRoiRegion').value || 'full';
