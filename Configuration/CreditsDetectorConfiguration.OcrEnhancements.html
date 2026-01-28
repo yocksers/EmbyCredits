@@ -1,0 +1,152 @@
+<div class="paper-card" style="padding: 1.5em; margin-top: 0;">
+    <div style="padding: 1em; background: rgba(255, 193, 7, 0.15); border-left: 4px solid #FFC107; border-radius: 4px; margin-bottom: 2em;">
+        <h3 style="margin-top: 0; margin-bottom: 0.5em; color: #FFC107;">Advanced Options!</h3>
+        <p style="margin: 0;">Only use if you know what they do as they can greatly change detections</p>
+    </div>
+
+    <h2 style="margin-top:0;">OCR Enhancements</h2>
+    <p class="fieldDescription">Advanced features to improve OCR detection accuracy and performance. All features are disabled by default.</p>
+
+    <h3 style="margin-top: 1.5em; color: #52b54b;">Credit Structure Detection</h3>
+    <p class="fieldDescription">Recognize typical credit formatting (uppercase roles + mixed case names) without keywords.</p>
+
+    <div class="checkboxContainer">
+        <label>
+            <input is="emby-checkbox" type="checkbox" id="chkOcrEnableCreditStructureDetection" data-config-key="OcrEnableCreditStructureDetection" />
+            <span>Enable Structure Detection</span>
+        </label>
+        <div class="fieldDescription">Detect credits by formatting patterns (e.g., "DIRECTOR" followed by "John Smith")</div>
+    </div>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrMinimumStructureLines">Minimum Structure Lines</label>
+        <input is="emby-input" type="number" id="txtOcrMinimumStructureLines" data-config-key="OcrMinimumStructureLines" min="2" max="10" />
+        <div class="fieldDescription"><strong>Default: 4.</strong> Minimum text lines required to analyze structure</div>
+    </div>
+
+    <h3 style="margin-top: 2em; color: #52b54b;">Adaptive Frame Rate</h3>
+    <p class="fieldDescription">Dynamically reduce sampling rate once credits are detected to improve performance.</p>
+
+    <div class="checkboxContainer">
+        <label>
+            <input is="emby-checkbox" type="checkbox" id="chkOcrEnableAdaptiveFrameRate" data-config-key="OcrEnableAdaptiveFrameRate" />
+            <span>Enable Adaptive Frame Rate</span>
+        </label>
+        <div class="fieldDescription">Reduce frame sampling after initial detection while maintaining accuracy</div>
+    </div>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrAdaptiveFrameRateMin">Minimum Frame Rate</label>
+        <input is="emby-input" type="number" step="0.05" id="txtOcrAdaptiveFrameRateMin" data-config-key="OcrAdaptiveFrameRateMin" min="0.1" max="1.0" />
+        <div class="fieldDescription"><strong>Default: 0.25.</strong> Minimum FPS to drop to (prevents under-sampling)</div>
+    </div>
+
+    <h3 style="margin-top: 2em; color: #52b54b;">Scrolling Pattern Detection</h3>
+    <p class="fieldDescription">Detect rolling credits by analyzing text movement across frames, even without keywords.</p>
+
+    <div class="checkboxContainer">
+        <label>
+            <input is="emby-checkbox" type="checkbox" id="chkOcrEnableScrollingDetection" data-config-key="OcrEnableScrollingDetection" />
+            <span>Enable Scrolling Detection</span>
+        </label>
+        <div class="fieldDescription">Detect credits by identifying continuous scrolling text motion</div>
+    </div>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrScrollingMinFrames">Minimum Scrolling Frames</label>
+        <input is="emby-input" type="number" id="txtOcrScrollingMinFrames" data-config-key="OcrScrollingMinFrames" min="3" max="10" />
+        <div class="fieldDescription"><strong>Default: 5.</strong> Consecutive frames needed to confirm scrolling pattern</div>
+    </div>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrScrollingOverlapThreshold">Text Overlap Threshold</label>
+        <input is="emby-input" type="number" step="0.05" id="txtOcrScrollingOverlapThreshold" data-config-key="OcrScrollingOverlapThreshold" min="0.1" max="0.9" />
+        <div class="fieldDescription"><strong>Default: 0.3.</strong> Text overlap ratio to qualify as scrolling (0.3 = 30% overlap between frames)</div>
+    </div>
+
+    <h3 style="margin-top: 2em; color: #52b54b;">Fuzzy Keyword Matching</h3>
+    <p class="fieldDescription">Match keywords even when OCR makes minor errors (e.g., "directed" matches "dinected").</p>
+
+    <div class="checkboxContainer">
+        <label>
+            <input is="emby-checkbox" type="checkbox" id="chkOcrEnableFuzzyMatching" data-config-key="OcrEnableFuzzyMatching" />
+            <span>Enable Fuzzy Matching</span>
+        </label>
+        <div class="fieldDescription">Use Levenshtein distance to match keywords with minor OCR errors</div>
+    </div>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrFuzzyMatchMaxDistance">Max Edit Distance</label>
+        <input is="emby-input" type="number" id="txtOcrFuzzyMatchMaxDistance" data-config-key="OcrFuzzyMatchMaxDistance" min="1" max="3" />
+        <div class="fieldDescription"><strong>Default: 2.</strong> Maximum character differences allowed (1-3). Distance 2: "produced" matches "produccd"</div>
+    </div>
+
+    <h3 style="margin-top: 2em; color: #52b54b;">Region of Interest (ROI)</h3>
+    <p class="fieldDescription">Focus OCR on specific screen regions where credits typically appear for faster processing. Should not be used by anyone other than for trying to redetect in failed videos.</p>
+
+    <div class="checkboxContainer">
+        <label>
+            <input is="emby-checkbox" type="checkbox" id="chkOcrEnableRoiDetection" data-config-key="OcrEnableRoiDetection" />
+            <span>Enable ROI Detection</span>
+        </label>
+        <div class="fieldDescription">Crop frames to focus on regions where credits typically appear</div>
+    </div>
+
+    <div class="selectContainer">
+        <label class="selectLabel" for="selectOcrRoiRegion">ROI Region</label>
+        <select is="emby-select" id="selectOcrRoiRegion" data-config-key="OcrRoiRegion">
+            <option value="full">Full Frame (no cropping)</option>
+            <option value="bottom_third">Bottom Third (scrolling credits)</option>
+            <option value="bottom_half">Bottom Half</option>
+            <option value="center">Center 60% (credit cards)</option>
+            <option value="top_third">Top Third</option>
+        </select>
+        <div class="fieldDescription">Choose the screen region to analyze. Bottom third is best for scrolling credits</div>
+    </div>
+
+    <h3 style="margin-top: 2em; color: #52b54b;">Sharpening</h3>
+    <p class="fieldDescription">Apply unsharp mask to enhance text edges for better recognition.</p>
+
+    <div class="checkboxContainer">
+        <label>
+            <input is="emby-checkbox" type="checkbox" id="chkOcrEnableSharpening" data-config-key="OcrEnableSharpening" />
+            <span>Enable Sharpening</span>
+        </label>
+        <div class="fieldDescription">Apply unsharp mask to enhance text edges for better recognition</div>
+    </div>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrSharpenAmount">Sharpen Amount</label>
+        <input is="emby-input" type="number" step="0.1" id="txtOcrSharpenAmount" data-config-key="OcrSharpenAmount" min="0.0" max="2.0" />
+        <div class="fieldDescription"><strong>Default: 1.0.</strong> Sharpening intensity (0.0-2.0). Higher values = sharper but may introduce artifacts</div>
+    </div>
+
+    <h3 style="margin-top: 2em; color: #52b54b;">Image Preprocessing</h3>
+    <p class="fieldDescription">Enhance frame quality before OCR to improve text recognition, especially for low-quality sources.</p>
+
+    <div class="checkboxContainer">
+        <label>
+            <input is="emby-checkbox" type="checkbox" id="chkOcrEnableImagePreprocessing" data-config-key="OcrEnableImagePreprocessing" />
+            <span>Enable Image Preprocessing</span>
+        </label>
+        <div class="fieldDescription">Apply contrast and brightness adjustments to improve OCR accuracy</div>
+    </div>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrContrastEnhancement">Contrast Enhancement</label>
+        <input is="emby-input" type="number" step="0.1" id="txtOcrContrastEnhancement" data-config-key="OcrContrastEnhancement" min="0.5" max="3.0" />
+        <div class="fieldDescription"><strong>Default: 1.5.</strong> Adjust image contrast (1.0 = no change, >1.0 = increase). Range: 1.2-2.0 for most videos</div>
+    </div>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrBrightnessAdjustment">Brightness Adjustment</label>
+        <input is="emby-input" type="number" step="0.01" id="txtOcrBrightnessAdjustment" data-config-key="OcrBrightnessAdjustment" min="-0.5" max="0.5" />
+        <div class="fieldDescription"><strong>Default: 0.05.</strong> Adjust brightness (-1.0 to 1.0). Use 0.1 for dark videos, -0.1 for bright ones</div>
+    </div>
+
+    <div style="margin-top: 2em; padding-top: 1em; border-top: 1px solid rgba(255,255,255,0.1);">
+        <button is="emby-button" type="button" id="btnSaveOcrEnhancements" class="raised button-submit">
+            <span>Save</span>
+        </button>
+    </div>
+</div>

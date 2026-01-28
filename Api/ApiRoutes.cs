@@ -29,5 +29,6 @@ namespace EmbyCredits.Api
         public const string ApplyToSeason = "/CreditsDetector/ApplyToSeason";
         public const string GetImage = "/CreditsDetector/Images/{ImageName}";
         public const string GetSeasonValidation = "/CreditsDetector/GetSeasonValidation";
+        public const string GetThumbnail = "/CreditsDetector/Thumbnail/{ThumbnailId}";
     }
 }

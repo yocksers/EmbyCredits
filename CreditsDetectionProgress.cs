@@ -6,7 +6,7 @@ namespace EmbyCredits
 {
     public class CreditsDetectionProgress
     {
-        private const int MaxDictionarySize = 1000;
+        private const int MaxDictionarySize = 200;
         
         public bool IsRunning { get; set; }
         public int TotalItems { get; set; }
@@ -21,6 +21,8 @@ namespace EmbyCredits
         private Dictionary<string, string> _failureReasons = new Dictionary<string, string>();
         private Dictionary<string, string> _successDetails = new Dictionary<string, string>();
         private Dictionary<string, double> _confidenceScores = new Dictionary<string, double>();
+        private Dictionary<string, string> _thumbnailPaths = new Dictionary<string, string>();
+        private Dictionary<string, string> _episodeIds = new Dictionary<string, string>();
         
         public Dictionary<string, string> FailureReasons 
         { 
@@ -40,6 +42,18 @@ namespace EmbyCredits
             set => _confidenceScores = value;
         }
 
+        public Dictionary<string, string> ThumbnailPaths 
+        { 
+            get => _thumbnailPaths;
+            set => _thumbnailPaths = value;
+        }
+
+        public Dictionary<string, string> EpisodeIds 
+        { 
+            get => _episodeIds;
+            set => _episodeIds = value;
+        }
+
         public void Reset()
         {
             IsRunning = false;
@@ -51,7 +65,43 @@ namespace EmbyCredits
             CurrentItemProgress = 0;
             StartTime = null;
             EndTime = null;
+            DeleteOldThumbnails();
             CleanupDictionaries();
+        }
+        
+        private void DeleteOldThumbnails()
+        {
+            try
+            {
+                if (_thumbnailPaths.Count == 0)
+                    return;
+
+                var pluginDataPath = Plugin.Instance?.AppPaths?.PluginConfigurationsPath;
+                if (string.IsNullOrEmpty(pluginDataPath))
+                    return;
+
+                var thumbnailDir = System.IO.Path.Combine(pluginDataPath, "EmbyCredits", "Thumbnails");
+                if (!System.IO.Directory.Exists(thumbnailDir))
+                    return;
+
+                foreach (var thumbnailFile in _thumbnailPaths.Values)
+                {
+                    try
+                    {
+                        var fullPath = System.IO.Path.Combine(thumbnailDir, thumbnailFile);
+                        if (System.IO.File.Exists(fullPath))
+                        {
+                            System.IO.File.Delete(fullPath);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+            catch
+            {
+            }
         }
         
         private void CleanupDictionaries()
@@ -59,6 +109,8 @@ namespace EmbyCredits
             _failureReasons.Clear();
             _successDetails.Clear();
             _confidenceScores.Clear();
+            _thumbnailPaths.Clear();
+            _episodeIds.Clear();
         }
         
         internal void CheckAndLimitDictionarySize()
@@ -82,6 +134,50 @@ namespace EmbyCredits
                 var toRemove = _confidenceScores.Keys.Take(_confidenceScores.Count - MaxDictionarySize).ToList();
                 foreach (var key in toRemove)
                     _confidenceScores.Remove(key);
+            }
+            
+            if (_thumbnailPaths.Count > MaxDictionarySize)
+            {
+                var toRemove = _thumbnailPaths.Keys.Take(_thumbnailPaths.Count - MaxDictionarySize).ToList();
+                
+                try
+                {
+                    var pluginDataPath = Plugin.Instance?.AppPaths?.PluginConfigurationsPath;
+                    if (!string.IsNullOrEmpty(pluginDataPath))
+                    {
+                        var thumbnailDir = System.IO.Path.Combine(pluginDataPath, "EmbyCredits", "Thumbnails");
+                        foreach (var key in toRemove)
+                        {
+                            if (_thumbnailPaths.TryGetValue(key, out var thumbnailFile))
+                            {
+                                try
+                                {
+                                    var fullPath = System.IO.Path.Combine(thumbnailDir, thumbnailFile);
+                                    if (System.IO.File.Exists(fullPath))
+                                    {
+                                        System.IO.File.Delete(fullPath);
+                                    }
+                                }
+                                catch
+                                {
+                                }
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                }
+                
+                foreach (var key in toRemove)
+                    _thumbnailPaths.Remove(key);
+            }
+            
+            if (_episodeIds.Count > MaxDictionarySize)
+            {
+                var toRemove = _episodeIds.Keys.Take(_episodeIds.Count - MaxDictionarySize).ToList();
+                foreach (var key in toRemove)
+                    _episodeIds.Remove(key);
             }
         }
 

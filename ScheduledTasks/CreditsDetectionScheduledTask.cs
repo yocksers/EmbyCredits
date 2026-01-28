@@ -254,13 +254,7 @@ namespace EmbyCredits.ScheduledTasks
                 return chapters.Any(c =>
                 {
                     var markerType = GetMarkerType(c);
-                    if (markerType == "CreditsStart" || markerType == "Credits")
-                        return true;
-
-                    if (c.Name != null && c.Name.ToLowerInvariant().Contains("credit"))
-                        return true;
-
-                    return false;
+                    return markerType == "CreditsStart";
                 });
             }
             catch (Exception ex)

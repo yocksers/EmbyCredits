@@ -46,6 +46,33 @@
         }, 500);
     }
     
+    function parseTimestamp(timestamp) {
+        const parts = timestamp.split(':').map(p => parseInt(p, 10));
+        if (parts.length === 2) {
+            return parts[0] * 60 + parts[1];
+        } else if (parts.length === 3) {
+            return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        }
+        return 0;
+    }
+    
+    function playVideoAtTimestamp(episodeId, timestampSeconds) {
+        // Use Emby's playback manager to start playing the episode at the specified timestamp
+        require(['playbackManager'], function(playbackManager) {
+            ApiClient.getItem(ApiClient.getCurrentUserId(), episodeId).then(function(item) {
+                playbackManager.play({
+                    items: [item],
+                    startPositionTicks: timestampSeconds * 10000000 // Convert seconds to ticks (1 tick = 100ns)
+                });
+            }).catch(function(error) {
+                console.error('Error starting playback:', error);
+                require(['toast'], function(toast) {
+                    toast({ type: 'error', text: 'Failed to start playback' });
+                });
+            });
+        });
+    }
+    
     function updateProgressUI(view, progress) {
         const progressBar = view.querySelector('#progressBar');
         const percentText = view.querySelector('#percentText');
@@ -116,14 +143,80 @@
             successList.innerHTML = '';
             Object.entries(progress.SuccessDetails).forEach(([episode, timestamp]) => {
                 const item = document.createElement('div');
-                item.style.cssText = 'padding: 0.5em; margin-bottom: 0.5em;';
+                item.style.cssText = 'padding: 0.5em; margin-bottom: 0.5em; display: flex; align-items: center; gap: 1em;';
                 
                 const confidence = progress.ConfidenceScores && progress.ConfidenceScores[episode];
                 const confidenceText = confidence !== undefined && confidence !== null
                     ? ` (confidence: ${(confidence * 100).toFixed(0)}%)`
                     : '';
                 
-                item.innerHTML = `<strong>${episode}</strong><br/><span style="font-size: 0.9em; font-weight: bold;">Credits marker added at ${timestamp}</span><span>${confidenceText}</span>`;
+                const textContent = document.createElement('div');
+                textContent.style.cssText = 'flex: 1;';
+                
+                const episodeTitle = document.createElement('div');
+                episodeTitle.style.cssText = 'display: flex; align-items: center; gap: 0.5em; margin-bottom: 0.3em;';
+                
+                const titleText = document.createElement('strong');
+                titleText.textContent = episode;
+                episodeTitle.appendChild(titleText);
+                
+                if (progress.EpisodeIds && progress.EpisodeIds[episode]) {
+                    const playButton = document.createElement('button');
+                    playButton.className = 'button-flat';
+                    playButton.style.cssText = 'padding: 0.2em 0.5em; font-size: 0.8em; min-width: auto; background-color: #52B54B; color: white;';
+                    playButton.innerHTML = '<i class="md-icon">play_arrow</i> Play at timestamp';
+                    playButton.title = 'Play episode at detected credits timestamp';
+                    playButton.addEventListener('click', function() {
+                        const episodeId = progress.EpisodeIds[episode];
+                        const timestampSeconds = parseTimestamp(timestamp);
+                        playVideoAtTimestamp(episodeId, timestampSeconds);
+                    });
+                    episodeTitle.appendChild(playButton);
+                }
+                
+                textContent.appendChild(episodeTitle);
+                
+                const detailsText = document.createElement('div');
+                detailsText.innerHTML = `<span style="font-size: 0.9em; font-weight: bold;">Credits marker added at ${timestamp}</span><span>${confidenceText}</span>`;
+                textContent.appendChild(detailsText);
+                
+                item.appendChild(textContent);
+                
+                if (progress.ThumbnailPaths && progress.ThumbnailPaths[episode]) {
+                    const thumbnailId = progress.ThumbnailPaths[episode];
+                    const thumbnailUrl = ApiClient.getUrl('CreditsDetector/Thumbnail/' + encodeURIComponent(thumbnailId), {
+                        api_key: ApiClient.accessToken()
+                    });
+                    
+                    const thumbnailContainer = document.createElement('div');
+                    thumbnailContainer.style.cssText = 'flex-shrink: 0;';
+                    
+                    const thumbnail = document.createElement('img');
+                    thumbnail.src = thumbnailUrl;
+                    thumbnail.style.cssText = 'max-width: 160px; max-height: 90px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); cursor: pointer;';
+                    thumbnail.title = `Credits detected at ${timestamp} - Click to enlarge`;
+                    thumbnail.alt = 'Credit detection thumbnail';
+                    
+                    thumbnail.addEventListener('click', function() {
+                        const modal = document.createElement('div');
+                        modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 10000; display: flex; align-items: center; justify-content: center; cursor: pointer;';
+                        
+                        const largeImage = document.createElement('img');
+                        largeImage.src = thumbnailUrl;
+                        largeImage.style.cssText = 'max-width: 90%; max-height: 90%; border-radius: 4px;';
+                        
+                        modal.appendChild(largeImage);
+                        modal.addEventListener('click', function() {
+                            document.body.removeChild(modal);
+                        });
+                        
+                        document.body.appendChild(modal);
+                    });
+                    
+                    thumbnailContainer.appendChild(thumbnail);
+                    item.appendChild(thumbnailContainer);
+                }
+                
                 successList.appendChild(item);
             });
         } else {

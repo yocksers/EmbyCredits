@@ -5,7 +5,8 @@ define([], function () {
         const navButtons = view.querySelectorAll('.nav-button');
         const pages = {
             'settingsPage': view.querySelector('#settingsPage'),
-            'ocrPage': view.querySelector('#ocrPage'),
+            'notificationsPage': view.querySelector('#notificationsPage'),
+            'ocrEnhancementsPage': view.querySelector('#ocrEnhancementsPage'),
             'actionsPage': view.querySelector('#actionsPage'),
             'guidePage': view.querySelector('#guidePage'),
             'apiPage': view.querySelector('#apiPage')

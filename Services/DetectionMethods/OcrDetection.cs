@@ -28,6 +28,12 @@ namespace EmbyCredits.Services.DetectionMethods
         private int _totalKeywordMatches = 0;
         private int _totalFramesProcessed = 0;
 
+        private int _lastProcessedFrameIndex = -1;
+        private DateTime _lastFrameProgressTime = DateTime.UtcNow;
+        private int _stuckRetryCount = 0;
+        private const int StuckDetectionTimeoutSeconds = 20;
+        private const int MaxStuckRetries = 1;
+
         private static readonly HttpClient _httpClient = new HttpClient 
         { 
             Timeout = TimeSpan.FromMinutes(2)
@@ -51,6 +57,10 @@ namespace EmbyCredits.Services.DetectionMethods
             _totalKeywordMatches = 0;
             _totalFramesProcessed = 0;
             _calculatedConfidence = 0.95;
+            
+            _lastProcessedFrameIndex = -1;
+            _lastFrameProgressTime = DateTime.UtcNow;
+            _stuckRetryCount = 0;
             
             try
             {
@@ -301,14 +311,13 @@ namespace EmbyCredits.Services.DetectionMethods
             var threadArgs = BuildThreadArgs();
             var filterChain = BuildFilterChain(fps);
             
-            var imageFormat = Configuration.OcrImageFormat?.ToLowerInvariant() == "jpg" ? "jpg" : "png";
-            var vcodec = imageFormat == "jpg" ? "mjpeg" : "png";
-            var codecArgs = imageFormat == "jpg" ? $"-q:v {Configuration.OcrJpegQuality}" : "";
+            var vcodec = "mjpeg";
+            var codecArgs = $"-q:v {Configuration.OcrJpegQuality}";
             var outputFormat = $"-f image2pipe -vcodec {vcodec} {codecArgs} pipe:1";
             
             var extractArgs = $"{preInputArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} {threadArgs}-t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"{filterChain}\" {outputFormat}";
 
-            LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps ({imageFormat.ToUpperInvariant()}{(imageFormat == "jpg" ? $" Q{Configuration.OcrJpegQuality}" : "")}) (Direct Memory Pipeline)");
+            LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps (JPG Q{Configuration.OcrJpegQuality}) (Direct Memory Pipeline)");
             LogDebug($"FFmpeg command: {FFmpegHelper.GetFfmpegPath()} {extractArgs}");
             UpdateProgress(10, "Starting direct memory frame extraction");
 
@@ -367,19 +376,8 @@ namespace EmbyCredits.Services.DetectionMethods
                 {
                     var stdoutStream = process.StandardOutput.BaseStream;
                     
-                    byte[] imageSignature;
-                    byte[] imageEndMarker;
-                    
-                    if (imageFormat == "jpg")
-                    {
-                        imageSignature = new byte[] { 0xFF, 0xD8, 0xFF };
-                        imageEndMarker = new byte[] { 0xFF, 0xD9 };
-                    }
-                    else
-                    {
-                        imageSignature = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
-                        imageEndMarker = new byte[] { 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82 };
-                    }
+                    byte[] imageSignature = new byte[] { 0xFF, 0xD8, 0xFF };
+                    byte[] imageEndMarker = new byte[] { 0xFF, 0xD9 };
                     
                     var buffer = new List<byte>();
                     var readBuffer = new byte[65536];
@@ -586,6 +584,11 @@ namespace EmbyCredits.Services.DetectionMethods
                     await ProcessOcrResult(ocrText, timestamp, index, analysisDuration, fps, keywords,
                         detectionScores, characterDensityHistory, recentTextFrames, maxFramesToProcess).ConfigureAwait(false);
                 }
+                
+                if (Configuration.OcrDelayBetweenBatchesMs > 0)
+                {
+                    await Task.Delay(Configuration.OcrDelayBetweenBatchesMs, cancellationToken).ConfigureAwait(false);
+                }
             }
             else
             {
@@ -624,16 +627,11 @@ namespace EmbyCredits.Services.DetectionMethods
         {
             try
             {
-                var imageFormat = Configuration.OcrImageFormat?.ToLowerInvariant() == "jpg" ? "jpg" : "png";
-                var imageExtension = imageFormat;
+                var imageExtension = "jpg";
 
-                var qualityParam = "";
-                if (imageFormat == "jpg")
-                {
-                    var userQuality = Math.Max(1, Math.Min(100, Configuration.OcrJpegQuality));
-                    var ffmpegQuality = 2 + (int)Math.Round((100 - userQuality) * 29.0 / 99.0);
-                    qualityParam = $"-q:v {ffmpegQuality}";
-                }
+                var userQuality = Math.Max(1, Math.Min(100, Configuration.OcrJpegQuality));
+                var ffmpegQuality = 2 + (int)Math.Round((100 - userQuality) * 29.0 / 99.0);
+                var qualityParam = $"-q:v {ffmpegQuality}";
 
                 var frameOutputPath = $"{tempDir.Replace("\\", "/")}/frame_%04d.{imageExtension}";
 
@@ -647,7 +645,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 var filterChain = BuildFilterChain(fps);
                 var extractArgs = $"{preInputArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} {threadArgs}-t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"{filterChain}\" {qualityParam} -f image2 \"{ffmpegFramePath}\"";
 
-                LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps ({imageFormat.ToUpperInvariant()}{(imageFormat == "jpg" ? $" Q{Configuration.OcrJpegQuality}" : "")}) for OCR analysis");
+                LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps (JPG Q{Configuration.OcrJpegQuality}) for OCR analysis");
                 LogDebug($"FFmpeg command: {FFmpegHelper.GetFfmpegPath()} {extractArgs}");
                 UpdateProgress(10, "Starting frame extraction and OCR processing");
 
@@ -711,8 +709,9 @@ namespace EmbyCredits.Services.DetectionMethods
                         var consecutiveMatches = 0;
                         var recentMatches = new List<(double timestamp, int matchCount)>();
                         var frameSkip = 1;
+                        var stuckDetected = false;
 
-                        while (!creditsFound && frameIndex < maxFramesToProcess)
+                        while (!creditsFound && frameIndex < maxFramesToProcess && !stuckDetected)
                         {
 
                             if (effectiveToken.IsCancellationRequested)
@@ -994,6 +993,47 @@ namespace EmbyCredits.Services.DetectionMethods
                                         LogDebug($"OCR progress: {frameIndex} frames processed");
                                     }
 
+                                    if (frameIndex != _lastProcessedFrameIndex)
+                                    {
+                                        _lastProcessedFrameIndex = frameIndex;
+                                        _lastFrameProgressTime = DateTime.UtcNow;
+                                    }
+                                    else
+                                    {
+                                        var timeSinceLastProgress = (DateTime.UtcNow - _lastFrameProgressTime).TotalSeconds;
+                                        if (timeSinceLastProgress > StuckDetectionTimeoutSeconds)
+                                        {
+                                            if (_stuckRetryCount < MaxStuckRetries)
+                                            {
+                                                _stuckRetryCount++;
+                                                LogWarn($"Detection stuck on frame {frameIndex + 1} for {timeSinceLastProgress:F0}s. Retry attempt {_stuckRetryCount}/{MaxStuckRetries}");
+                                                _lastFrameProgressTime = DateTime.UtcNow;
+                                                await Task.Delay(1000, effectiveToken).ConfigureAwait(false);
+                                            }
+                                            else
+                                            {
+                                                LastError = $"Detection stuck on frame {frameIndex + 1} for {timeSinceLastProgress:F0}s after {MaxStuckRetries} retry attempt(s). OCR server may be unresponsive.";
+                                                LogError(LastError);
+                                                
+                                                try
+                                                {
+                                                    if (!process.HasExited)
+                                                    {
+                                                        process.Kill();
+                                                        LogDebug("FFmpeg process terminated due to stuck detection");
+                                                    }
+                                                }
+                                                catch (Exception killEx)
+                                                {
+                                                    LogDebug($"Error killing FFmpeg process: {killEx.Message}");
+                                                }
+                                                
+                                                stuckDetected = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+
                                     LogDebug($"Sending frame {frameIndex + 1} to OCR API: {frameFile}");
                                     var (ocrText, ocrConfidence) = await PerformOcr(frameFile, effectiveToken).ConfigureAwait(false);
                                     
@@ -1246,54 +1286,59 @@ namespace EmbyCredits.Services.DetectionMethods
             try
             {
                 var endpoint = Configuration.OcrEndpoint.TrimEnd('/') + "/tesseract";
-                var imageFormat = Configuration.OcrImageFormat?.ToLowerInvariant() == "jpg" ? "jpg" : "png";
                 
-                LogDebug($"Sending {frameData.Length} bytes to OCR endpoint {endpoint} as {imageFormat}");
+                LogDebug($"Sending {frameData.Length} bytes to OCR endpoint {endpoint} as jpg");
                 
                 using (var content = new MultipartFormDataContent())
                 {
                     var imageContent = new ByteArrayContent(frameData);
-                    var contentType = imageFormat == "jpg" ? "image/jpeg" : "image/png";
-                    var filename = imageFormat == "jpg" ? "frame.jpg" : "frame.png";
+                    var contentType = "image/jpeg";
+                    var filename = "frame.jpg";
                     imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
                     content.Add(imageContent, "file", filename);
                     
                     var optionsDict = new Dictionary<string, object>
                     {
-                        { "languages", new[] { "eng" } }
+                        { "languages", new[] { "eng" } },
+                        { "dpi", 300 }
                     };
                     
                     
                     var options = JsonSerializer.Serialize(optionsDict);
                     content.Add(new StringContent(options), "options");
 
-                    var response = await _httpClient.PostAsync(endpoint, content, cancellationToken).ConfigureAwait(false);
-
-                    if (response.IsSuccessStatusCode)
+                    using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
+                    using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token))
                     {
-                        var jsonResponse = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        LogDebug($"OCR response: {jsonResponse}");
-                        var ocrResult = JsonSerializer.Deserialize<OcrResponse>(jsonResponse, new JsonSerializerOptions 
-                        { 
-                            PropertyNameCaseInsensitive = true 
-                        });
+                        using (var response = await _httpClient.PostAsync(endpoint, content, linkedCts.Token).ConfigureAwait(false))
+                        {
+                            if (response.IsSuccessStatusCode)
+                            {
+                                var jsonResponse = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                                LogDebug($"OCR response: {jsonResponse}");
+                                var ocrResult = JsonSerializer.Deserialize<OcrResponse>(jsonResponse, new JsonSerializerOptions 
+                                { 
+                                    PropertyNameCaseInsensitive = true 
+                                });
 
-                        if (ocrResult?.Data?.Stdout != null)
-                        {
-                            var ocrText = ocrResult.Data.Stdout.Trim();
-                            var (parsedText, confidence) = ParseOcrResponse(jsonResponse);
-                            LogDebug($"OCR extracted text length: {ocrText.Length}, confidence: {confidence:F2}");
-                            return (ocrText, confidence);
+                                if (ocrResult?.Data?.Stdout != null)
+                                {
+                                    var ocrText = ocrResult.Data.Stdout.Trim();
+                                    var (parsedText, confidence) = ParseOcrResponse(jsonResponse);
+                                    LogDebug($"OCR extracted text length: {ocrText.Length}, confidence: {confidence:F2}");
+                                    return (ocrText, confidence);
+                                }
+                                else
+                                {
+                                    LogDebug("OCR result Data.Stdout was null or empty");
+                                }
+                            }
+                            else
+                            {
+                                var errorContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                                LogDebug($"OCR request failed with status: {response.StatusCode}, body: {errorContent}");
+                            }
                         }
-                        else
-                        {
-                            LogDebug("OCR result Data.Stdout was null or empty");
-                        }
-                    }
-                    else
-                    {
-                        var errorContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        LogDebug($"OCR request failed with status: {response.StatusCode}, body: {errorContent}");
                     }
                 }
             }
@@ -1504,23 +1549,47 @@ namespace EmbyCredits.Services.DetectionMethods
             {
                 var hwAccelType = Configuration.OcrHardwareAccelerationType.ToLowerInvariant();
                 
-                switch (hwAccelType)
+                if (Configuration.OcrMaxResolutionHeight > 0 && Configuration.OcrMaxResolutionHeight < 4320)
                 {
-                    case "vaapi":
-                        filters.Add("scale_vaapi=format=nv12");
-                        LogDebug($"Using VAAPI hardware scaling");
-                        break;
-                    
-                    case "qsv":
-                        filters.Add("scale_qsv=format=nv12");
-                        LogDebug($"Using QSV hardware scaling");
-                        break;
-                    
-                    case "cuda":
-                    case "nvdec":
-                        filters.Add("scale_cuda=format=nv12");
-                        LogDebug($"Using CUDA hardware scaling");
-                        break;
+                    switch (hwAccelType)
+                    {
+                        case "vaapi":
+                            filters.Add($"scale_vaapi=w=-2:h='min({Configuration.OcrMaxResolutionHeight},ih)':format=nv12");
+                            LogDebug($"Resolution limiting: Using VAAPI hardware scaling to max height {Configuration.OcrMaxResolutionHeight}px");
+                            break;
+                        
+                        case "qsv":
+                            filters.Add($"scale_qsv=w=-2:h='min({Configuration.OcrMaxResolutionHeight},ih)':format=nv12");
+                            LogDebug($"Resolution limiting: Using QSV hardware scaling to max height {Configuration.OcrMaxResolutionHeight}px");
+                            break;
+                        
+                        case "cuda":
+                        case "nvdec":
+                            filters.Add($"scale_cuda=w=-2:h='min({Configuration.OcrMaxResolutionHeight},ih)':format=nv12");
+                            LogDebug($"Resolution limiting: Using CUDA hardware scaling to max height {Configuration.OcrMaxResolutionHeight}px");
+                            break;
+                    }
+                }
+                else
+                {
+                    switch (hwAccelType)
+                    {
+                        case "vaapi":
+                            filters.Add("scale_vaapi=format=nv12");
+                            LogDebug($"Using VAAPI hardware scaling");
+                            break;
+                        
+                        case "qsv":
+                            filters.Add("scale_qsv=format=nv12");
+                            LogDebug($"Using QSV hardware scaling");
+                            break;
+                        
+                        case "cuda":
+                        case "nvdec":
+                            filters.Add("scale_cuda=format=nv12");
+                            LogDebug($"Using CUDA hardware scaling");
+                            break;
+                    }
                 }
                 
                 filters.Add("hwdownload");
@@ -1530,6 +1599,20 @@ namespace EmbyCredits.Services.DetectionMethods
             else if (Configuration.OcrEnableHardwareAcceleration)
             {
                 LogDebug($"Using software filters (HW filters disabled in config)");
+                
+                if (Configuration.OcrMaxResolutionHeight > 0 && Configuration.OcrMaxResolutionHeight < 4320)
+                {
+                    filters.Add($"scale=-2:'min({Configuration.OcrMaxResolutionHeight},ih)':flags=lanczos");
+                    LogDebug($"Resolution limiting: Scaling to max height {Configuration.OcrMaxResolutionHeight}px");
+                }
+            }
+            else
+            {
+                if (Configuration.OcrMaxResolutionHeight > 0 && Configuration.OcrMaxResolutionHeight < 4320)
+                {
+                    filters.Add($"scale=-2:'min({Configuration.OcrMaxResolutionHeight},ih)':flags=lanczos");
+                    LogDebug($"Resolution limiting: Scaling to max height {Configuration.OcrMaxResolutionHeight}px");
+                }
             }
             
             if (Configuration.OcrEnableRoiDetection && !string.IsNullOrWhiteSpace(Configuration.OcrRoiRegion))
@@ -1603,17 +1686,18 @@ namespace EmbyCredits.Services.DetectionMethods
             {
                 var endpoint = Configuration.OcrEndpoint.TrimEnd('/');
 
-                var response = await _httpClient.GetAsync(endpoint, cancellationToken).ConfigureAwait(false);
-
-                if (response.IsSuccessStatusCode)
+                using (var response = await _httpClient.GetAsync(endpoint, cancellationToken).ConfigureAwait(false))
                 {
-                    LogDebug($"OCR endpoint {endpoint} is accessible");
-                    return true;
-                }
-                else
-                {
-                    LogWarn($"OCR endpoint {endpoint} returned status: {response.StatusCode}");
-                    return false;
+                    if (response.IsSuccessStatusCode)
+                    {
+                        LogDebug($"OCR endpoint {endpoint} is accessible");
+                        return true;
+                    }
+                    else
+                    {
+                        LogWarn($"OCR endpoint {endpoint} returned status: {response.StatusCode}");
+                        return false;
+                    }
                 }
             }
             catch (HttpRequestException ex)
@@ -1714,43 +1798,49 @@ namespace EmbyCredits.Services.DetectionMethods
 
                 var optionsDict = new Dictionary<string, object>
                 {
-                    { "languages", new[] { "eng" } }
+                    { "languages", new[] { "eng" } },
+                    { "dpi", 300 }
                 };
                 
                 var options = JsonSerializer.Serialize(optionsDict);
                 content.Add(new StringContent(options), "options");
 
                 LogDebug($"Sending POST request to {endpoint}...");
-                var response = await _httpClient.PostAsync(endpoint, content, cancellationToken).ConfigureAwait(false);
-                LogDebug($"OCR response status: {response.StatusCode}");
-
-                if (!response.IsSuccessStatusCode)
+                
+                using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
+                using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token))
+                using (var response = await _httpClient.PostAsync(endpoint, content, linkedCts.Token).ConfigureAwait(false))
                 {
-                    LogWarn($"OCR API returned error: {response.StatusCode}");
-                    return (string.Empty, 0);
+                    LogDebug($"OCR response status: {response.StatusCode}");
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        LogWarn($"OCR API returned error: {response.StatusCode}");
+                        return (string.Empty, 0);
+                    }
+
+                    var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+                    var (text, confidence) = ParseOcrResponse(responseText);
+
+                    if (confidence > 0)
+                    {
+                        _ocrTextConfidences.Add(confidence);
+                    }
+
+                    if (Configuration.OcrMinimumConfidence > 0 && confidence > 0 && confidence < Configuration.OcrMinimumConfidence)
+                    {
+                        LogDebug($"OCR result rejected due to low confidence: {confidence:F2} < {Configuration.OcrMinimumConfidence:F2}");
+                        return (string.Empty, 0);
+                    }
+
+                    if (confidence > 0)
+                    {
+                        LogDebug($"OCR confidence: {confidence:F2}");
+                    }
+
+                    return (text, confidence);
                 }
-
-                var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-
-                var (text, confidence) = ParseOcrResponse(responseText);
-
-                if (confidence > 0)
-                {
-                    _ocrTextConfidences.Add(confidence);
-                }
-
-                if (Configuration.OcrMinimumConfidence > 0 && confidence > 0 && confidence < Configuration.OcrMinimumConfidence)
-                {
-                    LogDebug($"OCR result rejected due to low confidence: {confidence:F2} < {Configuration.OcrMinimumConfidence:F2}");
-                    return (string.Empty, 0);
-                }
-
-                if (confidence > 0)
-                {
-                    LogDebug($"OCR confidence: {confidence:F2}");
-                }
-
-                return (text, confidence);
             }
         }
 

@@ -7,6 +7,8 @@ define([], function () {
         const parts = [
             { id: 'actionsPage', page: 'CreditsDetectorConfiguration.Actions' },
             { id: 'settingsPage', page: 'CreditsDetectorConfiguration.Settings' },
+            { id: 'notificationsPage', page: 'CreditsDetectorConfiguration.Notifications' },
+            { id: 'ocrEnhancementsPage', page: 'CreditsDetectorConfiguration.OcrEnhancements' },
             { id: 'guidePage', page: 'CreditsDetectorConfiguration.Guide' },
             { id: 'apiPage', page: 'CreditsDetectorConfiguration.API' }
         ];

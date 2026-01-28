@@ -20,10 +20,12 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
         }
 
         bindEventListeners(view) {
-            view.querySelector('.creditsDetectorForm').addEventListener('submit', (e) => {
-                e.preventDefault();
-                dataManager.saveData(this, view);
-                return false;
+            view.querySelectorAll('.creditsDetectorForm').forEach(form => {
+                form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    dataManager.saveData(this, view);
+                    return false;
+                });
             });
 
             view.querySelector('#btnResetToDefaults').addEventListener('click', () => {
@@ -38,12 +40,8 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 dataManager.browseBackupFolder(view);
             });
 
-            view.querySelector('#btnPresetQuality').addEventListener('click', () => {
-                dataManager.applyQualityPreset(view);
-            });
-
-            view.querySelector('#btnPresetSpeed').addEventListener('click', () => {
-                dataManager.applySpeedPreset(view);
+            view.querySelector('#btnResetAllExceptFolders').addEventListener('click', () => {
+                dataManager.resetAllExceptFolders(view);
             });
 
             view.querySelector('#btnProcessSeries').addEventListener('click', () => {
@@ -156,6 +154,10 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     });
                 }
             });
+
+            view.querySelector('#btnSaveOcrEnhancements').addEventListener('click', () => {
+                dataManager.saveData(this, view);
+            });
         }
 
         addKeyword(view) {
@@ -266,6 +268,9 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 setTimeout(() => {
                     events.bindTabNavigation(view);
                     this.bindEventListeners(view);
+                    
+                    // Initialize collapsible sections
+                    utils.initializeCollapsibleSections(view);
                     
                     // Listen for keywords loaded event
                     view.addEventListener('keywordsLoaded', () => {

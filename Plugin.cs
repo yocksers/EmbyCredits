@@ -36,6 +36,8 @@ namespace EmbyCredits
         public static ChapterMarkerService? ChapterMarkerService { get; private set; }
         public static INotificationManager? NotificationManager { get; private set; }
 
+        public IApplicationPaths AppPaths => _appPaths;
+
         public override string Name => "Credits Detector";
         public override string Description => "Automatically detects end credits in TV shows and saves timestamps to files.";
         public override Guid Id => Guid.Parse("b1a65a73-a620-432a-9f5b-285038031c26");
@@ -128,6 +130,16 @@ namespace EmbyCredits
                 {
                     Name = "CreditsDetectorConfiguration.Settings",
                     EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Settings.html"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfiguration.Notifications",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Notifications.html"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfiguration.OcrEnhancements",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.OcrEnhancements.html"
                 },
                 new PluginPageInfo
                 {

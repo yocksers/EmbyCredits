@@ -974,6 +974,23 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                             : episode.Name;
                         Plugin.Progress.SuccessDetails[episodeKey] = FormatTime(creditsStart);
                         Plugin.Progress.ConfidenceScores[episodeKey] = confidence;
+                        Plugin.Progress.EpisodeIds[episodeKey] = episode.Id.ToString();
+
+                        if (Plugin.Instance.Configuration.EnableThumbnailGeneration)
+                        {
+                            try
+                            {
+                                var thumbnailPath = await GenerateThumbnail(episode, creditsStart, episodeKey);
+                                if (!string.IsNullOrEmpty(thumbnailPath))
+                                {
+                                    Plugin.Progress.ThumbnailPaths[episodeKey] = thumbnailPath;
+                                }
+                            }
+                            catch (Exception thumbEx)
+                            {
+                                _logger?.Debug($"Failed to generate thumbnail for {episodeKey}: {thumbEx.Message}");
+                            }
+                        }
                     }
 
                     if (!_isDryRun)
@@ -1031,6 +1048,112 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
         {
             var time = TimeSpan.FromSeconds(seconds);
             return $"{(int)time.TotalHours:D2}:{time.Minutes:D2}:{time.Seconds:D2}";
+        }
+
+        private static async Task<string> GenerateThumbnail(Episode episode, double timestamp, string episodeKey)
+        {
+            try
+            {
+                LogDebug($"Starting thumbnail generation for {episodeKey} at {timestamp}s");
+                
+                var videoPath = episode.Path;
+                if (string.IsNullOrEmpty(videoPath) || !File.Exists(videoPath))
+                {
+                    LogDebug($"Video path not found for {episodeKey}");
+                    return string.Empty;
+                }
+
+                var config = Plugin.Instance?.Configuration;
+                if (config == null)
+                {
+                    LogDebug("Plugin configuration not available");
+                    return string.Empty;
+                }
+
+                // Create thumbnails directory in plugin data folder
+                var pluginDataPath = Plugin.Instance?.AppPaths?.PluginConfigurationsPath;
+                if (string.IsNullOrEmpty(pluginDataPath))
+                {
+                    LogDebug("Plugin data path not available");
+                    return string.Empty;
+                }
+
+                var thumbnailDir = Path.Combine(pluginDataPath, "EmbyCredits", "Thumbnails");
+                Directory.CreateDirectory(thumbnailDir);
+                LogDebug($"Thumbnail directory: {thumbnailDir}");
+
+                // Generate unique filename based on episode key and timestamp
+                var safeFileName = string.Join("_", episodeKey.Split(Path.GetInvalidFileNameChars()));
+                var thumbnailFileName = $"{safeFileName}_{timestamp:F2}.jpg";
+                var thumbnailPath = Path.Combine(thumbnailDir, thumbnailFileName);
+
+                // Extract frame using FFmpeg
+                var ffmpegPath = Utilities.FFmpegHelper.GetFfmpegPath();
+                var width = config.ThumbnailWidth > 0 ? config.ThumbnailWidth : 320;
+                var quality = config.ThumbnailQuality > 0 ? config.ThumbnailQuality : 85;
+                
+                // FFmpeg quality: lower value = better quality (2-31 scale for JPEG)
+                // Convert our 50-100 scale to FFmpeg's 2-31 scale inversely
+                var ffmpegQuality = Math.Max(2, Math.Min(31, 31 - ((quality - 50) * 29 / 50)));
+                
+                var arguments = $"-ss {timestamp.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" " +
+                               $"-vframes 1 -vf scale={width}:-1 -q:v {ffmpegQuality} " +
+                               $"\"{thumbnailPath}\" -y";
+
+                LogDebug($"FFmpeg command: {ffmpegPath} {arguments}");
+
+                using (var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = ffmpegPath,
+                        Arguments = arguments,
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true
+                    }
+                })
+                {
+                    var errorOutput = new System.Text.StringBuilder();
+                    process.ErrorDataReceived += (sender, e) =>
+                    {
+                        if (!string.IsNullOrEmpty(e.Data))
+                        {
+                            errorOutput.AppendLine(e.Data);
+                        }
+                    };
+
+                    process.Start();
+                    process.BeginErrorReadLine();
+                    
+                    // Use Task.Run to avoid blocking
+                    await Task.Run(() => process.WaitForExit());
+
+                    if (process.ExitCode == 0 && File.Exists(thumbnailPath))
+                    {
+                        var fileInfo = new FileInfo(thumbnailPath);
+                        LogDebug($"✓ Generated thumbnail for {episodeKey}: {thumbnailFileName} ({fileInfo.Length} bytes)");
+                        return thumbnailFileName; // Return just the filename, not full path
+                    }
+                    else
+                    {
+                        LogDebug($"✗ Thumbnail generation failed for {episodeKey}. Exit code: {process.ExitCode}");
+                        if (errorOutput.Length > 0)
+                        {
+                            LogDebug($"FFmpeg error: {errorOutput.ToString().Substring(0, Math.Min(500, errorOutput.Length))}");
+                        }
+                    }
+                }
+
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                LogDebug($"✗ Error generating thumbnail for {episodeKey}: {ex.Message}");
+                _logger?.ErrorException($"Thumbnail generation error for {episodeKey}", ex);
+                return string.Empty;
+            }
         }
 
         private static double GetMethodConfidence(string method)

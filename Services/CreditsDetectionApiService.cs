@@ -483,7 +483,9 @@ namespace EmbyCredits.Services
                     EndTime = progress.EndTime,
                     FailureReasons = progress.FailureReasons,
                     SuccessDetails = progress.SuccessDetails,
-                    ConfidenceScores = progress.ConfidenceScores
+                    ConfidenceScores = progress.ConfidenceScores,
+                    ThumbnailPaths = progress.ThumbnailPaths,
+                    EpisodeIds = progress.EpisodeIds
                 };
             }
             catch (Exception ex)
@@ -817,10 +819,12 @@ namespace EmbyCredits.Services
 
                     try
                     {
-                        var pingResponse = await httpClient.GetAsync(endpoint).ConfigureAwait(false);
-                        if (!pingResponse.IsSuccessStatusCode)
+                        using (var pingResponse = await httpClient.GetAsync(endpoint).ConfigureAwait(false))
                         {
-                            return new { Success = false, Message = $"OCR server returned status: {pingResponse.StatusCode}" };
+                            if (!pingResponse.IsSuccessStatusCode)
+                            {
+                                return new { Success = false, Message = $"OCR server returned status: {pingResponse.StatusCode}" };
+                            }
                         }
                     }
                     catch (System.Net.Http.HttpRequestException ex)
@@ -849,31 +853,34 @@ namespace EmbyCredits.Services
                             }
                         }
 
-                        var content = new System.Net.Http.MultipartFormDataContent();
-                        var imageContent = new System.Net.Http.ByteArrayContent(imageBytes);
-                        imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
-                        content.Add(imageContent, "file", "logo.jpg");
-
-                        var options = "{\"languages\":[\"eng\"]}";
-                        content.Add(new System.Net.Http.StringContent(options), "options");
-
-                        var ocrEndpoint = endpoint.TrimEnd('/') + "/tesseract";
-                        var ocrResponse = await httpClient.PostAsync(ocrEndpoint, content).ConfigureAwait(false);
-
-                        if (!ocrResponse.IsSuccessStatusCode)
+                        using (var content = new System.Net.Http.MultipartFormDataContent())
                         {
-                            return new { Success = false, Message = $"OCR processing failed with status: {ocrResponse.StatusCode}" };
-                        }
+                            var imageContent = new System.Net.Http.ByteArrayContent(imageBytes);
+                            imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+                            content.Add(imageContent, "file", "logo.jpg");
 
-                        var ocrResult = await ocrResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+                            var options = "{\"languages\":[\"eng\"]}";
+                            content.Add(new System.Net.Http.StringContent(options), "options");
 
-                        if (ocrResult.IndexOf("EmbyCredits", StringComparison.OrdinalIgnoreCase) >= 0)
-                        {
-                            return new { Success = true, Message = "✓ Connection successful! OCR correctly detected 'EmbyCredits' text from test image." };
-                        }
-                        else
-                        {
-                            return new { Success = false, Message = $"OCR server responded but did not detect expected text. OCR returned: {ocrResult.Substring(0, Math.Min(100, ocrResult.Length))}..." };
+                            var ocrEndpoint = endpoint.TrimEnd('/') + "/tesseract";
+                            using (var ocrResponse = await httpClient.PostAsync(ocrEndpoint, content).ConfigureAwait(false))
+                            {
+                                if (!ocrResponse.IsSuccessStatusCode)
+                                {
+                                    return new { Success = false, Message = $"OCR processing failed with status: {ocrResponse.StatusCode}" };
+                                }
+
+                                var ocrResult = await ocrResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+                                if (ocrResult.IndexOf("EmbyCredits", StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    return new { Success = true, Message = "✓ Connection successful! OCR correctly detected 'EmbyCredits' text from test image." };
+                                }
+                                else
+                                {
+                                    return new { Success = false, Message = $"OCR server responded but did not detect expected text. OCR returned: {ocrResult.Substring(0, Math.Min(100, ocrResult.Length))}..." };
+                                }
+                            }
                         }
                     }
                     catch (Exception ocrEx)
@@ -919,6 +926,43 @@ namespace EmbyCredits.Services
             catch (Exception ex)
             {
                 _logger?.ErrorException($"Error getting image: {request.ImageName}", ex);
+                return Stream.Null;
+            }
+        }
+
+        public Stream Get(GetThumbnailRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(request.ThumbnailId))
+                {
+                    _logger?.Warn("Thumbnail request with empty ThumbnailId");
+                    return Stream.Null;
+                }
+
+                // Get thumbnail directory from plugin data folder
+                var pluginDataPath = Plugin.Instance?.AppPaths?.PluginConfigurationsPath;
+                if (string.IsNullOrEmpty(pluginDataPath))
+                {
+                    _logger?.Warn("Plugin data path not available");
+                    return Stream.Null;
+                }
+
+                var thumbnailDir = Path.Combine(pluginDataPath, "EmbyCredits", "Thumbnails");
+                var thumbnailPath = Path.Combine(thumbnailDir, request.ThumbnailId);
+
+                if (!File.Exists(thumbnailPath))
+                {
+                    _logger?.Warn($"Thumbnail not found: {thumbnailPath}");
+                    return Stream.Null;
+                }
+
+                // Return file stream
+                return new FileStream(thumbnailPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException($"Error getting thumbnail: {request.ThumbnailId}", ex);
                 return Stream.Null;
             }
         }

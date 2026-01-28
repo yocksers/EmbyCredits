@@ -9,7 +9,6 @@
 		<Nullable>enable</Nullable>
 
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
 	<AssemblyVersion>1.7.1.0</AssemblyVersion>
 	<FileVersion>1.7.1.0</FileVersion>
 		<RootNamespace>EmbyCredits</RootNamespace>
@@ -28,9 +27,6 @@
 		</EmbeddedResource>
 		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.Settings.html">
 			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.Settings.html</LogicalName>
-		</EmbeddedResource>
-		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.Notifications.html">
-			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.Notifications.html</LogicalName>
 		</EmbeddedResource>
 		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.OcrEnhancements.html">
 			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.OcrEnhancements.html</LogicalName>

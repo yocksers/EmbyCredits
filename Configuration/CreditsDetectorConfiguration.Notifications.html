@@ -1,0 +1,42 @@
+<form class="creditsDetectorForm">
+    <div class="paper-card" style="padding: 1.5em; margin-top: 0;">
+        <h2 style="margin-top: 0;">Notification Settings</h2>
+        <p class="fieldDescription">Configure notifications for when the scheduled credits detection task completes. Notifications will be sent through Emby's notification system to all configured providers (Pushover, Email, etc.).</p>
+
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkEnableScheduledTaskNotifications" data-config-key="EnableScheduledTaskNotifications" />
+                <span>Enable Scheduled Task Notifications</span>
+            </label>
+            <div class="fieldDescription">Send notifications when the scheduled credits detection task completes</div>
+        </div>
+
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkEnableAutoDetectionNotifications" data-config-key="EnableAutoDetectionNotifications" />
+                <span>Enable Auto-Detection Notifications</span>
+            </label>
+            <div class="fieldDescription">Send notifications when automatic detection processes newly added episodes</div>
+        </div>
+
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkNotifyOnSuccessOnly" data-config-key="NotifyOnSuccessOnly" />
+                <span>Notify Only on Success</span>
+            </label>
+            <div class="fieldDescription">Only send notifications if all episodes processed successfully (no failures)</div>
+        </div>
+
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtMinimumEpisodesForNotification">Minimum Episodes for Notification</label>
+            <input is="emby-input" type="number" id="txtMinimumEpisodesForNotification" data-config-key="MinimumEpisodesForNotification" min="0" step="1" />
+            <div class="fieldDescription">Only send notifications if at least this many episodes were processed (0 = always notify)</div>
+        </div>
+    </div>
+
+    <div style="margin-top: 2em;">
+        <button is="emby-button" type="submit" class="raised button-submit block">
+            <span>Save</span>
+        </button>
+    </div>
+</form>

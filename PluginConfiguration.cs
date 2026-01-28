@@ -65,12 +65,13 @@ namespace EmbyCredits
         public int OcrMaxFramesToProcess { get; set; } = 0;
         public double OcrMaxAnalysisDuration { get; set; } = 600.0;
         public double OcrStopSecondsFromEnd { get; set; } = 20.0;
-        public string OcrImageFormat { get; set; } = "jpg";
         public int OcrJpegQuality { get; set; } = 92;
+        public int OcrMaxResolutionHeight { get; set; } = 1080;
         public int OcrDelayBetweenFramesMs { get; set; } = 0;
 
         public bool OcrEnableParallelProcessing { get; set; } = false;
         public int OcrParallelBatchSize { get; set; } = 4;
+        public int OcrDelayBetweenBatchesMs { get; set; } = 200;
         public bool OcrEnableSmartFrameSkipping { get; set; } = true;
         public int OcrConsecutiveMatchesForEarlyStop { get; set; } = 3;
         public double OcrMinimumConfidence { get; set; } = 0.0;
@@ -105,7 +106,7 @@ namespace EmbyCredits
         public bool OcrEnableImagePreprocessing { get; set; } = false;
         public double OcrContrastEnhancement { get; set; } = 1.5;
         public double OcrBrightnessAdjustment { get; set; } = 0.05;
-        public bool OcrEnableSharpening { get; set; } = true;
+        public bool OcrEnableSharpening { get; set; } = false;
         public double OcrSharpenAmount { get; set; } = 1.0;
 
         public bool OcrEnableRoiDetection { get; set; } = false;
@@ -175,5 +176,9 @@ namespace EmbyCredits
 
         public int MaxScheduledBackups { get; set; } = 10;
         public string BackupFolderPath { get; set; } = "";
+
+        public bool EnableThumbnailGeneration { get; set; } = false;
+        public int ThumbnailWidth { get; set; } = 320;
+        public int ThumbnailQuality { get; set; } = 85;
     }
 }

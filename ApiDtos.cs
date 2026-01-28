@@ -164,4 +164,10 @@ namespace EmbyCredits.Api
         public string SeriesId { get; set; } = string.Empty;
         public int SeasonNumber { get; set; }
     }
+
+    [Route(ApiRoutes.GetThumbnail, "GET", Summary = "Gets a detection thumbnail image.")]
+    public class GetThumbnailRequest : IReturn<System.IO.Stream>
+    {
+        public string ThumbnailId { get; set; } = string.Empty;
+    }
 }

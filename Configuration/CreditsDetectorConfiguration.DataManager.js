@@ -46,8 +46,8 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtOcrMaxFramesToProcess').value = config.OcrMaxFramesToProcess || 0;
             view.querySelector('#txtOcrMaxAnalysisDuration').value = config.OcrMaxAnalysisDuration || 600;
             view.querySelector('#txtOcrStopSecondsFromEnd').value = config.OcrStopSecondsFromEnd || 20;
-            view.querySelector('#selectOcrImageFormat').value = config.OcrImageFormat || 'jpg';
             view.querySelector('#txtOcrJpegQuality').value = config.OcrJpegQuality || 92;
+            view.querySelector('#selectOcrMaxResolutionHeight').value = config.OcrMaxResolutionHeight !== undefined ? config.OcrMaxResolutionHeight : 1080;
             view.querySelector('#txtOcrDelayBetweenFramesMs').value = config.OcrDelayBetweenFramesMs || 0;
 
             view.querySelector('#txtOcrFfmpegThreads').value = config.OcrFfmpegThreads || 0;
@@ -62,6 +62,7 @@ define(['loading', 'toast'], function (loading, toast) {
 
             view.querySelector('#chkOcrEnableParallelProcessing').checked = config.OcrEnableParallelProcessing || false;
             view.querySelector('#txtOcrParallelBatchSize').value = config.OcrParallelBatchSize || 4;
+            view.querySelector('#txtOcrDelayBetweenBatchesMs').value = config.OcrDelayBetweenBatchesMs ?? 200;
             view.querySelector('#chkOcrEnableSmartFrameSkipping').checked = config.OcrEnableSmartFrameSkipping !== false;
             view.querySelector('#txtOcrConsecutiveMatchesForEarlyStop').value = config.OcrConsecutiveMatchesForEarlyStop || 3;
             view.querySelector('#txtOcrMinimumConfidence').value = config.OcrMinimumConfidence || 0;
@@ -84,7 +85,7 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkOcrEnableImagePreprocessing').checked = config.OcrEnableImagePreprocessing || false;
             view.querySelector('#txtOcrContrastEnhancement').value = config.OcrContrastEnhancement || 1.5;
             view.querySelector('#txtOcrBrightnessAdjustment').value = config.OcrBrightnessAdjustment || 0.05;
-            view.querySelector('#chkOcrEnableSharpening').checked = config.OcrEnableSharpening !== false;
+            view.querySelector('#chkOcrEnableSharpening').checked = config.OcrEnableSharpening || false;
             view.querySelector('#txtOcrSharpenAmount').value = config.OcrSharpenAmount || 1.0;
 
             // Region of Interest
@@ -116,6 +117,10 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkEnableAutoDetectionNotifications').checked = config.EnableAutoDetectionNotifications || false;
             view.querySelector('#chkNotifyOnSuccessOnly').checked = config.NotifyOnSuccessOnly || false;
             view.querySelector('#txtMinimumEpisodesForNotification').value = config.MinimumEpisodesForNotification !== null && config.MinimumEpisodesForNotification !== undefined ? config.MinimumEpisodesForNotification : 1;
+
+            view.querySelector('#chkEnableThumbnailGeneration').checked = config.EnableThumbnailGeneration !== false;
+            view.querySelector('#txtThumbnailWidth').value = config.ThumbnailWidth || 320;
+            view.querySelector('#txtThumbnailQuality').value = config.ThumbnailQuality || 85;
 
             // Load libraries and series/episode dropdowns
             require(['configurationpage?name=CreditsDetectorConfigurationSeriesManager'], (seriesManager) => {
@@ -189,8 +194,8 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrMaxFramesToProcess = Number.parseInt(view.querySelector('#txtOcrMaxFramesToProcess').value, 10) || 0;
         instance.config.OcrMaxAnalysisDuration = Number.parseFloat(view.querySelector('#txtOcrMaxAnalysisDuration').value) || 600;
         instance.config.OcrStopSecondsFromEnd = Number.parseFloat(view.querySelector('#txtOcrStopSecondsFromEnd').value) || 20;
-        instance.config.OcrImageFormat = view.querySelector('#selectOcrImageFormat').value || 'jpg';
         instance.config.OcrJpegQuality = Number.parseInt(view.querySelector('#txtOcrJpegQuality').value, 10) || 92;
+        instance.config.OcrMaxResolutionHeight = Number.parseInt(view.querySelector('#selectOcrMaxResolutionHeight').value, 10) || 1080;
         instance.config.OcrDelayBetweenFramesMs = Number.parseInt(view.querySelector('#txtOcrDelayBetweenFramesMs').value, 10) || 0;
 
         instance.config.OcrFfmpegThreads = Number.parseInt(view.querySelector('#txtOcrFfmpegThreads').value, 10) || 0;
@@ -205,6 +210,7 @@ define(['loading', 'toast'], function (loading, toast) {
 
         instance.config.OcrEnableParallelProcessing = view.querySelector('#chkOcrEnableParallelProcessing').checked;
         instance.config.OcrParallelBatchSize = Number.parseInt(view.querySelector('#txtOcrParallelBatchSize').value, 10) || 4;
+        instance.config.OcrDelayBetweenBatchesMs = Number.parseInt(view.querySelector('#txtOcrDelayBetweenBatchesMs').value, 10) || 200;
         instance.config.OcrEnableSmartFrameSkipping = view.querySelector('#chkOcrEnableSmartFrameSkipping').checked;
         instance.config.OcrConsecutiveMatchesForEarlyStop = Number.parseInt(view.querySelector('#txtOcrConsecutiveMatchesForEarlyStop').value, 10) || 3;
         instance.config.OcrMinimumConfidence = Number.parseFloat(view.querySelector('#txtOcrMinimumConfidence').value) || 0;
@@ -261,6 +267,10 @@ define(['loading', 'toast'], function (loading, toast) {
         const minEpisodes = Number.parseInt(view.querySelector('#txtMinimumEpisodesForNotification').value, 10);
         instance.config.MinimumEpisodesForNotification = Number.isNaN(minEpisodes) ? 1 : minEpisodes;
 
+        instance.config.EnableThumbnailGeneration = view.querySelector('#chkEnableThumbnailGeneration').checked;
+        instance.config.ThumbnailWidth = Number.parseInt(view.querySelector('#txtThumbnailWidth').value, 10) || 320;
+        instance.config.ThumbnailQuality = Number.parseInt(view.querySelector('#txtThumbnailQuality').value, 10) || 85;
+
         const checkboxes = view.querySelectorAll('.chkLibrary');
         const selectedLibraryIds = [];
         checkboxes.forEach(checkbox => {
@@ -306,8 +316,8 @@ define(['loading', 'toast'], function (loading, toast) {
         view.querySelector('#txtOcrMaxFramesToProcess').value = 0;
         view.querySelector('#txtOcrMaxAnalysisDuration').value = 600;
         view.querySelector('#txtOcrStopSecondsFromEnd').value = 20;
-        view.querySelector('#selectOcrImageFormat').value = 'jpg';
         view.querySelector('#txtOcrJpegQuality').value = 92;
+        view.querySelector('#selectOcrMaxResolutionHeight').value = 1080;
         view.querySelector('#txtOcrDelayBetweenFramesMs').value = 0;
 
         view.querySelector('#txtOcrFfmpegThreads').value = 0;
@@ -322,6 +332,7 @@ define(['loading', 'toast'], function (loading, toast) {
 
         view.querySelector('#chkOcrEnableParallelProcessing').checked = false;
         view.querySelector('#txtOcrParallelBatchSize').value = 4;
+        view.querySelector('#txtOcrDelayBetweenBatchesMs').value = 200;
         view.querySelector('#chkOcrEnableSmartFrameSkipping').checked = true;
         view.querySelector('#txtOcrConsecutiveMatchesForEarlyStop').value = 3;
         view.querySelector('#txtOcrMinimumConfidence').value = 0;
@@ -337,6 +348,28 @@ define(['loading', 'toast'], function (loading, toast) {
         view.querySelector('#txtOcrDensityMinimumDurationSeconds').value = 15;
         view.querySelector('#chkOcrDensityRequireStyleConsistency').checked = true;
         view.querySelector('#txtOcrDensityStyleConsistencyThreshold').value = 0.7;
+
+        view.querySelector('#chkOcrEnableImagePreprocessing').checked = false;
+        view.querySelector('#txtOcrContrastEnhancement').value = 1.5;
+        view.querySelector('#txtOcrBrightnessAdjustment').value = 0.05;
+        view.querySelector('#chkOcrEnableSharpening').checked = false;
+        view.querySelector('#txtOcrSharpenAmount').value = 1.0;
+
+        view.querySelector('#chkOcrEnableRoiDetection').checked = false;
+        view.querySelector('#selectOcrRoiRegion').value = 'full';
+
+        view.querySelector('#chkOcrEnableFuzzyMatching').checked = false;
+        view.querySelector('#txtOcrFuzzyMatchMaxDistance').value = 2;
+
+        view.querySelector('#chkOcrEnableScrollingDetection').checked = false;
+        view.querySelector('#txtOcrScrollingMinFrames').value = 5;
+        view.querySelector('#txtOcrScrollingOverlapThreshold').value = 0.3;
+
+        view.querySelector('#chkOcrEnableAdaptiveFrameRate').checked = false;
+        view.querySelector('#txtOcrAdaptiveFrameRateMin').value = 0.25;
+
+        view.querySelector('#chkOcrEnableCreditStructureDetection').checked = false;
+        view.querySelector('#txtOcrMinimumStructureLines').value = 4;
 
         toast('Settings reset to defaults (OCR endpoint and temp folder preserved)');
     }
@@ -455,7 +488,6 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#txtOcrMaxFramesToProcess', 0);
         setIfExists('#txtOcrMaxAnalysisDuration', 600);
         setIfExists('#txtOcrStopSecondsFromEnd', 10);
-        setIfExists('#selectOcrImageFormat', 'png');
         setIfExists('#txtOcrJpegQuality', 95);
         setIfExists('#txtOcrDelayBetweenFramesMs', 0);
 
@@ -487,27 +519,27 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkOcrDensityRequireStyleConsistency', true, true);
         setIfExists('#txtOcrDensityStyleConsistencyThreshold', 0.8);
 
-        setIfExists('#chkOcrEnableImagePreprocessing', true, true);
+        setIfExists('#chkOcrEnableImagePreprocessing', false, true);
         setIfExists('#txtOcrContrastEnhancement', 1.5);
         setIfExists('#txtOcrBrightnessAdjustment', 0.05);
-        setIfExists('#chkOcrEnableSharpening', true, true);
+        setIfExists('#chkOcrEnableSharpening', false, true);
         setIfExists('#txtOcrSharpenAmount', 1.0);
 
         setIfExists('#chkOcrEnableRoiDetection', false, true);
         setIfExists('#selectOcrRoiRegion', 'full');
 
-        setIfExists('#chkOcrEnableFuzzyMatching', true, true);
+        setIfExists('#chkOcrEnableFuzzyMatching', false, true);
         setIfExists('#txtOcrFuzzyMatchMaxDistance', 2);
 
-        setIfExists('#chkOcrEnableScrollingDetection', true, true);
-        setIfExists('#txtOcrScrollingWindowSize', 5);
-        setIfExists('#txtOcrScrollingPositionThreshold', 0.85);
+        setIfExists('#chkOcrEnableScrollingDetection', false, true);
+        setIfExists('#txtOcrScrollingMinFrames', 5);
+        setIfExists('#txtOcrScrollingOverlapThreshold', 0.3);
 
-        setIfExists('#chkOcrEnableAdaptiveFps', false, true);
+        setIfExists('#chkOcrEnableAdaptiveFrameRate', false, true);
+        setIfExists('#txtOcrAdaptiveFrameRateMin', 0.25);
 
-        setIfExists('#chkOcrEnableCreditStructure', true, true);
-        setIfExists('#txtOcrStructureRolePatterns', 'director,producer,writer,cast,starring,music,cinematography,editor');
-        setIfExists('#txtOcrStructureMinimumRoles', 3);
+        setIfExists('#chkOcrEnableCreditStructureDetection', false, true);
+        setIfExists('#txtOcrMinimumStructureLines', 4);
 
         setIfExists('#txtTempFolderPath', preservedTempFolderPath);
         setIfExists('#txtOcrEndpoint', preservedOcrEndpoint);
@@ -538,7 +570,6 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#txtOcrMaxFramesToProcess', 60);
         setIfExists('#txtOcrMaxAnalysisDuration', 180);
         setIfExists('#txtOcrStopSecondsFromEnd', 30);
-        setIfExists('#selectOcrImageFormat', 'jpg');
         setIfExists('#txtOcrJpegQuality', 85);
         setIfExists('#txtOcrDelayBetweenFramesMs', 0);
 
@@ -583,19 +614,128 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#txtOcrFuzzyMatchMaxDistance', 2);
 
         setIfExists('#chkOcrEnableScrollingDetection', false, true);
-        setIfExists('#txtOcrScrollingWindowSize', 5);
-        setIfExists('#txtOcrScrollingPositionThreshold', 0.85);
+        setIfExists('#txtOcrScrollingMinFrames', 5);
+        setIfExists('#txtOcrScrollingOverlapThreshold', 0.3);
 
-        setIfExists('#chkOcrEnableAdaptiveFps', true, true);
+        setIfExists('#chkOcrEnableAdaptiveFrameRate', false, true);
+        setIfExists('#txtOcrAdaptiveFrameRateMin', 0.25);
 
-        setIfExists('#chkOcrEnableCreditStructure', false, true);
-        setIfExists('#txtOcrStructureRolePatterns', 'director,producer,writer,cast,starring,music,cinematography,editor');
-        setIfExists('#txtOcrStructureMinimumRoles', 3);
+        setIfExists('#chkOcrEnableCreditStructureDetection', false, true);
+        setIfExists('#txtOcrMinimumStructureLines', 4);
 
         setIfExists('#txtTempFolderPath', preservedTempFolderPath);
         setIfExists('#txtOcrEndpoint', preservedOcrEndpoint);
 
         toast('Applied Best Speed preset - optimized for fast processing');
+    }
+
+    function resetAllExceptFolders(view) {
+        const preservedTempFolderPath = view.querySelector('#txtTempFolderPath').value;
+        const preservedBackupFolderPath = view.querySelector('#txtBackupFolderPath').value;
+        const preservedOcrEndpoint = view.querySelector('#txtOcrEndpoint').value;
+        const preservedHwAccelType = view.querySelector('#selectOcrHardwareAccelerationType').value;
+        const preservedHwDevice = view.querySelector('#txtOcrHardwareDevice').value;
+        const preservedHwAccelEnabled = view.querySelector('#chkOcrEnableHardwareAcceleration').checked;
+
+        const defaultKeywords = 'associate producer,based on,cast,casting,cinematography,co-producer,composer,costume design,created by,credits,developed by,directed by,director of photography,editing,editor,end credits,ende,executive producer,fim,fin,fine,guest starring,music by,produced by,producer,production company,production design,screenplay,series producer,sound,special thanks,starring,story by,the end,visual effects,written by,끝,終';
+
+        const setIfExists = (selector, value, isCheckbox = false) => {
+            const elem = view.querySelector(selector);
+            if (elem) {
+                if (isCheckbox) elem.checked = value;
+                else elem.value = value;
+            }
+        };
+
+        setIfExists('#chkEnableAutoDetection', false, true);
+        setIfExists('#chkEnableDetailedLogging', false, true);
+        setIfExists('#chkScheduledTaskOnlyProcessMissing', true, true);
+        setIfExists('#chkPreventConcurrentPluginProcessing', true, true);
+        setIfExists('#txtDelayBetweenEpisodesMs', 0);
+        setIfExists('#txtMaxScheduledBackups', 10);
+
+        setIfExists('#txtOcrEndpoint', preservedOcrEndpoint);
+        setIfExists('#txtOcrDetectionKeywords', defaultKeywords);
+        setIfExists('#txtOcrRetryAttempts', 5);
+        setIfExists('#txtOcrRetryDelayMs', 2000);
+
+        setIfExists('#selectOcrSearchStartUnit', 'minutes');
+        setIfExists('#txtOcrSearchStartValue', 3);
+        updateSearchStartDescription(view, 'minutes');
+
+        setIfExists('#txtOcrFrameRate', 0.5);
+        setIfExists('#txtOcrMinimumMatches', 1);
+        setIfExists('#txtOcrMaxFramesToProcess', 0);
+        setIfExists('#txtOcrMaxAnalysisDuration', 600);
+        setIfExists('#txtOcrStopSecondsFromEnd', 20);
+        setIfExists('#txtOcrJpegQuality', 92);
+        setIfExists('#txtOcrDelayBetweenFramesMs', 0);
+
+        setIfExists('#txtOcrFfmpegThreads', 0);
+        setIfExists('#txtOcrFfmpegFilterThreads', 0);
+        setIfExists('#chkOcrEnableHardwareAcceleration', preservedHwAccelEnabled, true);
+        setIfExists('#selectOcrHardwareAccelerationType', preservedHwAccelType);
+        setIfExists('#chkOcrUseHardwareOutputFormat', true, true);
+        setIfExists('#chkOcrUseHardwareFilters', true, true);
+        setIfExists('#chkOcrUseDirectMemoryPipeline', true, true);
+        setIfExists('#txtOcrHardwareDevice', preservedHwDevice);
+        setIfExists('#txtOcrFfmpegPreInputArgs', '');
+
+        setIfExists('#chkOcrEnableParallelProcessing', false, true);
+        setIfExists('#txtOcrParallelBatchSize', 4);
+        setIfExists('#chkOcrEnableSmartFrameSkipping', true, true);
+        setIfExists('#txtOcrConsecutiveMatchesForEarlyStop', 3);
+        setIfExists('#txtOcrMinimumConfidence', 0);
+
+        setIfExists('#chkOcrEnableCharacterDensityDetection', true, true);
+        setIfExists('#txtOcrCharacterDensityThreshold', 20);
+        setIfExists('#txtOcrCharacterDensityConsecutiveFrames', 3);
+        setIfExists('#chkOcrCharacterDensityPrimaryMethod', true, true);
+
+        setIfExists('#chkOcrDensityRequireKeyword', true, true);
+        setIfExists('#txtOcrDensityKeywordWindowSeconds', 10);
+        setIfExists('#chkOcrDensityRequireTemporalConsistency', true, true);
+        setIfExists('#txtOcrDensityMinimumDurationSeconds', 15);
+        setIfExists('#chkOcrDensityRequireStyleConsistency', true, true);
+        setIfExists('#txtOcrDensityStyleConsistencyThreshold', 0.7);
+
+        setIfExists('#chkOcrEnableImagePreprocessing', false, true);
+        setIfExists('#txtOcrContrastEnhancement', 1.5);
+        setIfExists('#txtOcrBrightnessAdjustment', 0.05);
+        setIfExists('#chkOcrEnableSharpening', false, true);
+        setIfExists('#txtOcrSharpenAmount', 1.0);
+
+        setIfExists('#chkOcrEnableRoiDetection', false, true);
+        setIfExists('#selectOcrRoiRegion', 'full');
+
+        setIfExists('#chkOcrEnableFuzzyMatching', false, true);
+        setIfExists('#txtOcrFuzzyMatchMaxDistance', 2);
+
+        setIfExists('#chkOcrEnableScrollingDetection', false, true);
+        setIfExists('#txtOcrScrollingMinFrames', 5);
+        setIfExists('#txtOcrScrollingOverlapThreshold', 0.3);
+
+        setIfExists('#chkOcrEnableAdaptiveFrameRate', false, true);
+        setIfExists('#txtOcrAdaptiveFrameRateMin', 0.25);
+
+        setIfExists('#chkOcrEnableCreditStructureDetection', false, true);
+        setIfExists('#txtOcrMinimumStructureLines', 4);
+
+        setIfExists('#chkEnableScheduledTaskNotifications', false, true);
+        setIfExists('#chkEnableAutoDetectionNotifications', false, true);
+        setIfExists('#chkNotifyOnSuccessOnly', false, true);
+        setIfExists('#txtMinimumEpisodesForNotification', 1);
+
+        setIfExists('#chkManualSkipExistingMarkers', false, true);
+
+        setIfExists('#chkEnableThumbnailGeneration', true, true);
+        setIfExists('#txtThumbnailWidth', 320);
+        setIfExists('#txtThumbnailQuality', 85);
+
+        setIfExists('#txtTempFolderPath', preservedTempFolderPath);
+        setIfExists('#txtBackupFolderPath', preservedBackupFolderPath);
+
+        toast('All settings reset to defaults (folder paths preserved)');
     }
 
     return {
@@ -606,6 +746,7 @@ define(['loading', 'toast'], function (loading, toast) {
         browseBackupFolder: browseBackupFolder,
         setupUnitChangeListener: setupUnitChangeListener,
         applyQualityPreset: applyQualityPreset,
-        applySpeedPreset: applySpeedPreset
+        applySpeedPreset: applySpeedPreset,
+        resetAllExceptFolders: resetAllExceptFolders
     };
 });
