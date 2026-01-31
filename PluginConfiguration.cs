@@ -196,5 +196,8 @@ namespace EmbyCredits
         public double ChromaprintSilenceMinDuration { get; set; } = 0.5;
         public double ChromaprintMinConfidence { get; set; } = 0.85;
         public double ChromaprintStopSecondsFromEnd { get; set; } = 20.0;
+        public bool ChromaprintLowerProcessPriority { get; set; } = false;
+        public int ChromaprintFfmpegThreads { get; set; } = 0;
+        public int ChromaprintDelayBetweenOperationsMs { get; set; } = 0;
     }
 }

@@ -137,6 +137,9 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtChromaprintSilenceMinDuration').value = config.ChromaprintSilenceMinDuration || 0.5;
             view.querySelector('#txtChromaprintMinConfidence').value = config.ChromaprintMinConfidence || 0.85;
             view.querySelector('#txtChromaprintStopSecondsFromEnd').value = config.ChromaprintStopSecondsFromEnd || 20;
+            view.querySelector('#chkChromaprintLowerProcessPriority').checked = config.ChromaprintLowerProcessPriority || false;
+            view.querySelector('#txtChromaprintFfmpegThreads').value = config.ChromaprintFfmpegThreads || 0;
+            view.querySelector('#txtChromaprintDelayBetweenOperationsMs').value = config.ChromaprintDelayBetweenOperationsMs || 0;
 
             // Load libraries and series/episode dropdowns
             require(['configurationpage?name=CreditsDetectorConfigurationSeriesManager'], (seriesManager) => {
@@ -308,6 +311,9 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.ChromaprintSilenceMinDuration = Number.parseFloat(view.querySelector('#txtChromaprintSilenceMinDuration').value) || 0.5;
         instance.config.ChromaprintMinConfidence = Number.parseFloat(view.querySelector('#txtChromaprintMinConfidence').value) || 0.85;
         instance.config.ChromaprintStopSecondsFromEnd = Number.parseFloat(view.querySelector('#txtChromaprintStopSecondsFromEnd').value) || 20;
+        instance.config.ChromaprintLowerProcessPriority = view.querySelector('#chkChromaprintLowerProcessPriority').checked;
+        instance.config.ChromaprintFfmpegThreads = Number.parseInt(view.querySelector('#txtChromaprintFfmpegThreads').value, 10) || 0;
+        instance.config.ChromaprintDelayBetweenOperationsMs = Number.parseInt(view.querySelector('#txtChromaprintDelayBetweenOperationsMs').value, 10) || 0;
 
         const checkboxes = view.querySelectorAll('.chkLibrary');
         const selectedLibraryIds = [];

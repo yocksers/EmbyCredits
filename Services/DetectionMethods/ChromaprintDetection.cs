@@ -129,7 +129,11 @@ namespace EmbyCredits.Services.DetectionMethods
                     return 0;
                 }
                 
-                var arguments = $"-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" " +
+                var threadArgs = Configuration.ChromaprintFfmpegThreads > 0 
+                    ? $"-threads {Configuration.ChromaprintFfmpegThreads} " 
+                    : "";
+                
+                var arguments = $"{threadArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" " +
                                $"-vf \"blackdetect=d={minDuration}:pix_th={blackThreshold}\" " +
                                $"-an -f null -";
                 
@@ -146,6 +150,11 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
                 };
                 
+                if (Configuration.ChromaprintLowerProcessPriority)
+                {
+                    CpuThrottler.SetProcessPriority(process, Configuration);
+                }
+                
                 var output = new List<string>();
                 process.ErrorDataReceived += (sender, e) =>
                 {
@@ -156,9 +165,20 @@ namespace EmbyCredits.Services.DetectionMethods
                 };
                 
                 process.Start();
+                
+                if (Configuration.ChromaprintLowerProcessPriority)
+                {
+                    CpuThrottler.SetProcessPriority(process, Configuration);
+                }
+                
                 process.BeginErrorReadLine();
                 
                 await process.WaitForExitAsync(cancellationToken);
+                
+                if (Configuration.ChromaprintDelayBetweenOperationsMs > 0)
+                {
+                    await Task.Delay(Configuration.ChromaprintDelayBetweenOperationsMs, cancellationToken);
+                }
                 
                 var blackFrames = new List<double>();
                 foreach (var line in output)
@@ -215,7 +235,11 @@ namespace EmbyCredits.Services.DetectionMethods
                     return 0;
                 }
                 
-                var arguments = $"-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" " +
+                var threadArgs = Configuration.ChromaprintFfmpegThreads > 0 
+                    ? $"-threads {Configuration.ChromaprintFfmpegThreads} " 
+                    : "";
+                
+                var arguments = $"{threadArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" " +
                                $"-af \"silencedetect=noise={silenceThreshold}dB:d={minDuration}\" " +
                                $"-vn -f null -";
                 
@@ -232,6 +256,11 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
                 };
                 
+                if (Configuration.ChromaprintLowerProcessPriority)
+                {
+                    CpuThrottler.SetProcessPriority(process, Configuration);
+                }
+                
                 var output = new List<string>();
                 process.ErrorDataReceived += (sender, e) =>
                 {
@@ -242,9 +271,20 @@ namespace EmbyCredits.Services.DetectionMethods
                 };
                 
                 process.Start();
+                
+                if (Configuration.ChromaprintLowerProcessPriority)
+                {
+                    CpuThrottler.SetProcessPriority(process, Configuration);
+                }
+                
                 process.BeginErrorReadLine();
                 
                 await process.WaitForExitAsync(cancellationToken);
+                
+                if (Configuration.ChromaprintDelayBetweenOperationsMs > 0)
+                {
+                    await Task.Delay(Configuration.ChromaprintDelayBetweenOperationsMs, cancellationToken);
+                }
                 
                 var silencePeriods = new List<double>();
                 foreach (var line in output)
