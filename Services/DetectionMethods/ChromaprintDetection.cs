@@ -33,6 +33,7 @@ namespace EmbyCredits.Services.DetectionMethods
             
             try
             {
+                Logger.Info($"[{MethodName}] Starting Chromaprint-based credits detection...");
                 LogInfo("Starting Chromaprint-based credits detection...");
                 
                 var analysisPercent = Configuration.ChromaprintAnalysisPercent / 100.0;
@@ -113,12 +114,14 @@ namespace EmbyCredits.Services.DetectionMethods
                 LogDebug("  Suggestion: Check if credits duration falls within min/max range or adjust analysis percentage");
                 LogDebug("=== End Chromaprint Detection ===");
                 
+                Logger.Info($"[{MethodName}] Detection complete but no credits found");
                 LastError = $"No credits boundary found in analysis range. Black frame: {(blackFrameTime > 0 ? "found but wrong duration" : "not found")}. Silence: {(silenceTime > 0 ? "found but wrong duration" : "not found")}";
                 return 0;
             }
             catch (Exception ex)
             {
                 LastError = $"Chromaprint detection error: {ex.Message}";
+                Logger.ErrorException($"[{MethodName}] Error during Chromaprint detection", ex);
                 LogError($"Error during Chromaprint detection: {ex.Message}", ex);
                 return 0;
             }
@@ -158,10 +161,12 @@ namespace EmbyCredits.Services.DetectionMethods
                 var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
                 
                 var arguments = $"{threadArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} " +
-                               $"-vf \"blackdetect=d={minDuration}:pix_th={blackThreshold}\" " +
+                               $"-vf \"blackdetect=d={minDuration.ToString(CultureInfo.InvariantCulture)}:pix_th={blackThreshold.ToString(CultureInfo.InvariantCulture)}\" " +
                                $"-an -f null -";
                 
-                var process = new Process
+                Logger.Info($"[{MethodName}] Executing FFmpeg black detection: {ffmpegPath} {arguments}");
+                
+                using (var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
                     {
@@ -172,56 +177,57 @@ namespace EmbyCredits.Services.DetectionMethods
                         RedirectStandardOutput = true,
                         CreateNoWindow = true
                     }
-                };
-                
-                if (Configuration.ChromaprintLowerProcessPriority)
+                })
                 {
-                    CpuThrottler.SetProcessPriority(process, Configuration);
-                }
-                
-                var output = new List<string>();
-                process.ErrorDataReceived += (sender, e) =>
-                {
-                    if (!string.IsNullOrEmpty(e.Data))
+                    if (Configuration.ChromaprintLowerProcessPriority)
                     {
-                        output.Add(e.Data);
+                        CpuThrottler.SetProcessPriority(process, Configuration);
                     }
-                };
-                
-                process.Start();
-                
-                if (Configuration.ChromaprintLowerProcessPriority)
-                {
-                    CpuThrottler.SetProcessPriority(process, Configuration);
-                }
-                
-                process.BeginErrorReadLine();
-                
-                await process.WaitForExitAsync(cancellationToken);
-                
-                if (Configuration.ChromaprintDelayBetweenOperationsMs > 0)
-                {
-                    await Task.Delay(Configuration.ChromaprintDelayBetweenOperationsMs, cancellationToken);
-                }
-                
-                var blackFrames = new List<double>();
-                foreach (var line in output)
-                {
-                    if (line.Contains("blackdetect") && line.Contains("black_start:"))
+                    
+                    var output = new List<string>();
+                    process.ErrorDataReceived += (sender, e) =>
                     {
-                        var match = System.Text.RegularExpressions.Regex.Match(line, @"black_start:(\d+\.?\d*)");
-                        if (match.Success && double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var blackStart))
+                        if (!string.IsNullOrEmpty(e.Data))
                         {
-                            var adjustedTime = startTime + blackStart;
-                            blackFrames.Add(adjustedTime);
-                            LogDebug($"Found black frame at {FormatTime(adjustedTime)}");
+                            output.Add(e.Data);
+                        }
+                    };
+                    
+                    process.Start();
+                    
+                    if (Configuration.ChromaprintLowerProcessPriority)
+                    {
+                        CpuThrottler.SetProcessPriority(process, Configuration);
+                    }
+                    
+                    process.BeginErrorReadLine();
+                    
+                    await process.WaitForExitAsync(cancellationToken);
+                
+                    if (Configuration.ChromaprintDelayBetweenOperationsMs > 0)
+                    {
+                        await Task.Delay(Configuration.ChromaprintDelayBetweenOperationsMs, cancellationToken);
+                    }
+                    
+                    var blackFrames = new List<double>();
+                    foreach (var line in output)
+                    {
+                        if (line.Contains("blackdetect") && line.Contains("black_start:"))
+                        {
+                            var match = System.Text.RegularExpressions.Regex.Match(line, @"black_start:(\d+\.?\d*)");
+                            if (match.Success && double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var blackStart))
+                            {
+                                var adjustedTime = startTime + blackStart;
+                                blackFrames.Add(adjustedTime);
+                                LogDebug($"Found black frame at {FormatTime(adjustedTime)}");
+                            }
                         }
                     }
-                }
-                
-                if (blackFrames.Count > 0)
-                {
-                    return blackFrames.First();
+                    
+                    if (blackFrames.Count > 0)
+                    {
+                        return blackFrames.First();
+                    }
                 }
                 
                 return 0;
@@ -266,10 +272,12 @@ namespace EmbyCredits.Services.DetectionMethods
                 var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
                 
                 var arguments = $"{threadArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} " +
-                               $"-af \"silencedetect=noise={silenceThreshold}dB:d={minDuration}\" " +
+                               $"-af \"silencedetect=noise={silenceThreshold.ToString(CultureInfo.InvariantCulture)}dB:d={minDuration.ToString(CultureInfo.InvariantCulture)}\" " +
                                $"-vn -f null -";
                 
-                var process = new Process
+                Logger.Info($"[{MethodName}] Executing FFmpeg silence detection: {ffmpegPath} {arguments}");
+                
+                using (var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
                     {
@@ -280,56 +288,57 @@ namespace EmbyCredits.Services.DetectionMethods
                         RedirectStandardOutput = true,
                         CreateNoWindow = true
                     }
-                };
-                
-                if (Configuration.ChromaprintLowerProcessPriority)
+                })
                 {
-                    CpuThrottler.SetProcessPriority(process, Configuration);
-                }
-                
-                var output = new List<string>();
-                process.ErrorDataReceived += (sender, e) =>
-                {
-                    if (!string.IsNullOrEmpty(e.Data))
+                    if (Configuration.ChromaprintLowerProcessPriority)
                     {
-                        output.Add(e.Data);
+                        CpuThrottler.SetProcessPriority(process, Configuration);
                     }
-                };
-                
-                process.Start();
-                
-                if (Configuration.ChromaprintLowerProcessPriority)
-                {
-                    CpuThrottler.SetProcessPriority(process, Configuration);
-                }
-                
-                process.BeginErrorReadLine();
-                
-                await process.WaitForExitAsync(cancellationToken);
-                
-                if (Configuration.ChromaprintDelayBetweenOperationsMs > 0)
-                {
-                    await Task.Delay(Configuration.ChromaprintDelayBetweenOperationsMs, cancellationToken);
-                }
-                
-                var silencePeriods = new List<double>();
-                foreach (var line in output)
-                {
-                    if (line.Contains("silencedetect") && line.Contains("silence_start:"))
+                    
+                    var output = new List<string>();
+                    process.ErrorDataReceived += (sender, e) =>
                     {
-                        var match = System.Text.RegularExpressions.Regex.Match(line, @"silence_start:\s*(\d+\.?\d*)");
-                        if (match.Success && double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var silenceStart))
+                        if (!string.IsNullOrEmpty(e.Data))
                         {
-                            var adjustedTime = startTime + silenceStart;
-                            silencePeriods.Add(adjustedTime);
-                            LogDebug($"Found silence period at {FormatTime(adjustedTime)}");
+                            output.Add(e.Data);
+                        }
+                    };
+                    
+                    process.Start();
+                    
+                    if (Configuration.ChromaprintLowerProcessPriority)
+                    {
+                        CpuThrottler.SetProcessPriority(process, Configuration);
+                    }
+                    
+                    process.BeginErrorReadLine();
+                    
+                    await process.WaitForExitAsync(cancellationToken);
+                    
+                    if (Configuration.ChromaprintDelayBetweenOperationsMs > 0)
+                    {
+                        await Task.Delay(Configuration.ChromaprintDelayBetweenOperationsMs, cancellationToken);
+                    }
+                    
+                    var silencePeriods = new List<double>();
+                    foreach (var line in output)
+                    {
+                        if (line.Contains("silencedetect") && line.Contains("silence_start:"))
+                        {
+                            var match = System.Text.RegularExpressions.Regex.Match(line, @"silence_start:\s*(\d+\.?\d*)");
+                            if (match.Success && double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var silenceStart))
+                            {
+                                var adjustedTime = startTime + silenceStart;
+                                silencePeriods.Add(adjustedTime);
+                                LogDebug($"Found silence period at {FormatTime(adjustedTime)}");
+                            }
                         }
                     }
-                }
-                
-                if (silencePeriods.Count > 0)
-                {
-                    return silencePeriods.First();
+                    
+                    if (silencePeriods.Count > 0)
+                    {
+                        return silencePeriods.First();
+                    }
                 }
                 
                 return 0;
