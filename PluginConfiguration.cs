@@ -8,11 +8,6 @@ namespace EmbyCredits
         public string ConfigurationVersion { get; set; } = Guid.NewGuid().ToString();
 
         public bool EnableAutoDetection { get; set; } = false;
-        public bool UseEpisodeComparison { get; set; } = false;
-        public int MinimumEpisodesToCompare { get; set; } = 3;
-        public double SimilarityThreshold { get; set; } = 0.85;
-        public bool EnableFailedEpisodeFallback { get; set; } = false;
-        public double MinimumSuccessRateForFallback { get; set; } = 0.5;
 
         public bool EnableVideoPatternDetection { get; set; } = true;
         public bool EnableBlackScreenDetection { get; set; } = true;
@@ -185,7 +180,7 @@ namespace EmbyCredits
 
         public bool EnableChromaprintDetection { get; set; } = false;
         public int ChromaprintDetectionPriority { get; set; } = 1;
-        public int ChromaprintMinDuration { get; set; } = 30;
+        public int ChromaprintMinDuration { get; set; } = 10;
         public int ChromaprintMaxDuration { get; set; } = 300;
         public double ChromaprintSimilarityThreshold { get; set; } = 0.85;
         public int ChromaprintMinEpisodeCount { get; set; } = 4;

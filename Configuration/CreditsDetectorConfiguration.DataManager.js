@@ -11,9 +11,6 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkEnableOcrDetection').checked = config.EnableOcrDetection !== false;
             view.querySelector('#chkEnableHashDetection').checked = config.EnableChromaprintDetection || false;
             view.querySelector('#chkEnableAutoDetection').checked = config.EnableAutoDetection || false;
-            view.querySelector('#chkUseEpisodeComparison').checked = config.UseEpisodeComparison || false;
-            view.querySelector('#chkEnableFailedEpisodeFallback').checked = config.EnableFailedEpisodeFallback || false;
-            view.querySelector('#txtMinimumSuccessRateForFallback').value = config.MinimumSuccessRateForFallback || 0.5;
             view.querySelector('#chkEnableDetailedLogging').checked = config.EnableDetailedLogging || false;
             view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = config.ScheduledTaskOnlyProcessMissing !== false;
             view.querySelector('#chkManualSkipExistingMarkers').checked = config.ManualSkipExistingMarkers || false;
@@ -185,9 +182,6 @@ define(['loading', 'toast'], function (loading, toast) {
         loading.show();
 
         instance.config.EnableAutoDetection = view.querySelector('#chkEnableAutoDetection').checked;
-        instance.config.UseEpisodeComparison = view.querySelector('#chkUseEpisodeComparison').checked;
-        instance.config.EnableFailedEpisodeFallback = view.querySelector('#chkEnableFailedEpisodeFallback').checked;
-        instance.config.MinimumSuccessRateForFallback = Number.parseFloat(view.querySelector('#txtMinimumSuccessRateForFallback').value) || 0.5;
         instance.config.EnableDetailedLogging = view.querySelector('#chkEnableDetailedLogging').checked;
         instance.config.ScheduledTaskOnlyProcessMissing = view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked;
         instance.config.ManualSkipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers').checked;
@@ -338,9 +332,6 @@ define(['loading', 'toast'], function (loading, toast) {
         const defaultKeywords = 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine,producer,music by,cinematography,editor,editing,production design,costume design,casting,based on,story by,screenplay,associate producer,co-producer,created by,developed by,series producer,composer,director of photography,visual effects,sound,the end,end credits,starring,guest starring,special thanks,production company';
 
         view.querySelector('#chkEnableAutoDetection').checked = false;
-        view.querySelector('#chkUseEpisodeComparison').checked = false;
-        view.querySelector('#chkEnableFailedEpisodeFallback').checked = false;
-        view.querySelector('#txtMinimumSuccessRateForFallback').value = 0.5;
         view.querySelector('#chkEnableDetailedLogging').checked = false;
         view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = true;
 

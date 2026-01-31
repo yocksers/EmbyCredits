@@ -135,96 +135,12 @@ namespace EmbyCredits.Services
 
                 _debugLogger.LogInfo($"Video duration: {FormatTime(duration)}");
 
-                double creditsStart = 0;
-                string failureReason = string.Empty;
-                double confidence = 0;
-
-                if (_configuration.UseEpisodeComparison && _libraryManager != null && episode.Series != null)
-                {
-                    if (isBatchMode)
-                    {
-                        _debugLogger.LogInfo("Using batch mode with cross-episode analysis");
-
-                        var comparisonEpisodeIds = batchDetectionCache.Keys
-                            .Where(id => id != episodeId)
-                            .ToList();
-
-                        if (comparisonEpisodeIds.Count > 0)
-                        {
-                            _debugLogger.LogInfo($"Analyzing with {comparisonEpisodeIds.Count} comparison episodes from batch cache");
-                            creditsStart = _detectionCoordinator.AnalyzeBatchDetectionResults(episodeId, comparisonEpisodeIds);
-                        }
-                    }
-                    else
-                    {
-                        var comparisonEpisodes = _libraryManager.GetItemList(new InternalItemsQuery
-                        {
-                            IncludeItemTypes = new[] { "Episode" },
-                            IsVirtualItem = false,
-                            HasPath = true,
-                            AncestorIds = new[] { episode.Series.InternalId }
-                        }).OfType<Episode>()
-                        .Where(e => e.ParentIndexNumber == episode.ParentIndexNumber &&
-                                   e.Id != episode.Id &&
-                                   !string.IsNullOrEmpty(e.Path))
-                        .Where(e => 
-                        {
-                            var normalized = Utilities.FFmpegHelper.NormalizeFilePath(e.Path);
-                            if (string.IsNullOrEmpty(normalized)) return false;
-                            
-                            if (normalized.StartsWith("smb://"))
-                            {
-                                return true;
-                            }
-                            
-                            try
-                            {
-                                bool exists = File.Exists(normalized);
-                                if (!exists)
-                                {
-                                    return false;
-                                }
-                                return true;
-                            }
-                            catch
-                            {
-                                return true;
-                            }
-                        })
-                        .Take(_configuration.MinimumEpisodesToCompare)
-                        .ToList();
-
-                        if (comparisonEpisodes.Count >= 2)
-                        {
-                            _debugLogger.LogInfo($"Using cross-episode comparison with {comparisonEpisodes.Count} episodes");
-                            _debugLogger.LogDebug($"Comparison episodes: {string.Join(", ", comparisonEpisodes.Select(e => e.Name))}");
-                            var result = await _detectionCoordinator.DetectCreditsWithComparison(
-                                episode, duration, comparisonEpisodes);
-                            creditsStart = result.timestamp;
-                            failureReason = result.failureReason;
-                            confidence = result.confidence;
-                            _debugLogger.LogDebug($"Comparison result: timestamp={creditsStart}, confidence={confidence:F2}, reason={failureReason}");
-                        }
-                        else
-                        {
-                            _debugLogger.LogInfo($"Not enough comparison episodes (found {comparisonEpisodes.Count}, need 2+), using single-episode detection");
-                            var result = await _detectionCoordinator.DetectCredits(normalizedPath, duration, episodeId);
-                            creditsStart = result.timestamp;
-                            failureReason = result.failureReason;
-                            confidence = result.confidence;
-                            _debugLogger.LogDebug($"Single detection result: timestamp={creditsStart}, confidence={confidence:F2}, reason={failureReason}");
-                        }
-                    }
-                }
-                else
-                {
-                    _debugLogger.LogInfo("Comparison disabled or no series context");
-                    var result = await _detectionCoordinator.DetectCredits(normalizedPath, duration, episodeId);
-                    creditsStart = result.timestamp;
-                    failureReason = result.failureReason;
-                    confidence = result.confidence;
-                    _debugLogger.LogDebug($"Detection result: timestamp={creditsStart}, confidence={confidence:F2}, reason={failureReason}");
-                }
+                _debugLogger.LogInfo("Running credits detection");
+                var result = await _detectionCoordinator.DetectCredits(normalizedPath, duration, episodeId);
+                double creditsStart = result.timestamp;
+                string failureReason = result.failureReason;
+                double confidence = result.confidence;
+                _debugLogger.LogDebug($"Detection result: timestamp={creditsStart}, confidence={confidence:F2}, reason={failureReason}");
 
                 if (creditsStart > 0)
                 {

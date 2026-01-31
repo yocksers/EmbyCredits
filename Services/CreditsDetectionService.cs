@@ -533,21 +533,6 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
 
             LogInfo($"Queued {queuedCount} episodes for processing (forced reprocess). Queue size: {_processingQueue.Count}");
             LogInfo($"Service running: {_isRunning}, Already processing: {_isProcessing}");
-
-            _isBatchMode = queuedCount >= 3 && _configuration?.UseEpisodeComparison == true && _configuration?.UseCorrelationScoring == true;
-
-            if (_isBatchMode)
-            {
-                LogInfo($"Batch mode enabled: Pre-computing detections for {queuedCount} episodes");
-                _ = Task.Run(() => PreComputeBatchDetections(validEpisodes.ToList())).ContinueWith(t =>
-                {
-                    if (t.IsFaulted && t.Exception != null)
-                    {
-                        LogError("Batch pre-computation task failed", t.Exception.GetBaseException());
-                    }
-                }, TaskScheduler.Default);
-            }
-            else
             {
                 _ = Task.Run(ProcessQueue).ContinueWith(t =>
                 {
@@ -751,56 +736,6 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
         private static void ScheduleDebugLogCleanup()
         {
             _debugLogger?.ScheduleDebugLogCleanup();
-        }
-
-        private static async Task PreComputeBatchDetections(List<Episode> episodes)
-        {
-            if (_configuration == null || _detectionCoordinator == null) return;
-
-            try
-            {
-                LogInfo("=== Starting batch detection pre-computation ===");
-                var totalEpisodes = episodes.Count;
-
-                await _detectionCoordinator.PreComputeBatchDetections(episodes, async (progress) =>
-                {
-                    if (_cancellationRequested) return;
-
-                    if (Plugin.Instance != null)
-                    {
-                        var processedCount = (int)(progress * totalEpisodes);
-                        var currentEpisode = processedCount > 0 && processedCount <= episodes.Count 
-                            ? episodes[processedCount - 1] 
-                            : null;
-
-                        Plugin.Progress.CurrentItem = currentEpisode != null 
-                            ? $"Pre-analyzing: {currentEpisode.Name}" 
-                            : "Pre-analyzing episodes...";
-                        Plugin.Progress.ProcessedItems = processedCount;
-                        Plugin.Progress.CurrentItemProgress = (int)(progress * 50); 
-                    }
-
-                    await Task.CompletedTask;
-                });
-
-                LogInfo("=== Batch pre-computation complete ===");
-
-                if (!_isProcessing && !_cancellationRequested)
-                {
-                    await ProcessQueue();
-                }
-            }
-            catch (Exception ex)
-            {
-                LogError("Error in batch pre-computation", ex);
-                _isBatchMode = false;
-                _batchDetectionCache.Clear();
-
-                if (!_isProcessing)
-                {
-                    await ProcessQueue();
-                }
-            }
         }
 
         public static System.Collections.Generic.List<object> GetSeriesMarkers(System.Collections.Generic.List<Episode> episodes)

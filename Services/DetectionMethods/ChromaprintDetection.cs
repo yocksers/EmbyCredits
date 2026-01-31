@@ -91,7 +91,29 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
                 }
                 
-                LogDebug("No clear credits boundary detected using Chromaprint method");
+                LogDebug("=== Chromaprint Detection Failed ===");
+                LogDebug($"  Analysis range: {FormatTime(analysisStartTime)} to {FormatTime(duration)} ({Configuration.ChromaprintAnalysisPercent}% of video)");
+                LogDebug($"  Required credit duration: {minIntroDuration}s to {maxIntroDuration}s");
+                if (blackFrameTime > 0)
+                {
+                    LogDebug($"  Black frame found at {FormatTime(blackFrameTime)} but duration {FormatTime(duration - blackFrameTime)}s was outside acceptable range");
+                }
+                else
+                {
+                    LogDebug($"  No black frame transitions detected in analysis range");
+                }
+                if (silenceTime > 0)
+                {
+                    LogDebug($"  Silence found at {FormatTime(silenceTime)} but duration {FormatTime(duration - silenceTime)}s was outside acceptable range");
+                }
+                else
+                {
+                    LogDebug($"  No audio silence transitions detected in analysis range");
+                }
+                LogDebug("  Suggestion: Check if credits duration falls within min/max range or adjust analysis percentage");
+                LogDebug("=== End Chromaprint Detection ===");
+                
+                LastError = $"No credits boundary found in analysis range. Black frame: {(blackFrameTime > 0 ? "found but wrong duration" : "not found")}. Silence: {(silenceTime > 0 ? "found but wrong duration" : "not found")}";
                 return 0;
             }
             catch (Exception ex)
@@ -133,7 +155,9 @@ namespace EmbyCredits.Services.DetectionMethods
                     ? $"-threads {Configuration.ChromaprintFfmpegThreads} " 
                     : "";
                 
-                var arguments = $"{threadArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" " +
+                var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
+                
+                var arguments = $"{threadArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} " +
                                $"-vf \"blackdetect=d={minDuration}:pix_th={blackThreshold}\" " +
                                $"-an -f null -";
                 
@@ -239,7 +263,9 @@ namespace EmbyCredits.Services.DetectionMethods
                     ? $"-threads {Configuration.ChromaprintFfmpegThreads} " 
                     : "";
                 
-                var arguments = $"{threadArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" " +
+                var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
+                
+                var arguments = $"{threadArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} " +
                                $"-af \"silencedetect=noise={silenceThreshold}dB:d={minDuration}\" " +
                                $"-vn -f null -";
                 

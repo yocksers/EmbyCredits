@@ -496,9 +496,27 @@ namespace EmbyCredits.Services.DetectionMethods
 
                 UpdateProgress(95, $"Analyzing {detectionScores.Count} OCR detections");
 
+                var endTime = startTime + analysisDuration;
+                
                 if (detectionScores.Count == 0)
                 {
-                    LastError = "No credits keywords detected via OCR";
+                    LogDebug("=== OCR Detection Failed - No Keywords Found ===");
+                    LogDebug($"  Frames analyzed: {_totalFramesProcessed}");
+                    LogDebug($"  Time range analyzed: {FormatTime(startTime)} to {FormatTime(endTime)}");
+                    LogDebug($"  Search criteria: {keywords.Count} keywords configured");
+                    LogDebug($"  OCR endpoint: {Configuration.OcrEndpoint}");
+                    LogDebug($"  Possible reasons:");
+                    LogDebug($"    - No text matching configured keywords was found in the analyzed frames");
+                    LogDebug($"    - Credits may start outside the analyzed time range");
+                    LogDebug($"    - Text may be too small, stylized, or low contrast for OCR to detect");
+                    LogDebug($"    - Keywords may not match the language or format of the credits");
+                    LogDebug($"  Suggestions:");
+                    LogDebug($"    - Try adjusting 'Search Start' settings to analyze a different time range");
+                    LogDebug($"    - Check if keywords match the actual credits text language");
+                    LogDebug($"    - Consider enabling image preprocessing options for better text detection");
+                    LogDebug("=== End OCR Detection ===");
+                    
+                    LastError = $"No credits keywords detected via OCR (analyzed {_totalFramesProcessed} frames from {FormatTime(startTime)} to {FormatTime(endTime)})";
                     LogWarn("OCR completed but found no matching keywords");
                     return 0;
                 }
@@ -518,7 +536,25 @@ namespace EmbyCredits.Services.DetectionMethods
                 }
                 else
                 {
-                    LastError = "No significant credits pattern found";
+                    LogDebug("=== OCR Detection Failed - No Clear Start Point ===");
+                    LogDebug($"  Total keyword matches found: {detectionScores.Count}");
+                    LogDebug($"  Frames with matches: {detectionScores.Count}");
+                    LogDebug($"  Time range searched: {FormatTime(startTime)} to {FormatTime(endTime)}");
+                    LogDebug($"  Possible reasons:");
+                    LogDebug($"    - Keyword matches were too scattered or inconsistent");
+                    LogDebug($"    - No clear temporal clustering of credits text");
+                    LogDebug($"    - Matches may be from other text (episode title, production logos, etc.)");
+                    if (Configuration.OcrEnableCharacterDensityDetection)
+                    {
+                        LogDebug($"    - Character density requirements not met (threshold: {Configuration.OcrCharacterDensityThreshold})");
+                    }
+                    LogDebug($"  Suggestions:");
+                    LogDebug($"    - Review character density settings if enabled");
+                    LogDebug($"    - Try adjusting keyword list to be more specific to end credits");
+                    LogDebug($"    - Check if temporal consistency requirements are too strict");
+                    LogDebug("=== End OCR Detection ===");
+                    
+                    LastError = $"No significant credits pattern found (found {detectionScores.Count} keyword matches but no clear start point)";
                     LogWarn("OCR found keywords but no clear credits start point");
                     return 0;
                 }

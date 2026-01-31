@@ -26,28 +26,6 @@
             <div class="fieldDescription">Automatically process new episodes as they are added to the library</div>
         </div>
 
-        <div class="checkboxContainer" style="display: none;">
-            <label>
-                <input is="emby-checkbox" type="checkbox" id="chkUseEpisodeComparison" data-config-key="UseEpisodeComparison" />
-                <span>Use Episode Comparison</span>
-            </label>
-            <div class="fieldDescription">Compare multiple episodes from the same season for more accurate detection (processes each episode twice)</div>
-        </div>
-
-        <div class="checkboxContainer" style="display: none;">
-            <label>
-                <input is="emby-checkbox" type="checkbox" id="chkEnableFailedEpisodeFallback" data-config-key="EnableFailedEpisodeFallback" />
-                <span>Enable Failed Episode Fallback</span>
-            </label>
-            <div class="fieldDescription">If an episode fails detection, use the median timestamp from successful episodes in the same season (requires Episode Comparison)</div>
-        </div>
-
-        <div class="inputContainer" style="display: none;">
-            <label class="inputLabel inputLabelUnfocused" for="txtMinimumSuccessRateForFallback">Minimum Success Rate for Fallback</label>
-            <input is="emby-input" type="number" id="txtMinimumSuccessRateForFallback" data-config-key="MinimumSuccessRateForFallback" step="0.1" min="0" max="1" />
-            <div class="fieldDescription">Minimum percentage of episodes that must succeed for fallback to work (0.5 = 50%, 0.7 = 70%, etc.)</div>
-        </div>
-
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtTempFolderPath">Custom Temp Folder Path</label>
             <div style="display: flex; gap: 0.5em;">

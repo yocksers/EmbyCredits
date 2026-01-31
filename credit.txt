@@ -1,0 +1,227 @@
+================================================================================
+EMBY CREDITS DETECTION - DEBUG LOG
+Started: 2026-01-31 10:18:14
+================================================================================
+
+CONFIGURATION:
+  EnableAutoDetection: True
+  EnableOcrDetection: False
+  OcrEndpoint: http://localhost:8884
+  OcrEnableCharacterDensityDetection: True
+  OcrCharacterDensityPrimaryMethod: True
+  OcrCharacterDensityThreshold: 16
+  OcrCharacterDensityConsecutiveFrames: 5
+  OcrDensityRequireKeyword: True
+  OcrDensityKeywordWindowSeconds: 10
+  OcrDensityRequireTemporalConsistency: True
+  OcrDensityMinimumDurationSeconds: 15
+  OcrDensityRequireStyleConsistency: True
+  OcrDensityStyleConsistencyThreshold: 0,7
+  UseEpisodeComparison: False
+  MinimumEpisodesToCompare: 3
+
+[2026-01-31 10:18:14.201] [INFO] Queued 10 episodes for processing (forced reprocess). Queue size: 10
+[2026-01-31 10:18:14.201] [INFO] Service running: True, Already processing: False
+[2026-01-31 10:18:14.201] [INFO] ProcessQueue started. Queue count: 10
+[2026-01-31 10:18:14.201] [INFO] ProcessQueue: acquired semaphore, starting processing
+[2026-01-31 10:18:14.201] [INFO] Processing episode from queue: Let You Down
+[2026-01-31 10:18:14.201] [INFO] Processing episode: Let You Down (S1E1)
+[2026-01-31 10:18:14.201] [DEBUG] Episode path: E:\Anime VF\Anime VF\Cyberpunk\01.mp4
+[2026-01-31 10:18:14.201] [DEBUG] Episode ID: 41491d65-418b-2e9e-6e18-eb1ef84cbcfa
+[2026-01-31 10:18:14.201] [DEBUG] Using duration from Emby metadata: 1437,482 seconds
+[2026-01-31 10:18:14.201] [INFO] Video duration: 23:57
+[2026-01-31 10:18:14.201] [INFO] Comparison disabled or no series context
+[2026-01-31 10:18:14.201] [DEBUG] [DetectionCoordinator] DetectCredits called: duration=23:57
+[2026-01-31 10:18:14.201] [DEBUG] [DetectionCoordinator] Running detection methods for video (duration: 23:57)
+[2026-01-31 10:18:14.201] [DEBUG] [DetectionCoordinator] Total detection methods: 2
+[2026-01-31 10:18:14.201] [DEBUG] [DetectionCoordinator] Enabled methods: Chromaprint Audio Fingerprint Detection
+[2026-01-31 10:18:14.201] [DEBUG] [DetectionCoordinator] Running Chromaprint Audio Fingerprint Detection...
+[2026-01-31 10:18:14.297] [DEBUG] [DetectionCoordinator] Chromaprint Audio Fingerprint Detection returned 0 (no credits detected)
+[2026-01-31 10:18:14.297] [DEBUG] [DetectionCoordinator] Skipping OCR Detection (disabled)
+[2026-01-31 10:18:14.297] [DEBUG] [DetectionCoordinator] Detection complete: 0 successful, 0 errors
+[2026-01-31 10:18:14.297] [DEBUG] [DetectionCoordinator] No credits detected by any method
+[2026-01-31 10:18:14.297] [DEBUG] [DetectionCoordinator] Failure reasons: No credits detected by any enabled method
+[2026-01-31 10:18:14.297] [DEBUG] Detection result: timestamp=0, confidence=0,00, reason=No credits detected by any enabled method
+[2026-01-31 10:18:14.297] [WARN] ✗ No clear credits detected for Let You Down
+[2026-01-31 10:18:14.297] [DEBUG] Failure reason: No credits detected by any enabled method
+[2026-01-31 10:18:15.294] [INFO] Processing episode from queue: Like a Boy
+[2026-01-31 10:18:15.294] [INFO] Processing episode: Like a Boy (S1E2)
+[2026-01-31 10:18:15.294] [DEBUG] Episode path: E:\Anime VF\Anime VF\Cyberpunk\02.mp4
+[2026-01-31 10:18:15.294] [DEBUG] Episode ID: 91a6fdb1-68f8-6cf3-2ed5-3e129d445158
+[2026-01-31 10:18:15.294] [DEBUG] Using duration from Emby metadata: 1439,466 seconds
+[2026-01-31 10:18:15.294] [INFO] Video duration: 23:59
+[2026-01-31 10:18:15.294] [INFO] Comparison disabled or no series context
+[2026-01-31 10:18:15.294] [DEBUG] [DetectionCoordinator] DetectCredits called: duration=23:59
+[2026-01-31 10:18:15.294] [DEBUG] [DetectionCoordinator] Running detection methods for video (duration: 23:59)
+[2026-01-31 10:18:15.294] [DEBUG] [DetectionCoordinator] Total detection methods: 2
+[2026-01-31 10:18:15.294] [DEBUG] [DetectionCoordinator] Enabled methods: Chromaprint Audio Fingerprint Detection
+[2026-01-31 10:18:15.294] [DEBUG] [DetectionCoordinator] Running Chromaprint Audio Fingerprint Detection...
+[2026-01-31 10:18:15.388] [DEBUG] [DetectionCoordinator] Chromaprint Audio Fingerprint Detection returned 0 (no credits detected)
+[2026-01-31 10:18:15.388] [DEBUG] [DetectionCoordinator] Skipping OCR Detection (disabled)
+[2026-01-31 10:18:15.388] [DEBUG] [DetectionCoordinator] Detection complete: 0 successful, 0 errors
+[2026-01-31 10:18:15.388] [DEBUG] [DetectionCoordinator] No credits detected by any method
+[2026-01-31 10:18:15.388] [DEBUG] [DetectionCoordinator] Failure reasons: No credits detected by any enabled method
+[2026-01-31 10:18:15.388] [DEBUG] Detection result: timestamp=0, confidence=0,00, reason=No credits detected by any enabled method
+[2026-01-31 10:18:15.388] [WARN] ✗ No clear credits detected for Like a Boy
+[2026-01-31 10:18:15.388] [DEBUG] Failure reason: No credits detected by any enabled method
+[2026-01-31 10:18:16.395] [INFO] Processing episode from queue: Smooth Criminal
+[2026-01-31 10:18:16.395] [INFO] Processing episode: Smooth Criminal (S1E3)
+[2026-01-31 10:18:16.395] [DEBUG] Episode path: E:\Anime VF\Anime VF\Cyberpunk\03.mp4
+[2026-01-31 10:18:16.395] [DEBUG] Episode ID: e137c01c-ee35-a646-3f66-bf0e9a4c1a77
+[2026-01-31 10:18:16.395] [DEBUG] Using duration from Emby metadata: 1445,482 seconds
+[2026-01-31 10:18:16.395] [INFO] Video duration: 24:05
+[2026-01-31 10:18:16.395] [INFO] Comparison disabled or no series context
+[2026-01-31 10:18:16.395] [DEBUG] [DetectionCoordinator] DetectCredits called: duration=24:05
+[2026-01-31 10:18:16.395] [DEBUG] [DetectionCoordinator] Running detection methods for video (duration: 24:05)
+[2026-01-31 10:18:16.395] [DEBUG] [DetectionCoordinator] Total detection methods: 2
+[2026-01-31 10:18:16.395] [DEBUG] [DetectionCoordinator] Enabled methods: Chromaprint Audio Fingerprint Detection
+[2026-01-31 10:18:16.395] [DEBUG] [DetectionCoordinator] Running Chromaprint Audio Fingerprint Detection...
+[2026-01-31 10:18:16.487] [DEBUG] [DetectionCoordinator] Chromaprint Audio Fingerprint Detection returned 0 (no credits detected)
+[2026-01-31 10:18:16.487] [DEBUG] [DetectionCoordinator] Skipping OCR Detection (disabled)
+[2026-01-31 10:18:16.487] [DEBUG] [DetectionCoordinator] Detection complete: 0 successful, 0 errors
+[2026-01-31 10:18:16.487] [DEBUG] [DetectionCoordinator] No credits detected by any method
+[2026-01-31 10:18:16.487] [DEBUG] [DetectionCoordinator] Failure reasons: No credits detected by any enabled method
+[2026-01-31 10:18:16.487] [DEBUG] Detection result: timestamp=0, confidence=0,00, reason=No credits detected by any enabled method
+[2026-01-31 10:18:16.487] [WARN] ✗ No clear credits detected for Smooth Criminal
+[2026-01-31 10:18:16.487] [DEBUG] Failure reason: No credits detected by any enabled method
+[2026-01-31 10:18:17.487] [INFO] Processing episode from queue: Lucky You
+[2026-01-31 10:18:17.487] [INFO] Processing episode: Lucky You (S1E4)
+[2026-01-31 10:18:17.487] [DEBUG] Episode path: E:\Anime VF\Anime VF\Cyberpunk\04.mp4
+[2026-01-31 10:18:17.487] [DEBUG] Episode ID: 935d06d1-ef7b-c481-57ca-a5a86119a96d
+[2026-01-31 10:18:17.487] [DEBUG] Using duration from Emby metadata: 1441,472 seconds
+[2026-01-31 10:18:17.487] [INFO] Video duration: 24:01
+[2026-01-31 10:18:17.487] [INFO] Comparison disabled or no series context
+[2026-01-31 10:18:17.487] [DEBUG] [DetectionCoordinator] DetectCredits called: duration=24:01
+[2026-01-31 10:18:17.487] [DEBUG] [DetectionCoordinator] Running detection methods for video (duration: 24:01)
+[2026-01-31 10:18:17.487] [DEBUG] [DetectionCoordinator] Total detection methods: 2
+[2026-01-31 10:18:17.487] [DEBUG] [DetectionCoordinator] Enabled methods: Chromaprint Audio Fingerprint Detection
+[2026-01-31 10:18:17.487] [DEBUG] [DetectionCoordinator] Running Chromaprint Audio Fingerprint Detection...
+[2026-01-31 10:18:17.579] [DEBUG] [DetectionCoordinator] Chromaprint Audio Fingerprint Detection returned 0 (no credits detected)
+[2026-01-31 10:18:17.579] [DEBUG] [DetectionCoordinator] Skipping OCR Detection (disabled)
+[2026-01-31 10:18:17.579] [DEBUG] [DetectionCoordinator] Detection complete: 0 successful, 0 errors
+[2026-01-31 10:18:17.579] [DEBUG] [DetectionCoordinator] No credits detected by any method
+[2026-01-31 10:18:17.579] [DEBUG] [DetectionCoordinator] Failure reasons: No credits detected by any enabled method
+[2026-01-31 10:18:17.579] [DEBUG] Detection result: timestamp=0, confidence=0,00, reason=No credits detected by any enabled method
+[2026-01-31 10:18:17.579] [WARN] ✗ No clear credits detected for Lucky You
+[2026-01-31 10:18:17.579] [DEBUG] Failure reason: No credits detected by any enabled method
+[2026-01-31 10:18:18.577] [INFO] Processing episode from queue: All Eyez On Me
+[2026-01-31 10:18:18.577] [INFO] Processing episode: All Eyez On Me (S1E5)
+[2026-01-31 10:18:18.577] [DEBUG] Episode path: E:\Anime VF\Anime VF\Cyberpunk\05.mp4
+[2026-01-31 10:18:18.577] [DEBUG] Episode ID: ab59d8d6-28ce-09ef-a5d1-12e361468703
+[2026-01-31 10:18:18.577] [DEBUG] Using duration from Emby metadata: 1399,402 seconds
+[2026-01-31 10:18:18.577] [INFO] Video duration: 23:19
+[2026-01-31 10:18:18.577] [INFO] Comparison disabled or no series context
+[2026-01-31 10:18:18.577] [DEBUG] [DetectionCoordinator] DetectCredits called: duration=23:19
+[2026-01-31 10:18:18.577] [DEBUG] [DetectionCoordinator] Running detection methods for video (duration: 23:19)
+[2026-01-31 10:18:18.577] [DEBUG] [DetectionCoordinator] Total detection methods: 2
+[2026-01-31 10:18:18.577] [DEBUG] [DetectionCoordinator] Enabled methods: Chromaprint Audio Fingerprint Detection
+[2026-01-31 10:18:18.577] [DEBUG] [DetectionCoordinator] Running Chromaprint Audio Fingerprint Detection...
+[2026-01-31 10:18:18.669] [DEBUG] [DetectionCoordinator] Chromaprint Audio Fingerprint Detection returned 0 (no credits detected)
+[2026-01-31 10:18:18.669] [DEBUG] [DetectionCoordinator] Skipping OCR Detection (disabled)
+[2026-01-31 10:18:18.669] [DEBUG] [DetectionCoordinator] Detection complete: 0 successful, 0 errors
+[2026-01-31 10:18:18.669] [DEBUG] [DetectionCoordinator] No credits detected by any method
+[2026-01-31 10:18:18.669] [DEBUG] [DetectionCoordinator] Failure reasons: No credits detected by any enabled method
+[2026-01-31 10:18:18.669] [DEBUG] Detection result: timestamp=0, confidence=0,00, reason=No credits detected by any enabled method
+[2026-01-31 10:18:18.669] [WARN] ✗ No clear credits detected for All Eyez On Me
+[2026-01-31 10:18:18.669] [DEBUG] Failure reason: No credits detected by any enabled method
+[2026-01-31 10:18:19.671] [INFO] Processing episode from queue: Girl on Fire
+[2026-01-31 10:18:19.671] [INFO] Processing episode: Girl on Fire (S1E6)
+[2026-01-31 10:18:19.671] [DEBUG] Episode path: E:\Anime VF\Anime VF\Cyberpunk\06.mp4
+[2026-01-31 10:18:19.671] [DEBUG] Episode ID: 5c809c80-fce4-5b59-6442-9c477e531bcc
+[2026-01-31 10:18:19.671] [DEBUG] Using duration from Emby metadata: 1533,546 seconds
+[2026-01-31 10:18:19.671] [INFO] Video duration: 25:33
+[2026-01-31 10:18:19.671] [INFO] Comparison disabled or no series context
+[2026-01-31 10:18:19.671] [DEBUG] [DetectionCoordinator] DetectCredits called: duration=25:33
+[2026-01-31 10:18:19.671] [DEBUG] [DetectionCoordinator] Running detection methods for video (duration: 25:33)
+[2026-01-31 10:18:19.671] [DEBUG] [DetectionCoordinator] Total detection methods: 2
+[2026-01-31 10:18:19.671] [DEBUG] [DetectionCoordinator] Enabled methods: Chromaprint Audio Fingerprint Detection
+[2026-01-31 10:18:19.671] [DEBUG] [DetectionCoordinator] Running Chromaprint Audio Fingerprint Detection...
+[2026-01-31 10:18:19.762] [DEBUG] [DetectionCoordinator] Chromaprint Audio Fingerprint Detection returned 0 (no credits detected)
+[2026-01-31 10:18:19.762] [DEBUG] [DetectionCoordinator] Skipping OCR Detection (disabled)
+[2026-01-31 10:18:19.762] [DEBUG] [DetectionCoordinator] Detection complete: 0 successful, 0 errors
+[2026-01-31 10:18:19.762] [DEBUG] [DetectionCoordinator] No credits detected by any method
+[2026-01-31 10:18:19.762] [DEBUG] [DetectionCoordinator] Failure reasons: No credits detected by any enabled method
+[2026-01-31 10:18:19.762] [DEBUG] Detection result: timestamp=0, confidence=0,00, reason=No credits detected by any enabled method
+[2026-01-31 10:18:19.762] [WARN] ✗ No clear credits detected for Girl on Fire
+[2026-01-31 10:18:19.762] [DEBUG] Failure reason: No credits detected by any enabled method
+[2026-01-31 10:18:20.772] [INFO] Processing episode from queue: Stronger
+[2026-01-31 10:18:20.772] [INFO] Processing episode: Stronger (S1E7)
+[2026-01-31 10:18:20.772] [DEBUG] Episode path: E:\Anime VF\Anime VF\Cyberpunk\07.mp4
+[2026-01-31 10:18:20.772] [DEBUG] Episode ID: c20fc504-0bb3-ec03-6cef-4b7bdd45be67
+[2026-01-31 10:18:20.772] [DEBUG] Using duration from Emby metadata: 1439,466 seconds
+[2026-01-31 10:18:20.772] [INFO] Video duration: 23:59
+[2026-01-31 10:18:20.772] [INFO] Comparison disabled or no series context
+[2026-01-31 10:18:20.772] [DEBUG] [DetectionCoordinator] DetectCredits called: duration=23:59
+[2026-01-31 10:18:20.772] [DEBUG] [DetectionCoordinator] Running detection methods for video (duration: 23:59)
+[2026-01-31 10:18:20.772] [DEBUG] [DetectionCoordinator] Total detection methods: 2
+[2026-01-31 10:18:20.772] [DEBUG] [DetectionCoordinator] Enabled methods: Chromaprint Audio Fingerprint Detection
+[2026-01-31 10:18:20.772] [DEBUG] [DetectionCoordinator] Running Chromaprint Audio Fingerprint Detection...
+[2026-01-31 10:18:20.865] [DEBUG] [DetectionCoordinator] Chromaprint Audio Fingerprint Detection returned 0 (no credits detected)
+[2026-01-31 10:18:20.865] [DEBUG] [DetectionCoordinator] Skipping OCR Detection (disabled)
+[2026-01-31 10:18:20.865] [DEBUG] [DetectionCoordinator] Detection complete: 0 successful, 0 errors
+[2026-01-31 10:18:20.865] [DEBUG] [DetectionCoordinator] No credits detected by any method
+[2026-01-31 10:18:20.865] [DEBUG] [DetectionCoordinator] Failure reasons: No credits detected by any enabled method
+[2026-01-31 10:18:20.865] [DEBUG] Detection result: timestamp=0, confidence=0,00, reason=No credits detected by any enabled method
+[2026-01-31 10:18:20.865] [WARN] ✗ No clear credits detected for Stronger
+[2026-01-31 10:18:20.865] [DEBUG] Failure reason: No credits detected by any enabled method
+[2026-01-31 10:18:21.869] [INFO] Processing episode from queue: Stay
+[2026-01-31 10:18:21.869] [INFO] Processing episode: Stay (S1E8)
+[2026-01-31 10:18:21.869] [DEBUG] Episode path: E:\Anime VF\Anime VF\Cyberpunk\08.mp4
+[2026-01-31 10:18:21.869] [DEBUG] Episode ID: 86bdf27a-858d-2cc8-1d7e-2f77a5ddaec8
+[2026-01-31 10:18:21.869] [DEBUG] Using duration from Emby metadata: 1443,477 seconds
+[2026-01-31 10:18:21.869] [INFO] Video duration: 24:03
+[2026-01-31 10:18:21.869] [INFO] Comparison disabled or no series context
+[2026-01-31 10:18:21.869] [DEBUG] [DetectionCoordinator] DetectCredits called: duration=24:03
+[2026-01-31 10:18:21.869] [DEBUG] [DetectionCoordinator] Running detection methods for video (duration: 24:03)
+[2026-01-31 10:18:21.869] [DEBUG] [DetectionCoordinator] Total detection methods: 2
+[2026-01-31 10:18:21.869] [DEBUG] [DetectionCoordinator] Enabled methods: Chromaprint Audio Fingerprint Detection
+[2026-01-31 10:18:21.869] [DEBUG] [DetectionCoordinator] Running Chromaprint Audio Fingerprint Detection...
+[2026-01-31 10:18:21.959] [DEBUG] [DetectionCoordinator] Chromaprint Audio Fingerprint Detection returned 0 (no credits detected)
+[2026-01-31 10:18:21.959] [DEBUG] [DetectionCoordinator] Skipping OCR Detection (disabled)
+[2026-01-31 10:18:21.959] [DEBUG] [DetectionCoordinator] Detection complete: 0 successful, 0 errors
+[2026-01-31 10:18:21.959] [DEBUG] [DetectionCoordinator] No credits detected by any method
+[2026-01-31 10:18:21.959] [DEBUG] [DetectionCoordinator] Failure reasons: No credits detected by any enabled method
+[2026-01-31 10:18:21.959] [DEBUG] Detection result: timestamp=0, confidence=0,00, reason=No credits detected by any enabled method
+[2026-01-31 10:18:21.959] [WARN] ✗ No clear credits detected for Stay
+[2026-01-31 10:18:21.959] [DEBUG] Failure reason: No credits detected by any enabled method
+[2026-01-31 10:18:22.962] [INFO] Processing episode from queue: Humanity
+[2026-01-31 10:18:22.962] [INFO] Processing episode: Humanity (S1E9)
+[2026-01-31 10:18:22.962] [DEBUG] Episode path: E:\Anime VF\Anime VF\Cyberpunk\09.mp4
+[2026-01-31 10:18:22.962] [DEBUG] Episode ID: d2ada936-902f-5a50-7bee-d8a921c74aee
+[2026-01-31 10:18:22.962] [DEBUG] Using duration from Emby metadata: 1503,552 seconds
+[2026-01-31 10:18:22.962] [INFO] Video duration: 25:03
+[2026-01-31 10:18:22.962] [INFO] Comparison disabled or no series context
+[2026-01-31 10:18:22.962] [DEBUG] [DetectionCoordinator] DetectCredits called: duration=25:03
+[2026-01-31 10:18:22.962] [DEBUG] [DetectionCoordinator] Running detection methods for video (duration: 25:03)
+[2026-01-31 10:18:22.962] [DEBUG] [DetectionCoordinator] Total detection methods: 2
+[2026-01-31 10:18:22.963] [DEBUG] [DetectionCoordinator] Enabled methods: Chromaprint Audio Fingerprint Detection
+[2026-01-31 10:18:22.963] [DEBUG] [DetectionCoordinator] Running Chromaprint Audio Fingerprint Detection...
+[2026-01-31 10:18:23.054] [DEBUG] [DetectionCoordinator] Chromaprint Audio Fingerprint Detection returned 0 (no credits detected)
+[2026-01-31 10:18:23.054] [DEBUG] [DetectionCoordinator] Skipping OCR Detection (disabled)
+[2026-01-31 10:18:23.054] [DEBUG] [DetectionCoordinator] Detection complete: 0 successful, 0 errors
+[2026-01-31 10:18:23.054] [DEBUG] [DetectionCoordinator] No credits detected by any method
+[2026-01-31 10:18:23.054] [DEBUG] [DetectionCoordinator] Failure reasons: No credits detected by any enabled method
+[2026-01-31 10:18:23.054] [DEBUG] Detection result: timestamp=0, confidence=0,00, reason=No credits detected by any enabled method
+[2026-01-31 10:18:23.054] [WARN] ✗ No clear credits detected for Humanity
+[2026-01-31 10:18:23.054] [DEBUG] Failure reason: No credits detected by any enabled method
+[2026-01-31 10:18:24.060] [INFO] Processing episode from queue: My Moon My Man
+[2026-01-31 10:18:24.061] [INFO] Processing episode: My Moon My Man (S1E10)
+[2026-01-31 10:18:24.061] [DEBUG] Episode path: E:\Anime VF\Anime VF\Cyberpunk\10.mp4
+[2026-01-31 10:18:24.061] [DEBUG] Episode ID: eb88fe8f-4bad-d896-9e3a-aaf03b86e076
+[2026-01-31 10:18:24.061] [DEBUG] Using duration from Emby metadata: 1599,637 seconds
+[2026-01-31 10:18:24.061] [INFO] Video duration: 26:39
+[2026-01-31 10:18:24.061] [INFO] Comparison disabled or no series context
+[2026-01-31 10:18:24.061] [DEBUG] [DetectionCoordinator] DetectCredits called: duration=26:39
+[2026-01-31 10:18:24.061] [DEBUG] [DetectionCoordinator] Running detection methods for video (duration: 26:39)
+[2026-01-31 10:18:24.061] [DEBUG] [DetectionCoordinator] Total detection methods: 2
+[2026-01-31 10:18:24.061] [DEBUG] [DetectionCoordinator] Enabled methods: Chromaprint Audio Fingerprint Detection
+[2026-01-31 10:18:24.061] [DEBUG] [DetectionCoordinator] Running Chromaprint Audio Fingerprint Detection...
+[2026-01-31 10:18:24.150] [DEBUG] [DetectionCoordinator] Chromaprint Audio Fingerprint Detection returned 0 (no credits detected)
+[2026-01-31 10:18:24.150] [DEBUG] [DetectionCoordinator] Skipping OCR Detection (disabled)
+[2026-01-31 10:18:24.150] [DEBUG] [DetectionCoordinator] Detection complete: 0 successful, 0 errors
+[2026-01-31 10:18:24.150] [DEBUG] [DetectionCoordinator] No credits detected by any method
+[2026-01-31 10:18:24.150] [DEBUG] [DetectionCoordinator] Failure reasons: No credits detected by any enabled method
+[2026-01-31 10:18:24.150] [DEBUG] Detection result: timestamp=0, confidence=0,00, reason=No credits detected by any enabled method
+[2026-01-31 10:18:24.150] [WARN] ✗ No clear credits detected for My Moon My Man
+[2026-01-31 10:18:24.150] [DEBUG] Failure reason: No credits detected by any enabled method
+[2026-01-31 10:18:25.153] [INFO] Processing complete: 0 succeeded, 10 failed
