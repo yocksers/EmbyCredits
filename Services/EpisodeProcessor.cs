@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using EmbyCredits.Services.Utilities;
 
 namespace EmbyCredits.Services
 {
@@ -22,6 +23,7 @@ namespace EmbyCredits.Services
         private readonly ChapterMarkerService _chapterMarkerService;
         private readonly DebugLogger _debugLogger;
         private readonly PluginConfiguration _configuration;
+        private readonly CpuThrottler _cpuThrottler;
 
         public EpisodeProcessor(
             ILogger logger,
@@ -37,6 +39,7 @@ namespace EmbyCredits.Services
             _chapterMarkerService = chapterMarkerService;
             _debugLogger = debugLogger;
             _configuration = configuration;
+            _cpuThrottler = new CpuThrottler(configuration);
         }
 
         public async Task<(bool success, double creditsStart, string failureReason, double confidence)> ProcessEpisode(
@@ -62,6 +65,8 @@ namespace EmbyCredits.Services
                     _debugLogger.LogWarn($"Failed to lower thread priority: {ex.Message}");
                 }
             }
+
+            _cpuThrottler.BeginWork();
 
             try
             {
@@ -256,6 +261,8 @@ namespace EmbyCredits.Services
             }
             finally
             {
+                await _cpuThrottler.EndWork();
+
                 if (priorityChanged)
                 {
                     try
@@ -272,16 +279,6 @@ namespace EmbyCredits.Services
                 {
                     _debugLogger.LogDebug($"Applying {_configuration.DelayBetweenEpisodesMs}ms delay before next episode");
                     await Task.Delay(_configuration.DelayBetweenEpisodesMs);
-                }
-
-                if (_configuration?.CpuUsageLimit < 100)
-                {
-                    var throttleDelayMs = CalculateThrottleDelay();
-                    if (throttleDelayMs > 0)
-                    {
-                        _debugLogger.LogDebug($"CPU throttling: {throttleDelayMs}ms delay");
-                        await Task.Delay(throttleDelayMs);
-                    }
                 }
             }
         }
@@ -308,6 +305,8 @@ namespace EmbyCredits.Services
                 })
                 {
                     process.Start();
+                    CpuThrottler.SetProcessPriority(process, _configuration);
+                    
                     var output = await process.StandardOutput.ReadToEndAsync();
                     await process.WaitForExitAsync();
 
@@ -327,17 +326,6 @@ namespace EmbyCredits.Services
                 _debugLogger.LogError($"Error getting video duration: {ex.Message}", ex);
                 return 0;
             }
-        }
-
-        private int CalculateThrottleDelay()
-        {
-            var cpuLimit = _configuration?.CpuUsageLimit ?? 100;
-            if (cpuLimit >= 100)
-                return 0;
-
-            var throttleRatio = (100.0 - cpuLimit) / cpuLimit;
-            var baseDelay = _configuration?.DelayBetweenEpisodesMs ?? 1000;
-            return (int)(baseDelay * throttleRatio);
         }
 
         private string FormatTime(double seconds)

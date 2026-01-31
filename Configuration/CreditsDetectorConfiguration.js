@@ -99,6 +99,53 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 backupManager.importBackup(view);
             });
 
+            const ocrCheckbox = view.querySelector('#chkEnableOcrDetection');
+            const hashCheckbox = view.querySelector('#chkEnableHashDetection');
+            
+            if (ocrCheckbox && hashCheckbox) {
+                const updateCollapsibleColors = () => {
+                    const ocrHeaders = view.querySelectorAll('.collapsible-header[data-detection-type="ocr"]');
+                    const hashHeaders = view.querySelectorAll('.collapsible-header[data-detection-type="hash"]');
+                    
+                    ocrHeaders.forEach(header => {
+                        if (ocrCheckbox.checked) {
+                            header.style.backgroundColor = '#52B54B';
+                        } else {
+                            header.style.backgroundColor = '#808080';
+                        }
+                    });
+                    
+                    hashHeaders.forEach(header => {
+                        if (hashCheckbox.checked) {
+                            header.style.backgroundColor = '#52B54B';
+                        } else {
+                            header.style.backgroundColor = '#808080';
+                        }
+                    });
+                };
+                
+                ocrCheckbox.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        hashCheckbox.checked = false;
+                    }
+                    updateCollapsibleColors();
+                });
+
+                hashCheckbox.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        ocrCheckbox.checked = false;
+                    }
+                    updateCollapsibleColors();
+                });
+                
+                // Listen for data loaded event to update colors
+                view.addEventListener('detectionMethodLoaded', () => {
+                    updateCollapsibleColors();
+                });
+                
+                updateCollapsibleColors();
+            }
+
             view.querySelector('#btnBulkExportSeries').addEventListener('click', () => {
                 backupManager.openBulkExportModal(view);
             });

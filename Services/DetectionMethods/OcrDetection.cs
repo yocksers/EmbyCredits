@@ -338,6 +338,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 try
                 {
                     process.Start();
+                    Utilities.CpuThrottler.SetProcessPriority(process, Configuration);
 
                     var timeoutMinutes = Configuration.OcrMaxAnalysisDuration > 0 
                     ? (Configuration.OcrMaxAnalysisDuration / 60) + 5
@@ -663,6 +664,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 })
                 {
                     process.Start();
+                    Utilities.CpuThrottler.SetProcessPriority(process, Configuration);
 
                     var timeoutMinutes = Configuration.OcrMaxAnalysisDuration > 0 
                         ? (Configuration.OcrMaxAnalysisDuration / 60) + 5

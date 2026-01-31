@@ -4,7 +4,7 @@
 
     <div class="selectContainer">
         <label class="selectLabel" for="selectLibraryFilter">Filter by Library (Optional)</label>
-        <select id="selectLibraryFilter" class="emby-select-withcolor emby-select" style="max-width: 500px;">
+        <select id="selectLibraryFilter" class="emby-select-withcolor emby-select" style="max-width: 500px; padding: 0.6em 1em; border-radius: 8px; background-color: rgba(82, 181, 75, 0.1); border: 2px solid rgba(82, 181, 75, 0.3); font-size: 1em;">
             <option value="">-- All Libraries --</option>
         </select>
         <div class="fieldDescription">Filter TV shows by library</div>
@@ -12,7 +12,7 @@
 
     <div class="selectContainer">
         <label class="selectLabel" for="selectSeries">Select a TV Show</label>
-        <select id="selectSeries" data-config-key="SelectedSeries" class="emby-select-withcolor emby-select" style="max-width: 500px;">
+        <select id="selectSeries" data-config-key="SelectedSeries" class="emby-select-withcolor emby-select" style="max-width: 500px; padding: 0.6em 1em; border-radius: 8px; background-color: rgba(82, 181, 75, 0.1); border: 2px solid rgba(82, 181, 75, 0.3); font-size: 1em;">
             <option value="">-- All TV Shows --</option>
         </select>
         <div class="fieldDescription">Choose a specific TV show to process, or leave empty to process all shows</div>
@@ -20,7 +20,7 @@
 
     <div class="selectContainer">
         <label class="selectLabel" for="selectEpisode">Select a Single Episode (Optional)</label>
-        <select id="selectEpisode" data-config-key="SelectedEpisode" class="emby-select-withcolor emby-select" style="max-width: 500px;">
+        <select id="selectEpisode" data-config-key="SelectedEpisode" class="emby-select-withcolor emby-select" style="max-width: 500px; padding: 0.6em 1em; border-radius: 8px; background-color: rgba(82, 181, 75, 0.1); border: 2px solid rgba(82, 181, 75, 0.3); font-size: 1em;">
             <option value="">-- Select Show First --</option>
         </select>
         <div class="fieldDescription">Choose a specific episode to process, or leave empty to process all episodes in the selected show</div>
@@ -100,7 +100,7 @@
 
     <div class="selectContainer">
         <label class="selectLabel" for="selectSeriesForMarkers">Select a TV Show</label>
-        <select id="selectSeriesForMarkers" class="emby-select-withcolor emby-select" style="max-width: 500px;">
+        <select id="selectSeriesForMarkers" class="emby-select-withcolor emby-select" style="max-width: 500px; padding: 0.6em 1em; border-radius: 8px; background-color: rgba(82, 181, 75, 0.1); border: 2px solid rgba(82, 181, 75, 0.3); font-size: 1em;">
             <option value="">-- Select a TV Show --</option>
         </select>
         <div class="fieldDescription">Choose a TV show to view its episode markers</div>
@@ -121,7 +121,7 @@
 </div>
 
 <div class="paper-card" style="padding: 1.5em; margin-top: 2em; border-left: 4px solid #4A9FE5;">
-    <h2 style="margin-top:0; color: #4A9FE5;">💾 Backup & Restore Credits Markers</h2>
+    <h2 style="margin-top:0; color: #4A9FE5;">Backup & Restore Credits Markers</h2>
     <div class="fieldDescription" style="margin-bottom: 1.5em;">Export and import credits markers with TheTVDB IDs for portability between Emby servers. Perfect for backups, server migrations, or sharing detection results.</div>
 
     <div style="display: flex; gap: 1em; flex-wrap: wrap; margin-bottom: 1.5em;">
@@ -154,7 +154,7 @@
 </div>
 
 <div class="paper-card" style="padding: 1.5em; margin-top: 2em; text-align: center; background: linear-gradient(135deg, rgba(255,221,87,0.1) 0%, rgba(255,152,0,0.1) 100%); border-left: 4px solid #FFA726;">
-    <h3 style="margin-top: 0; color: #F57C00;">☕ Support This Plugin</h3>
+    <h3 style="margin-top: 0; color: #F57C00;">Support This Plugin</h3>
     <a href="https://buymeacoffee.com/yockser" target="_blank" rel="noopener noreferrer">
         <img id="donateImage" alt="Buy Me A Coffee" style="max-width: 200px; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
     </a>
@@ -173,7 +173,7 @@
 
         <div class="selectContainer" style="margin-bottom: 1.5em;">
             <label class="selectLabel" for="selectBulkExportLibrary">Filter by Library (Optional)</label>
-            <select is="emby-select" id="selectBulkExportLibrary">
+            <select is="emby-select" id="selectBulkExportLibrary" style="padding: 0.6em 1em; border-radius: 8px; background-color: rgba(82, 181, 75, 0.1); border: 2px solid rgba(82, 181, 75, 0.3); font-size: 1em;">
                 <option value="">-- All Libraries --</option>
             </select>
             <div class="fieldDescription">Filter TV shows by library</div>

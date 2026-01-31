@@ -3,6 +3,32 @@ define(['loading', 'toast'], function (loading, toast) {
     
     const seasonEpisodesCache = new Map();
     
+    function parseTimestamp(timestamp) {
+        const parts = timestamp.split(':').map(p => parseInt(p, 10));
+        if (parts.length === 2) {
+            return parts[0] * 60 + parts[1];
+        } else if (parts.length === 3) {
+            return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        }
+        return 0;
+    }
+    
+    function playVideoAtTimestamp(episodeId, timestampSeconds) {
+        require(['playbackManager'], function(playbackManager) {
+            ApiClient.getItem(ApiClient.getCurrentUserId(), episodeId).then(function(item) {
+                playbackManager.play({
+                    items: [item],
+                    startPositionTicks: timestampSeconds * 10000000
+                });
+            }).catch(function(error) {
+                console.error('Error starting playback:', error);
+                require(['toast'], function(toast) {
+                    toast({ type: 'error', text: 'Failed to start playback' });
+                });
+            });
+        });
+    }
+    
     function displayMarkers(instance, view) {
         const seriesSelect = view.querySelector('#selectSeriesForMarkers');
         const markersDisplay = view.querySelector('#markersDisplay');
@@ -101,12 +127,13 @@ define(['loading', 'toast'], function (loading, toast) {
                             episode.Markers.forEach(marker => {
                                 markersHtml += `<div style="margin-top: 0.5em; opacity: 0.9;">
                                     <strong>${marker.MarkerType || 'Credits'}</strong>: ${marker.StartTime}
-                                    <button is="emby-button" type="button" class="raised btnEditMarker" data-episode-id="${episode.EpisodeId}" data-current-time="${marker.StartTime}" data-duration-seconds="${episode.DurationSeconds || 0}" style="margin-left: 1em; padding: 0.25em 0.75em; font-size: 0.9em;">Edit</button>
+                                    <button is="emby-button" type="button" class="raised btnPlayAtMarker" data-episode-id="${episode.EpisodeId}" data-timestamp="${marker.StartTime}" style="margin-left: 1em; padding: 0.25em 0.75em; font-size: 0.9em; background-color: #52B54B; color: white;"><i class="md-icon" style="font-size: 1em;">play_arrow</i> Play</button>
+                                    <button is="emby-button" type="button" class="raised btnEditMarker" data-episode-id="${episode.EpisodeId}" data-current-time="${marker.StartTime}" data-duration-seconds="${episode.DurationSeconds || 0}" style="margin-left: 0.5em; padding: 0.25em 0.75em; font-size: 0.9em; background-color: #4A9FE5; color: white;">Edit</button>
                                     <button is="emby-button" type="button" class="raised button-submit btnApplyToSeason" data-episode-id="${episode.EpisodeId}" data-series-id="${seriesId}" data-season-number="${episode.Season}" data-episode-name="${episode.EpisodeName || 'Unknown'}" style="margin-left: 0.5em; padding: 0.25em 0.75em; font-size: 0.9em;">Apply to Season</button>
                                 </div>`;
                             });
                         } else {
-                            markersHtml = `<div style="margin-top: 0.5em; opacity: 0.7; font-style: italic;">No credits marker <button is="emby-button" type="button" class="raised button-submit btnEditMarker" data-episode-id="${episode.EpisodeId}" data-current-time="" data-duration-seconds="${episode.DurationSeconds || 0}" style="margin-left: 1em; padding: 0.25em 0.75em; font-size: 0.9em;">Add Marker</button></div>`;
+                            markersHtml = `<div style="margin-top: 0.5em; opacity: 0.7; font-style: italic;">No credits marker <button is="emby-button" type="button" class="raised button-submit btnEditMarker" data-episode-id="${episode.EpisodeId}" data-current-time="" data-duration-seconds="${episode.DurationSeconds || 0}" style="margin-left: 1em; padding: 0.25em 0.75em; font-size: 0.9em; background-color: #4A9FE5; color: white;">Add Marker</button></div>`;
                         }
                         
                         episodeDiv.innerHTML = `
@@ -118,6 +145,15 @@ define(['loading', 'toast'], function (loading, toast) {
                     });
                     
                     markersContent.appendChild(seasonDiv);
+                });
+                
+                markersContent.querySelectorAll('.btnPlayAtMarker').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const episodeId = this.getAttribute('data-episode-id');
+                        const timestamp = this.getAttribute('data-timestamp');
+                        const timestampSeconds = parseTimestamp(timestamp);
+                        playVideoAtTimestamp(episodeId, timestampSeconds);
+                    });
                 });
                 
                 markersContent.querySelectorAll('.btnEditMarker').forEach(btn => {
@@ -658,8 +694,14 @@ define(['loading', 'toast'], function (loading, toast) {
             
             if (hasMarker) {
                 html += `<div style=\"font-weight: bold; color: #52B54B; margin-bottom: 0.5em;\">Credits: ${ep.Marker.StartTime}</div>`;
+                html += `<div style=\"display: flex; flex-direction: row; gap: 0.5em; flex-wrap: wrap;\">`;
+                html += `<button is="emby-button" type="button" class="raised btnValidationPlay" data-episode-id="${ep.EpisodeId}" data-timestamp="${ep.Marker.StartTime}" style="padding: 0.3em 0.6em; font-size: 0.85em; background-color: #52B54B; color: white; flex: 1; min-width: 80px;"><i class="md-icon" style="font-size: 1em;">play_arrow</i> Play</button>`;
+                html += `<button is="emby-button" type="button" class="raised btnValidationEdit" data-episode-id="${ep.EpisodeId}" data-current-time="${ep.Marker.StartTime}" data-duration-seconds="${ep.DurationSeconds || 0}" data-series-id="${data.SeriesId}" style="padding: 0.3em 0.6em; font-size: 0.85em; background-color: #4A9FE5; color: white; flex: 1; min-width: 70px;">Edit</button>`;
+                html += `<button is="emby-button" type="button" class="raised btnValidationApply" data-episode-id="${ep.EpisodeId}" data-series-id="${data.SeriesId}" data-season-number="${data.SeasonNumber}" data-episode-name="${ep.EpisodeName || 'Unknown'}" style="padding: 0.3em 0.6em; font-size: 0.85em; background-color: #52B54B; color: white; flex: 1; min-width: 80px;">Apply to all</button>`;
+                html += `</div>`;
             } else {
                 html += `<div style=\"font-style: italic; color: #808080; margin-bottom: 0.5em;\">No credits marker</div>`;
+                html += `<button is="emby-button" type="button" class="raised btnValidationEdit" data-episode-id="${ep.EpisodeId}" data-current-time="" data-duration-seconds="${ep.DurationSeconds || 0}" data-series-id="${data.SeriesId}" style="padding: 0.3em 0.6em; font-size: 0.85em; background-color: #4A9FE5; color: white; width: 100%;">Add Marker</button>`;
             }
             
             html += `</div>`;
@@ -673,6 +715,37 @@ define(['loading', 'toast'], function (loading, toast) {
         content.innerHTML = html;
         modal.appendChild(content);
         document.body.appendChild(modal);
+        
+        content.querySelectorAll('.btnValidationPlay').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const episodeId = this.getAttribute('data-episode-id');
+                const timestamp = this.getAttribute('data-timestamp');
+                const timestampSeconds = parseTimestamp(timestamp);
+                playVideoAtTimestamp(episodeId, timestampSeconds);
+            });
+        });
+        
+        content.querySelectorAll('.btnValidationEdit').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const episodeId = this.getAttribute('data-episode-id');
+                const currentTime = this.getAttribute('data-current-time');
+                const durationSeconds = parseFloat(this.getAttribute('data-duration-seconds')) || 0;
+                const seriesId = this.getAttribute('data-series-id');
+                document.body.removeChild(modal);
+                editMarker(instance, view, episodeId, currentTime, seriesId, durationSeconds);
+            });
+        });
+        
+        content.querySelectorAll('.btnValidationApply').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const episodeId = this.getAttribute('data-episode-id');
+                const seriesId = this.getAttribute('data-series-id');
+                const seasonNumber = parseInt(this.getAttribute('data-season-number'));
+                const episodeName = this.getAttribute('data-episode-name');
+                document.body.removeChild(modal);
+                applyToSeason(instance, view, episodeId, seriesId, seasonNumber, episodeName);
+            });
+        });
         
         document.getElementById('btnCloseValidation').addEventListener('click', () => {
             document.body.removeChild(modal);

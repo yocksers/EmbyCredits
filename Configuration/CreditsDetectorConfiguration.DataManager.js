@@ -8,6 +8,8 @@ define(['loading', 'toast'], function (loading, toast) {
         ApiClient.getPluginConfiguration(pluginId).then(config => {
             instance.config = config;
 
+            view.querySelector('#chkEnableOcrDetection').checked = config.EnableOcrDetection !== false;
+            view.querySelector('#chkEnableHashDetection').checked = config.EnableChromaprintDetection || false;
             view.querySelector('#chkEnableAutoDetection').checked = config.EnableAutoDetection || false;
             view.querySelector('#chkUseEpisodeComparison').checked = config.UseEpisodeComparison || false;
             view.querySelector('#chkEnableFailedEpisodeFallback').checked = config.EnableFailedEpisodeFallback || false;
@@ -17,6 +19,10 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkManualSkipExistingMarkers').checked = config.ManualSkipExistingMarkers || false;
 
             view.querySelector('#chkPreventConcurrentPluginProcessing').checked = config.PreventConcurrentPluginProcessing !== false;
+            view.querySelector('#chkLowerThreadPriority').checked = config.LowerThreadPriority || false;
+            view.querySelector('#chkLowerProcessPriority').checked = config.LowerProcessPriority || false;
+            view.querySelector('#txtCpuUsageLimit').value = config.CpuUsageLimit !== undefined ? config.CpuUsageLimit : 100;
+            view.querySelector('#txtCpuThrottleDelayMs').value = config.CpuThrottleDelayMs !== undefined ? config.CpuThrottleDelayMs : 100;
             view.querySelector('#txtDelayBetweenEpisodesMs').value = config.DelayBetweenEpisodesMs || 0;
             view.querySelector('#txtTempFolderPath').value = config.TempFolderPath || '';
 
@@ -122,6 +128,16 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtThumbnailWidth').value = config.ThumbnailWidth || 320;
             view.querySelector('#txtThumbnailQuality').value = config.ThumbnailQuality || 85;
 
+            view.querySelector('#txtChromaprintMinDuration').value = config.ChromaprintMinDuration || 30;
+            view.querySelector('#txtChromaprintMaxDuration').value = config.ChromaprintMaxDuration || 300;
+            view.querySelector('#txtChromaprintAnalysisPercent').value = config.ChromaprintAnalysisPercent || 25;
+            view.querySelector('#txtChromaprintBlackFrameThreshold').value = config.ChromaprintBlackFrameThreshold || 0.05;
+            view.querySelector('#txtChromaprintBlackFrameMinDuration').value = config.ChromaprintBlackFrameMinDuration || 0.5;
+            view.querySelector('#txtChromaprintSilenceThreshold').value = config.ChromaprintSilenceThreshold || -60;
+            view.querySelector('#txtChromaprintSilenceMinDuration').value = config.ChromaprintSilenceMinDuration || 0.5;
+            view.querySelector('#txtChromaprintMinConfidence').value = config.ChromaprintMinConfidence || 0.85;
+            view.querySelector('#txtChromaprintStopSecondsFromEnd').value = config.ChromaprintStopSecondsFromEnd || 20;
+
             // Load libraries and series/episode dropdowns
             require(['configurationpage?name=CreditsDetectorConfigurationSeriesManager'], (seriesManager) => {
                 seriesManager.loadLibraries(view, config);
@@ -134,6 +150,12 @@ define(['loading', 'toast'], function (loading, toast) {
 
             setTimeout(() => {
                 const event = new CustomEvent('keywordsLoaded');
+                view.dispatchEvent(event);
+            }, 100);
+
+            // Trigger detection method color update after data is loaded
+            setTimeout(() => {
+                const event = new CustomEvent('detectionMethodLoaded');
                 view.dispatchEvent(event);
             }, 100);
 
@@ -168,10 +190,15 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.ManualSkipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers').checked;
 
         instance.config.PreventConcurrentPluginProcessing = view.querySelector('#chkPreventConcurrentPluginProcessing').checked;
+        instance.config.LowerThreadPriority = view.querySelector('#chkLowerThreadPriority').checked;
+        instance.config.LowerProcessPriority = view.querySelector('#chkLowerProcessPriority').checked;
+        instance.config.CpuUsageLimit = Number.parseInt(view.querySelector('#txtCpuUsageLimit').value, 10) || 100;
+        instance.config.CpuThrottleDelayMs = Number.parseInt(view.querySelector('#txtCpuThrottleDelayMs').value, 10) || 100;
         instance.config.DelayBetweenEpisodesMs = Number.parseInt(view.querySelector('#txtDelayBetweenEpisodesMs').value, 10) || 0;
         instance.config.TempFolderPath = view.querySelector('#txtTempFolderPath').value || '';
 
-        instance.config.EnableOcrDetection = true;
+        instance.config.EnableOcrDetection = view.querySelector('#chkEnableOcrDetection').checked;
+        instance.config.EnableHashDetection = view.querySelector('#chkEnableHashDetection').checked;
         instance.config.OcrEndpoint = view.querySelector('#txtOcrEndpoint').value || 'http://localhost:8884';
         instance.config.OcrDetectionKeywords = view.querySelector('#txtOcrDetectionKeywords').value || 'directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,끝,fim,fine';
                 instance.config.OcrRetryAttempts = Number.parseInt(view.querySelector('#txtOcrRetryAttempts').value, 10) || 5;
@@ -271,6 +298,17 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.ThumbnailWidth = Number.parseInt(view.querySelector('#txtThumbnailWidth').value, 10) || 320;
         instance.config.ThumbnailQuality = Number.parseInt(view.querySelector('#txtThumbnailQuality').value, 10) || 85;
 
+        instance.config.EnableChromaprintDetection = instance.config.EnableHashDetection;
+        instance.config.ChromaprintMinDuration = Number.parseInt(view.querySelector('#txtChromaprintMinDuration').value, 10) || 30;
+        instance.config.ChromaprintMaxDuration = Number.parseInt(view.querySelector('#txtChromaprintMaxDuration').value, 10) || 300;
+        instance.config.ChromaprintAnalysisPercent = Number.parseFloat(view.querySelector('#txtChromaprintAnalysisPercent').value) || 25;
+        instance.config.ChromaprintBlackFrameThreshold = Number.parseFloat(view.querySelector('#txtChromaprintBlackFrameThreshold').value) || 0.05;
+        instance.config.ChromaprintBlackFrameMinDuration = Number.parseFloat(view.querySelector('#txtChromaprintBlackFrameMinDuration').value) || 0.5;
+        instance.config.ChromaprintSilenceThreshold = Number.parseInt(view.querySelector('#txtChromaprintSilenceThreshold').value, 10) || -60;
+        instance.config.ChromaprintSilenceMinDuration = Number.parseFloat(view.querySelector('#txtChromaprintSilenceMinDuration').value) || 0.5;
+        instance.config.ChromaprintMinConfidence = Number.parseFloat(view.querySelector('#txtChromaprintMinConfidence').value) || 0.85;
+        instance.config.ChromaprintStopSecondsFromEnd = Number.parseFloat(view.querySelector('#txtChromaprintStopSecondsFromEnd').value) || 20;
+
         const checkboxes = view.querySelectorAll('.chkLibrary');
         const selectedLibraryIds = [];
         checkboxes.forEach(checkbox => {
@@ -300,6 +338,10 @@ define(['loading', 'toast'], function (loading, toast) {
         view.querySelector('#chkEnableDetailedLogging').checked = false;
         view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = true;
 
+        view.querySelector('#chkLowerThreadPriority').checked = false;
+        view.querySelector('#chkLowerProcessPriority').checked = false;
+        view.querySelector('#txtCpuUsageLimit').value = 100;
+        view.querySelector('#txtCpuThrottleDelayMs').value = 100;
         view.querySelector('#txtDelayBetweenEpisodesMs').value = 0;
 
         const preservedTempFolderPath = view.querySelector('#txtTempFolderPath').value;
@@ -651,6 +693,10 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkEnableDetailedLogging', false, true);
         setIfExists('#chkScheduledTaskOnlyProcessMissing', true, true);
         setIfExists('#chkPreventConcurrentPluginProcessing', true, true);
+        setIfExists('#chkLowerThreadPriority', false, true);
+        setIfExists('#chkLowerProcessPriority', false, true);
+        setIfExists('#txtCpuUsageLimit', 100);
+        setIfExists('#txtCpuThrottleDelayMs', 100);
         setIfExists('#txtDelayBetweenEpisodesMs', 0);
         setIfExists('#txtMaxScheduledBackups', 10);
 

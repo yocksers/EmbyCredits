@@ -154,8 +154,10 @@ namespace EmbyCredits
         public double CombinedMinSustainedSeconds { get; set; } = 3.0;
 
         public int CpuUsageLimit { get; set; } = 100;
+        public int CpuThrottleDelayMs { get; set; } = 100;
         public int DelayBetweenEpisodesMs { get; set; } = 0;
         public bool LowerThreadPriority { get; set; } = false;
+        public bool LowerProcessPriority { get; set; } = false;
         public string TempFolderPath { get; set; } = "";
 
         public bool EnableDetailedLogging { get; set; } = false;
@@ -180,5 +182,19 @@ namespace EmbyCredits
         public bool EnableThumbnailGeneration { get; set; } = false;
         public int ThumbnailWidth { get; set; } = 320;
         public int ThumbnailQuality { get; set; } = 85;
+
+        public bool EnableChromaprintDetection { get; set; } = false;
+        public int ChromaprintDetectionPriority { get; set; } = 1;
+        public int ChromaprintMinDuration { get; set; } = 30;
+        public int ChromaprintMaxDuration { get; set; } = 300;
+        public double ChromaprintSimilarityThreshold { get; set; } = 0.85;
+        public int ChromaprintMinEpisodeCount { get; set; } = 4;
+        public double ChromaprintAnalysisPercent { get; set; } = 25.0;
+        public double ChromaprintBlackFrameThreshold { get; set; } = 0.05;
+        public double ChromaprintBlackFrameMinDuration { get; set; } = 0.5;
+        public int ChromaprintSilenceThreshold { get; set; } = -60;
+        public double ChromaprintSilenceMinDuration { get; set; } = 0.5;
+        public double ChromaprintMinConfidence { get; set; } = 0.85;
+        public double ChromaprintStopSecondsFromEnd { get; set; } = 20.0;
     }
 }

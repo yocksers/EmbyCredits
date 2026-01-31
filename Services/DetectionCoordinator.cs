@@ -35,6 +35,11 @@ namespace EmbyCredits.Services
         private void InitializeDetectionMethods()
         {
             _logger.Debug($"[DetectionCoordinator] Initializing detection methods");
+            
+            var chromaprintMethod = new ChromaprintDetection(_logger, _configuration);
+            _detectionMethods.Add(chromaprintMethod);
+            _logger.Debug($"[DetectionCoordinator] Added ChromaprintDetection. IsEnabled: {chromaprintMethod.IsEnabled}");
+            
             var ocrMethod = new OcrDetection(_logger, _configuration);
             _detectionMethods.Add(ocrMethod);
             _logger.Debug($"[DetectionCoordinator] Added OcrDetection. IsEnabled: {ocrMethod.IsEnabled}, Config.EnableOcrDetection: {_configuration.EnableOcrDetection}");
