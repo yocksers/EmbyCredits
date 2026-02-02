@@ -117,6 +117,13 @@ namespace EmbyCredits.Services
         public void ClearCache()
         {
             _batchDetectionCache.Clear();
+            _batchDetectionCache.TrimExcess(); // Release capacity to prevent memory retention
+            if (_batchDetectionCache.Count > 0)
+            {
+                _batchDetectionCache.Clear();
+                _batchDetectionCache.TrimExcess();
+            }
+            GC.Collect(1, GCCollectionMode.Optimized, false);
         }
 
         private async Task<(List<(string method, double timestamp, double confidence, int priority, string reason)> results, Dictionary<string, string> errors)> RunAllDetectionMethods(
@@ -217,6 +224,14 @@ namespace EmbyCredits.Services
             _logger.Info($"Correlation scoring selected {FormatTime(creditsStart)} " +
                        $"(score: {bestGroup.combinedScore:F2}, confidence: {normalizedConfidence:F2}, methods: {string.Join(", ", bestGroup.methods)})");
 
+            foreach (var group in groupedResults)
+            {
+                group.methods?.Clear();
+                group.reasons?.Clear();
+            }
+            groupedResults.Clear();
+            groupedResults.TrimExcess();
+
             return (creditsStart, combinedReasons, normalizedConfidence);
         }
 
@@ -307,24 +322,42 @@ namespace EmbyCredits.Services
 
         public void CancelDetection()
         {
-            _cancellationTokenSource?.Cancel();
-            _cancellationTokenSource?.Dispose();
-            _cancellationTokenSource = new CancellationTokenSource();
+            try
+            {
+                _cancellationTokenSource?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
 
         public void Dispose()
         {
             if (!_disposed)
             {
-                _cancellationTokenSource?.Cancel();
+                try
+                {
+                    _cancellationTokenSource?.Cancel();
+                }
+                catch { }
+                
                 _cancellationTokenSource?.Dispose();
+                _cancellationTokenSource = null;
 
                 foreach (var method in _detectionMethods)
                 {
-                    method?.Dispose();
+                    try
+                    {
+                        method?.Dispose();
+                    }
+                    catch { }
                 }
                 _detectionMethods.Clear();
+                _batchDetectionCache.Clear();
+                
                 _disposed = true;
+                
+                GC.SuppressFinalize(this);
             }
         }
     }

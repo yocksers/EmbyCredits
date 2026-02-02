@@ -410,6 +410,21 @@ namespace EmbyCredits.Services
             return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
         }
 
+        private object ToStaticResult(MemoryStream stream)
+        {
+            try
+            {
+                var bytes = stream.ToArray();
+                stream.Dispose();
+                return new MemoryStream(bytes, false);
+            }
+            catch
+            {
+                stream?.Dispose();
+                throw;
+            }
+        }
+
         public object Post(ProcessLibraryRequest request)
         {
             _logger?.Info("=== ProcessLibraryRequest received ===");
@@ -854,13 +869,12 @@ namespace EmbyCredits.Services
                         }
 
                         using (var content = new System.Net.Http.MultipartFormDataContent())
+                        using (var imageContent = new System.Net.Http.ByteArrayContent(imageBytes))
+                        using (var optionsContent = new System.Net.Http.StringContent("{\"languages\":[\"eng\"]}"))
                         {
-                            var imageContent = new System.Net.Http.ByteArrayContent(imageBytes);
                             imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
                             content.Add(imageContent, "file", "logo.jpg");
-
-                            var options = "{\"languages\":[\"eng\"]}";
-                            content.Add(new System.Net.Http.StringContent(options), "options");
+                            content.Add(optionsContent, "options");
 
                             var ocrEndpoint = endpoint.TrimEnd('/') + "/tesseract";
                             using (var ocrResponse = await httpClient.PostAsync(ocrEndpoint, content).ConfigureAwait(false))
@@ -1021,7 +1035,10 @@ namespace EmbyCredits.Services
                 var bytes = System.Text.Encoding.UTF8.GetBytes(debugLog);
                 var stream = new MemoryStream(bytes);
                 stream.Position = 0;
-                return stream;
+                
+                CreditsDetectionService.CleanupDebugLog();
+                
+                return ToStaticResult(stream);
             }
             catch (Exception ex)
             {
@@ -1030,7 +1047,7 @@ namespace EmbyCredits.Services
                 var errorBytes = System.Text.Encoding.UTF8.GetBytes(errorMessage);
                 var errorStream = new MemoryStream(errorBytes);
                 errorStream.Position = 0;
-                return errorStream;
+                return ToStaticResult(errorStream);
             }
         }
 
@@ -1142,7 +1159,7 @@ namespace EmbyCredits.Services
                 var bytes = System.Text.Encoding.UTF8.GetBytes(result.JsonData);
                 var stream = new MemoryStream(bytes);
                 stream.Position = 0;
-                return stream;
+                return ToStaticResult(stream);
             }
             catch (Exception ex)
             {
@@ -1501,6 +1518,34 @@ namespace EmbyCredits.Services
                 _logger?.Debug($"Error reading MarkerType property: {ex.Message}");
             }
             return null;
+        }
+
+        public object Get(GetMemoryUsageRequest request)
+        {
+            try
+            {
+                var currentProcess = System.Diagnostics.Process.GetCurrentProcess();
+                var workingSet = currentProcess.WorkingSet64;
+                var privateMemory = currentProcess.PrivateMemorySize64;
+                var gcTotalMemory = GC.GetTotalMemory(false);
+
+                return new
+                {
+                    Success = true,
+                    WorkingSetBytes = workingSet,
+                    WorkingSetMB = Math.Round(workingSet / (1024.0 * 1024.0), 2),
+                    PrivateMemoryBytes = privateMemory,
+                    PrivateMemoryMB = Math.Round(privateMemory / (1024.0 * 1024.0), 2),
+                    GCTotalMemoryBytes = gcTotalMemory,
+                    GCTotalMemoryMB = Math.Round(gcTotalMemory / (1024.0 * 1024.0), 2),
+                    Timestamp = DateTime.UtcNow
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting memory usage", ex);
+                return new { Success = false, Message = ex.Message };
+            }
         }
     }
 }

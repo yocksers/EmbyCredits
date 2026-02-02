@@ -107,10 +107,15 @@ namespace EmbyCredits
         private void CleanupDictionaries()
         {
             _failureReasons.Clear();
+            _failureReasons.TrimExcess();
             _successDetails.Clear();
+            _successDetails.TrimExcess();
             _confidenceScores.Clear();
+            _confidenceScores.TrimExcess();
             _thumbnailPaths.Clear();
+            _thumbnailPaths.TrimExcess();
             _episodeIds.Clear();
+            _episodeIds.TrimExcess();
         }
         
         internal void CheckAndLimitDictionarySize()

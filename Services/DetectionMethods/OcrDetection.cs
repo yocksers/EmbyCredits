@@ -53,7 +53,13 @@ namespace EmbyCredits.Services.DetectionMethods
         {
             LastError = string.Empty;
             
-            _ocrTextConfidences.Clear();
+            // Clear and release memory from previous detection
+            if (_ocrTextConfidences.Count > 0)
+            {
+                _ocrTextConfidences.Clear();
+                _ocrTextConfidences.TrimExcess();
+                _ocrTextConfidences = new List<double>();
+            }
             _totalKeywordMatches = 0;
             _totalFramesProcessed = 0;
             _calculatedConfidence = 0.95;
@@ -138,12 +144,16 @@ namespace EmbyCredits.Services.DetectionMethods
                     if (Configuration.OcrUseDirectMemoryPipeline)
                     {
                         LogInfo("Using direct memory pipeline (no disk I/O) for frame extraction");
-                        return await ProcessFramesDirectFromMemory(videoPath, duration, startTime, analysisDuration, fps, keywords, recentTextFrames, cancellationToken).ConfigureAwait(false);
+                        var result = await ProcessFramesDirectFromMemory(videoPath, duration, startTime, analysisDuration, fps, keywords, recentTextFrames, cancellationToken).ConfigureAwait(false);
+                        GC.Collect(1, GCCollectionMode.Optimized, false);
+                        return result;
                     }
                     else
                     {
                         LogInfo("Using disk-based frame extraction (legacy method)");
-                        return await ProcessFramesFromDisk(videoPath, duration, startTime, analysisDuration, fps, keywords, tempDir, recentTextFrames, cancellationToken).ConfigureAwait(false);
+                        var result = await ProcessFramesFromDisk(videoPath, duration, startTime, analysisDuration, fps, keywords, tempDir, recentTextFrames, cancellationToken).ConfigureAwait(false);
+                        GC.Collect(1, GCCollectionMode.Optimized, false);
+                        return result;
                     }
                 }
                 catch (Exception ex)
@@ -357,14 +367,17 @@ namespace EmbyCredits.Services.DetectionMethods
                 {
                     try
                     {
-                        var ffmpegError = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
-                        if (!string.IsNullOrWhiteSpace(ffmpegError) && 
-                            (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) || 
-                             ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase)))
+                        using (var errorReader = process.StandardError)
                         {
-                            LogDebug($"FFmpeg output: {ffmpegError}");
+                            var ffmpegError = await errorReader.ReadToEndAsync().ConfigureAwait(false);
+                            if (!string.IsNullOrWhiteSpace(ffmpegError) && 
+                                (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) || 
+                                 ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                LogDebug($"FFmpeg output: {ffmpegError}");
+                            }
+                            return ffmpegError;
                         }
-                        return ffmpegError;
                     }
                     catch (Exception ex)
                     {
@@ -469,10 +482,26 @@ namespace EmbyCredits.Services.DetectionMethods
                                 await ProcessFrameBatch(frameQueue, keywords, detectionScores, characterDensityHistory, 
                                     recentTextFrames, analysisDuration, fps, maxFramesToProcess, effectiveToken).ConfigureAwait(false);
                                 frameQueue.Clear();
+                                
+                                if (frameIndex % 200 == 0 && buffer.Count > 1024 * 1024)
+                                {
+                                    buffer.Clear();
+                                    buffer.TrimExcess();
+                                    GC.Collect(1, GCCollectionMode.Optimized, false);
+                                }
                             }
                         }
                     }
 
+                    if (buffer != null)
+                    {
+                        buffer.Clear();
+                        buffer.TrimExcess();
+                    }
+                    buffer = null;
+                    frameQueue.Clear();
+                    frameQueue = null;
+                    
                     if (!process.HasExited)
                     {
                         try
@@ -518,6 +547,14 @@ namespace EmbyCredits.Services.DetectionMethods
                     
                     LastError = $"No credits keywords detected via OCR (analyzed {_totalFramesProcessed} frames from {FormatTime(startTime)} to {FormatTime(endTime)})";
                     LogWarn("OCR completed but found no matching keywords");
+                    
+                    detectionScores.Clear();
+                    detectionScores.TrimExcess();
+                    characterDensityHistory.Clear();
+                    characterDensityHistory.TrimExcess();
+                    recentTextFrames.Clear();
+                    recentTextFrames.TrimExcess();
+                    
                     return 0;
                 }
 
@@ -532,6 +569,15 @@ namespace EmbyCredits.Services.DetectionMethods
                     LogInfo($"✓ OCR detected credits starting at {FormatTime(creditsTimestamp)}");
                     LogInfo($"  Detection based on {detectionScores.Count} keyword matches");
                     LogInfo($"  Confidence: {_calculatedConfidence:F2} ({(_calculatedConfidence * 100):F0}%)");
+                    
+                    detectionScores.Clear();
+                    detectionScores.TrimExcess();
+                    characterDensityHistory.Clear();
+                    characterDensityHistory.TrimExcess();
+                    recentTextFrames.Clear();
+                    recentTextFrames.TrimExcess();
+                    GC.Collect(2, GCCollectionMode.Optimized, false);
+                    
                     return creditsTimestamp;
                 }
                 else
@@ -556,6 +602,14 @@ namespace EmbyCredits.Services.DetectionMethods
                     
                     LastError = $"No significant credits pattern found (found {detectionScores.Count} keyword matches but no clear start point)";
                     LogWarn("OCR found keywords but no clear credits start point");
+                    
+                    detectionScores.Clear();
+                    detectionScores.TrimExcess();
+                    characterDensityHistory.Clear();
+                    characterDensityHistory.TrimExcess();
+                    recentTextFrames.Clear();
+                    recentTextFrames.TrimExcess();
+                    
                     return 0;
                 }
                 }
@@ -620,6 +674,14 @@ namespace EmbyCredits.Services.DetectionMethods
                 {
                     await ProcessOcrResult(ocrText, timestamp, index, analysisDuration, fps, keywords,
                         detectionScores, characterDensityHistory, recentTextFrames, maxFramesToProcess).ConfigureAwait(false);
+                }
+                
+                ocrTasks.Clear();
+                ocrTasks = null;
+                
+                if (frameQueue.Count > 0 && frameQueue[0].index % 100 == 0)
+                {
+                    GC.Collect(1, GCCollectionMode.Optimized, false);
                 }
                 
                 if (Configuration.OcrDelayBetweenBatchesMs > 0)
@@ -721,12 +783,15 @@ namespace EmbyCredits.Services.DetectionMethods
                     {
                         try
                         {
-                            var ffmpegError = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
-                            if (!string.IsNullOrWhiteSpace(ffmpegError) && (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) || ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase)))
+                            using (var errorReader = process.StandardError)
                             {
-                                LogDebug($"FFmpeg output: {ffmpegError}");
+                                var ffmpegError = await errorReader.ReadToEndAsync().ConfigureAwait(false);
+                                if (!string.IsNullOrWhiteSpace(ffmpegError) && (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) || ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    LogDebug($"FFmpeg output: {ffmpegError}");
+                                }
+                                return ffmpegError;
                             }
-                            return ffmpegError;
                         }
                         catch (Exception ex)
                         {
@@ -1281,12 +1346,28 @@ namespace EmbyCredits.Services.DetectionMethods
                         {
                             DetectionReason = BuildDetectionReason(detectionScores, characterDensityHistory, creditsStart);
                             LogInfo($"Credits detected at {FormatTime(creditsStart)} via OCR keyword matching");
+                            
+                            detectionScores.Clear();
+                            detectionScores.TrimExcess();
+                            characterDensityHistory.Clear();
+                            characterDensityHistory.TrimExcess();
+                            recentTextFrames.Clear();
+                            recentTextFrames.TrimExcess();
+                            
                             return creditsStart;
                         }
                     }
 
                     LastError = $"No OCR keywords found in {frameIndex} frames analyzed";
                     LogDebug("No sustained keyword matches found for credits");
+                    
+                    detectionScores.Clear();
+                    detectionScores.TrimExcess();
+                    characterDensityHistory.Clear();
+                    characterDensityHistory.TrimExcess();
+                    recentTextFrames.Clear();
+                    recentTextFrames.TrimExcess();
+                    
                     return 0;
                 }
             }
@@ -1328,8 +1409,8 @@ namespace EmbyCredits.Services.DetectionMethods
                 LogDebug($"Sending {frameData.Length} bytes to OCR endpoint {endpoint} as jpg");
                 
                 using (var content = new MultipartFormDataContent())
+                using (var imageContent = new ByteArrayContent(frameData))
                 {
-                    var imageContent = new ByteArrayContent(frameData);
                     var contentType = "image/jpeg";
                     var filename = "frame.jpg";
                     imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
@@ -1343,7 +1424,9 @@ namespace EmbyCredits.Services.DetectionMethods
                     
                     
                     var options = JsonSerializer.Serialize(optionsDict);
-                    content.Add(new StringContent(options), "options");
+                    using (var optionsContent = new StringContent(options))
+                    {
+                        content.Add(optionsContent, "options");
 
                     using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
                     using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token))
@@ -1377,6 +1460,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                 LogDebug($"OCR request failed with status: {response.StatusCode}, body: {errorContent}");
                             }
                         }
+                    }
                     }
                 }
             }
@@ -1828,20 +1912,21 @@ namespace EmbyCredits.Services.DetectionMethods
             var imageBytes = File.ReadAllBytes(imagePath);
             LogDebug($"Image size: {imageBytes.Length} bytes");
 
-            using (var content = new MultipartFormDataContent())
+            var optionsDict = new Dictionary<string, object>
             {
-                var imageContent = new ByteArrayContent(imageBytes);
+                { "languages", new[] { "eng" } },
+                { "dpi", 300 }
+            };
+            
+            var options = JsonSerializer.Serialize(optionsDict);
+
+            using (var content = new MultipartFormDataContent())
+            using (var imageContent = new ByteArrayContent(imageBytes))
+            using (var optionsContent = new StringContent(options))
+            {
                 imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
                 content.Add(imageContent, "file", Path.GetFileName(imagePath));
-
-                var optionsDict = new Dictionary<string, object>
-                {
-                    { "languages", new[] { "eng" } },
-                    { "dpi", 300 }
-                };
-                
-                var options = JsonSerializer.Serialize(optionsDict);
-                content.Add(new StringContent(options), "options");
+                content.Add(optionsContent, "options");
 
                 LogDebug($"Sending POST request to {endpoint}...");
                 

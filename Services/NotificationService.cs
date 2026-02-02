@@ -150,7 +150,9 @@ namespace EmbyCredits.Services
             sb.AppendLine();
             sb.AppendLine($"Total processed: {totalProcessed} episodes");
 
-            return sb.ToString();
+            var result = sb.ToString();
+            sb.Clear();
+            return result;
         }
 
         private string FormatDuration(TimeSpan duration)

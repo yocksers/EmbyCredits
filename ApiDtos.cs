@@ -170,4 +170,9 @@ namespace EmbyCredits.Api
     {
         public string ThumbnailId { get; set; } = string.Empty;
     }
+
+    [Route(ApiRoutes.GetMemoryUsage, "GET", Summary = "Gets current plugin memory usage.")]
+    public class GetMemoryUsageRequest : IReturn<object>
+    {
+    }
 }

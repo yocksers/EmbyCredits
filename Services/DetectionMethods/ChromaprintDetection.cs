@@ -185,7 +185,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
                     
                     var output = new List<string>();
-                    process.ErrorDataReceived += (sender, e) =>
+                    DataReceivedEventHandler errorHandler = (sender, e) =>
                     {
                         if (!string.IsNullOrEmpty(e.Data))
                         {
@@ -193,20 +193,34 @@ namespace EmbyCredits.Services.DetectionMethods
                         }
                     };
                     
-                    process.Start();
-                    
-                    if (Configuration.ChromaprintLowerProcessPriority)
+                    try
                     {
-                        CpuThrottler.SetProcessPriority(process, Configuration);
+                        process.ErrorDataReceived += errorHandler;
+                        
+                        process.Start();
+                        
+                        if (Configuration.ChromaprintLowerProcessPriority)
+                        {
+                            CpuThrottler.SetProcessPriority(process, Configuration);
+                        }
+                        
+                        process.BeginErrorReadLine();
+                        
+                        await process.WaitForExitAsync(cancellationToken);
+                    
+                        if (Configuration.ChromaprintDelayBetweenOperationsMs > 0)
+                        {
+                            await Task.Delay(Configuration.ChromaprintDelayBetweenOperationsMs, cancellationToken);
+                        }
                     }
-                    
-                    process.BeginErrorReadLine();
-                    
-                    await process.WaitForExitAsync(cancellationToken);
-                
-                    if (Configuration.ChromaprintDelayBetweenOperationsMs > 0)
+                    finally
                     {
-                        await Task.Delay(Configuration.ChromaprintDelayBetweenOperationsMs, cancellationToken);
+                        try
+                        {
+                            process.ErrorDataReceived -= errorHandler;
+                            process.CancelErrorRead();
+                        }
+                        catch { }
                     }
                     
                     var blackFrames = new List<double>();
@@ -224,10 +238,20 @@ namespace EmbyCredits.Services.DetectionMethods
                         }
                     }
                     
+                    output.Clear();
+                    output.TrimExcess();
+                    output = null;
+                    
                     if (blackFrames.Count > 0)
                     {
-                        return blackFrames.First();
+                        var result = blackFrames.First();
+                        blackFrames.Clear();
+                        blackFrames.TrimExcess();
+                        return result;
                     }
+                    
+                    blackFrames.Clear();
+                    blackFrames.TrimExcess();
                 }
                 
                 return 0;
@@ -296,7 +320,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
                     
                     var output = new List<string>();
-                    process.ErrorDataReceived += (sender, e) =>
+                    DataReceivedEventHandler errorHandler = (sender, e) =>
                     {
                         if (!string.IsNullOrEmpty(e.Data))
                         {
@@ -304,20 +328,34 @@ namespace EmbyCredits.Services.DetectionMethods
                         }
                     };
                     
-                    process.Start();
-                    
-                    if (Configuration.ChromaprintLowerProcessPriority)
+                    try
                     {
-                        CpuThrottler.SetProcessPriority(process, Configuration);
+                        process.ErrorDataReceived += errorHandler;
+                        
+                        process.Start();
+                        
+                        if (Configuration.ChromaprintLowerProcessPriority)
+                        {
+                            CpuThrottler.SetProcessPriority(process, Configuration);
+                        }
+                        
+                        process.BeginErrorReadLine();
+                        
+                        await process.WaitForExitAsync(cancellationToken);
+                        
+                        if (Configuration.ChromaprintDelayBetweenOperationsMs > 0)
+                        {
+                            await Task.Delay(Configuration.ChromaprintDelayBetweenOperationsMs, cancellationToken);
+                        }
                     }
-                    
-                    process.BeginErrorReadLine();
-                    
-                    await process.WaitForExitAsync(cancellationToken);
-                    
-                    if (Configuration.ChromaprintDelayBetweenOperationsMs > 0)
+                    finally
                     {
-                        await Task.Delay(Configuration.ChromaprintDelayBetweenOperationsMs, cancellationToken);
+                        try
+                        {
+                            process.ErrorDataReceived -= errorHandler;
+                            process.CancelErrorRead();
+                        }
+                        catch { }
                     }
                     
                     var silencePeriods = new List<double>();
@@ -335,10 +373,20 @@ namespace EmbyCredits.Services.DetectionMethods
                         }
                     }
                     
+                    output.Clear();
+                    output.TrimExcess();
+                    output = null;
+                    
                     if (silencePeriods.Count > 0)
                     {
-                        return silencePeriods.First();
+                        var result = silencePeriods.First();
+                        silencePeriods.Clear();
+                        silencePeriods.TrimExcess();
+                        return result;
                     }
+                    
+                    silencePeriods.Clear();
+                    silencePeriods.TrimExcess();
                 }
                 
                 return 0;

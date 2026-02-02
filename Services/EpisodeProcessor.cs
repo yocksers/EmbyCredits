@@ -196,6 +196,8 @@ namespace EmbyCredits.Services
                     _debugLogger.LogDebug($"Applying {_configuration.DelayBetweenEpisodesMs}ms delay before next episode");
                     await Task.Delay(_configuration.DelayBetweenEpisodesMs);
                 }
+                
+                GC.Collect(2, GCCollectionMode.Optimized, false);
             }
         }
 
@@ -223,18 +225,21 @@ namespace EmbyCredits.Services
                     process.Start();
                     CpuThrottler.SetProcessPriority(process, _configuration);
                     
-                    var output = await process.StandardOutput.ReadToEndAsync();
-                    await process.WaitForExitAsync();
-
-                    if (double.TryParse(output.Trim(), System.Globalization.NumberStyles.Any, 
-                        System.Globalization.CultureInfo.InvariantCulture, out var duration))
+                    using (var outputReader = process.StandardOutput)
                     {
-                        _debugLogger.LogDebug($"Duration result: {duration} seconds");
-                        return duration;
-                    }
+                        var output = await outputReader.ReadToEndAsync();
+                        await process.WaitForExitAsync();
 
-                    _debugLogger.LogError("Failed to parse duration output", null);
-                    return 0;
+                        if (double.TryParse(output.Trim(), System.Globalization.NumberStyles.Any, 
+                            System.Globalization.CultureInfo.InvariantCulture, out var duration))
+                        {
+                            _debugLogger.LogDebug($"Duration result: {duration} seconds");
+                            return duration;
+                        }
+
+                        _debugLogger.LogError("Failed to parse duration output", null);
+                        return 0;
+                    }
                 }
             }
             catch (Exception ex)

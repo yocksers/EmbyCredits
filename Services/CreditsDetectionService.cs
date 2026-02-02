@@ -46,7 +46,7 @@ namespace EmbyCredits.Services
         private static EpisodeProcessor? _episodeProcessor;
         private static PluginCoordinationService? _pluginCoordination;
 
-        private static readonly ConcurrentDictionary<string, List<(string method, double timestamp)>> _batchDetectionCache = new ConcurrentDictionary<string, List<(string method, double timestamp)>>();
+        private static ConcurrentDictionary<string, List<(string method, double timestamp)>> _batchDetectionCache = new ConcurrentDictionary<string, List<(string method, double timestamp)>>();
         private static bool _isBatchMode = false;
 
         private static void LogInfo(string message)
@@ -152,7 +152,15 @@ namespace EmbyCredits.Services
             try
             {
                 _detectionCoordinator?.ClearCache();
+                
+                // Recreate to release capacity (ConcurrentDictionary doesn't have TrimExcess)
                 _batchDetectionCache.Clear();
+                if (_batchDetectionCache.Count == 0 && _batchDetectionCache.Any())
+                {
+                    // Force recreation if capacity is large
+                    System.Threading.Interlocked.Exchange(ref _batchDetectionCache, new ConcurrentDictionary<string, List<(string method, double timestamp)>>());
+                }
+                
                 CleanupOldProcessedEpisodes();
                 
                 while (_processingQueue.TryDequeue(out _)) { }
@@ -247,7 +255,15 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
             _pluginCoordination?.Dispose();
             
             while (_processingQueue.TryDequeue(out _)) { }
+            
+            // Recreate dictionaries to release capacity
             _batchDetectionCache.Clear();
+            System.Threading.Interlocked.Exchange(ref _batchDetectionCache, new ConcurrentDictionary<string, List<(string method, double timestamp)>>());
+            
+            _processedEpisodes.Clear();
+            System.Threading.Interlocked.Exchange(ref _processedEpisodes, new ConcurrentDictionary<string, DateTime>());
+            
+            GC.Collect(2, GCCollectionMode.Forced, true);
 
             LogInfo("Credits Detection Service stopped");
         }
@@ -484,7 +500,9 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
         {
             ClearCache();
 
+            // Ensure batch cache is fully reset
             _batchDetectionCache.Clear();
+            System.Threading.Interlocked.Exchange(ref _batchDetectionCache, new ConcurrentDictionary<string, List<(string method, double timestamp)>>());
 
             while (_processingQueue.TryDequeue(out _)) { }
             _cancellationRequested = false;
@@ -558,7 +576,9 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                 clearedCount++;
             }
 
+            // Recreate to release capacity
             _processedEpisodes.Clear();
+            System.Threading.Interlocked.Exchange(ref _processedEpisodes, new ConcurrentDictionary<string, DateTime>());
 
             LogInfo($"Queue cleared: {clearedCount} items removed, processed cache cleared");
             ResetProgressToCancelling();
@@ -733,6 +753,11 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
             return _debugLogger?.GetDebugLog() ?? "No debug log available. Debug mode was not enabled.";
         }
 
+        public static void CleanupDebugLog()
+        {
+            _debugLogger?.Cleanup();
+        }
+
         private static void ScheduleDebugLogCleanup()
         {
             _debugLogger?.ScheduleDebugLogCleanup();
@@ -766,6 +791,7 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                 Plugin.Progress.FailureReasons?.Clear();
             }
 
+            var processedCount = 0;
             try
             {
                 while (_processingQueue.TryDequeue(out var episode))
@@ -796,6 +822,15 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
 
                     LogInfo($"Processing episode from queue: {episode.Name}");
                     await ProcessEpisode(episode);
+
+                    processedCount++;
+                    
+                    if (processedCount % 10 == 0)
+                    {
+                        CleanupBatchDetectionCache();
+                        CleanupOldProcessedEpisodes();
+                        GC.Collect(1, GCCollectionMode.Optimized, false);
+                    }
 
                     await Task.Delay(1000);
                 }
@@ -956,6 +991,7 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                 {
                     Plugin.Progress.ProcessedItems++;
                     Plugin.Progress.CurrentItemProgress = 100;
+                    Plugin.Progress.CheckAndLimitDictionarySize();
 
                     if (Plugin.Progress.ProcessedItems >= Plugin.Progress.TotalItems)
                     {
@@ -966,6 +1002,9 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
 
                     }
                 }
+                
+                CleanupBatchDetectionCache();
+                CleanupOldProcessedEpisodes();
             }
             catch (Exception ex)
             {
@@ -1051,25 +1090,38 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                 })
                 {
                     var errorOutput = new System.Text.StringBuilder();
-                    process.ErrorDataReceived += (sender, e) =>
+                    DataReceivedEventHandler errorHandler = (sender, e) =>
                     {
                         if (!string.IsNullOrEmpty(e.Data))
                         {
                             errorOutput.AppendLine(e.Data);
                         }
                     };
-
-                    process.Start();
-                    process.BeginErrorReadLine();
                     
-                    // Use Task.Run to avoid blocking
-                    await Task.Run(() => process.WaitForExit());
+                    try
+                    {
+                        process.ErrorDataReceived += errorHandler;
+
+                        process.Start();
+                        process.BeginErrorReadLine();
+                        
+                        await Task.Run(() => process.WaitForExit());
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            process.ErrorDataReceived -= errorHandler;
+                            process.CancelErrorRead();
+                        }
+                        catch { }
+                    }
 
                     if (process.ExitCode == 0 && File.Exists(thumbnailPath))
                     {
                         var fileInfo = new FileInfo(thumbnailPath);
                         LogDebug($"✓ Generated thumbnail for {episodeKey}: {thumbnailFileName} ({fileInfo.Length} bytes)");
-                        return thumbnailFileName; // Return just the filename, not full path
+                        return thumbnailFileName;
                     }
                     else
                     {
@@ -1088,6 +1140,10 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                 LogDebug($"✗ Error generating thumbnail for {episodeKey}: {ex.Message}");
                 _logger?.ErrorException($"Thumbnail generation error for {episodeKey}", ex);
                 return string.Empty;
+            }
+            finally
+            {
+                GC.Collect(1, GCCollectionMode.Optimized, false);
             }
         }
 

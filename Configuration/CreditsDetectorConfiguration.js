@@ -205,6 +205,10 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             view.querySelector('#btnSaveOcrEnhancements').addEventListener('click', () => {
                 dataManager.saveData(this, view);
             });
+
+            view.querySelector('#btnRefreshMemory').addEventListener('click', () => {
+                this.refreshMemoryUsage(view);
+            });
         }
 
         addKeyword(view) {
@@ -301,6 +305,33 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             });
         }
 
+        refreshMemoryUsage(view) {
+            const url = ApiClient.getUrl('CreditsDetector/GetMemoryUsage');
+            
+            ApiClient.fetch({
+                url: url,
+                type: 'GET',
+                dataType: 'json',
+                headers: {
+                    'X-Emby-Token': ApiClient.accessToken()
+                }
+            }).then(response => {
+                if (response.Success) {
+                    view.querySelector('#memoryWorkingSet').textContent = `${response.WorkingSetMB} MB`;
+                    view.querySelector('#memoryPrivate').textContent = `${response.PrivateMemoryMB} MB`;
+                    view.querySelector('#memoryGC').textContent = `${response.GCTotalMemoryMB} MB`;
+                    
+                    const timestamp = new Date(response.Timestamp);
+                    view.querySelector('#memoryTimestamp').textContent = timestamp.toLocaleString();
+                } else {
+                    toast({ type: 'error', text: 'Failed to get memory usage: ' + (response.Message || 'Unknown error') });
+                }
+            }).catch(error => {
+                console.error('Error fetching memory usage:', error);
+                toast({ type: 'error', text: 'Error fetching memory usage' });
+            });
+        }
+
         onResume(options) {
             super.onResume(options);
             const view = this.view;
@@ -328,6 +359,9 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     
                     // Enforce dropdown styles after load
                     this.enforceDropdownStyles(view);
+                    
+                    // Load memory usage
+                    this.refreshMemoryUsage(view);
                         
                         // Load donate image
                         const donateImg = view.querySelector('#donateImage');

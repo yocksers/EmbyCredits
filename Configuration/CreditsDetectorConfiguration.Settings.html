@@ -612,6 +612,28 @@
         </div>
     </div>
 
+    <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
+        <h3 style="margin-top:0;">Plugin Memory Usage</h3>
+        <div id="memoryUsageDisplay" style="font-family: monospace; font-size: 0.9em;">
+            <div style="margin-bottom: 0.5em;">
+                <span style="font-weight: bold;">Working Set:</span> <span id="memoryWorkingSet">Loading...</span>
+            </div>
+            <div style="margin-bottom: 0.5em;">
+                <span style="font-weight: bold;">Private Memory:</span> <span id="memoryPrivate">Loading...</span>
+            </div>
+            <div style="margin-bottom: 0.5em;">
+                <span style="font-weight: bold;">GC Memory:</span> <span id="memoryGC">Loading...</span>
+            </div>
+            <div style="margin-top: 1em; font-size: 0.85em; color: #999;">
+                Last updated: <span id="memoryTimestamp">Never</span>
+            </div>
+        </div>
+        <button is="emby-button" type="button" class="raised button-submit" id="btnRefreshMemory" style="margin-top: 1em;">
+            <i class="md-icon">refresh</i>
+            <span>Refresh</span>
+        </button>
+    </div>
+
     <div style="margin-top: 2em; display: flex; gap: 1em;">
         <button is="emby-button" type="submit" class="raised button-submit block" style="flex: 1;">
             <span>Save</span>

@@ -221,6 +221,9 @@ namespace EmbyCredits.Services
                     progress.EndTime = DateTime.Now;
                     progress.CurrentItem = "Export Complete";
                 }
+                
+                backupData.Clear();
+                GC.Collect(1, GCCollectionMode.Optimized, false);
 
                 return Task.FromResult(result);
             }
@@ -509,6 +512,14 @@ namespace EmbyCredits.Services
                     progress.EndTime = DateTime.Now;
                     progress.CurrentItem = "Import Complete";
                 }
+                
+                episodesByTvdbId.Clear();
+                episodesByTmdbId.Clear();
+                episodesByImdbId.Clear();
+                episodesBySeriesAndNumber.Clear();
+                episodesByPath.Clear();
+                allEpisodes.Clear();
+                GC.Collect(1, GCCollectionMode.Optimized, false);
 
                 return Task.FromResult(result);
             }

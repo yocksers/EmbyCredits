@@ -440,9 +440,19 @@ namespace EmbyCredits.Services
             {
                 var keepSize = (int)(MaxDebugLogSize * 0.8);
                 var removeSize = _debugLog.Length - keepSize;
-                _debugLog.Remove(0, removeSize);
-                _debugLog.Insert(0, $"[TRUNCATED: Removed {removeSize} characters to prevent memory growth]\n\n");
+                
+                // Get the kept portion
+                var keptText = _debugLog.ToString(removeSize, _debugLog.Length - removeSize);
+                
+                // Recreate to release capacity
+                _debugLog.Clear();
+                _debugLog = new StringBuilder(keepSize + 1024); // Reasonable initial capacity
+                _debugLog.Append($"[TRUNCATED: Removed {removeSize} characters to prevent memory growth]\n\n");
+                _debugLog.Append(keptText);
+                
                 _logger.Info($"Debug log truncated to prevent memory growth (was {_debugLog.Length + removeSize} bytes)");
+                
+                GC.Collect(1, GCCollectionMode.Optimized, false);
             }
         }
 
