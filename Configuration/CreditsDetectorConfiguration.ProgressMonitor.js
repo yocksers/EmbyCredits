@@ -8,6 +8,9 @@
             instance.progressHideTimeout = null;
         }
         
+        // Store dry run state for use in updateResults
+        instance.isDryRun = true;
+        
         const btnCancel = view.querySelector('#btnCancelProcessing');
         if (btnCancel) btnCancel.style.display = 'inline-block';
         
@@ -35,9 +38,13 @@
                     if (isDebugMode) {
                         setTimeout(() => downloadDebugLog(), 1000);
                     }
+                    
+                    // Clear dry run flag when complete
+                    instance.isDryRun = false;
                     return;
                 }
                 updateProgressUI(view, progress);
+                updateResults(view, progress, instance.isDryRun);
             }).catch(error => {
                 console.error('Error fetching progress:', error);
                 clearInterval(instance.progressInterval);
@@ -119,7 +126,7 @@
         updateResults(view, progress);
     }
     
-    function updateResults(view, progress) {
+    function updateResults(view, progress, isDryRun = false) {
         const failureDetails = view.querySelector('#failureDetails');
         const failureList = view.querySelector('#failureList');
         const successDetails = view.querySelector('#successDetails');
@@ -172,6 +179,21 @@
                         playVideoAtTimestamp(episodeId, timestampSeconds);
                     });
                     episodeTitle.appendChild(playButton);
+                    
+                    // Add "Add Timestamp" button if this is a dry run
+                    if (isDryRun) {
+                        const addButton = document.createElement('button');
+                        addButton.className = 'button-flat';
+                        addButton.style.cssText = 'padding: 0.2em 0.5em; font-size: 0.8em; min-width: auto; background-color: #1e88e5; color: white; margin-left: 0.5em;';
+                        addButton.innerHTML = '<i class="md-icon">add</i> Add Timestamp';
+                        addButton.title = 'Save this timestamp as a chapter marker';
+                        addButton.addEventListener('click', function() {
+                            const episodeId = progress.EpisodeIds[episode];
+                            const timestampSeconds = parseTimestamp(timestamp);
+                            addTimestampFromDryRun(episodeId, timestampSeconds, episode, addButton);
+                        });
+                        episodeTitle.appendChild(addButton);
+                    }
                 }
                 
                 textContent.appendChild(episodeTitle);
@@ -252,6 +274,36 @@
             loading.hide();
             console.error('Error downloading debug log:', error);
             toast({ type: 'error', text: 'Failed to download debug log.' });
+        });
+    }
+    
+    function addTimestampFromDryRun(episodeId, timestampSeconds, episodeName, buttonElement) {
+        loading.show();
+        
+        ApiClient.ajax({
+            type: 'POST',
+            url: ApiClient.getUrl('CreditsDetector/AddTimestampFromDryRun'),
+            contentType: 'application/json',
+            data: JSON.stringify({
+                EpisodeId: episodeId,
+                TimestampSeconds: timestampSeconds
+            })
+        }).then(response => {
+            loading.hide();
+            if (response.Success) {
+                toast({ type: 'success', text: response.Message || 'Timestamp added successfully!' });
+                
+                // Update button to show it's been added
+                buttonElement.style.backgroundColor = '#4caf50';
+                buttonElement.innerHTML = '<i class="md-icon">check</i> Added';
+                buttonElement.disabled = true;
+            } else {
+                toast({ type: 'error', text: response.Message || 'Failed to add timestamp' });
+            }
+        }).catch(error => {
+            loading.hide();
+            console.error('Error adding timestamp:', error);
+            toast({ type: 'error', text: 'Failed to add timestamp. Check server logs.' });
         });
     }
     

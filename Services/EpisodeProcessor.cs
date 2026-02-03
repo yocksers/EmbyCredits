@@ -136,7 +136,15 @@ namespace EmbyCredits.Services
                 _debugLogger.LogInfo($"Video duration: {FormatTime(duration)}");
 
                 _debugLogger.LogInfo("Running credits detection");
-                var result = await _detectionCoordinator.DetectCredits(normalizedPath, duration, episodeId);
+                
+                var series = episode.Series;
+                var seriesId = series?.Id.ToString();
+                var seasonNumber = episode.ParentIndexNumber;
+                var episodeNumber = episode.IndexNumber;
+                
+                var result = !string.IsNullOrEmpty(seriesId) 
+                    ? await _detectionCoordinator.DetectCreditsWithContext(normalizedPath, duration, episodeId, seriesId, seasonNumber, episodeNumber)
+                    : await _detectionCoordinator.DetectCredits(normalizedPath, duration, episodeId);
                 double creditsStart = result.timestamp;
                 string failureReason = result.failureReason;
                 double confidence = result.confidence;

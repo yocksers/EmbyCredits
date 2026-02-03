@@ -27,6 +27,7 @@ namespace EmbyCredits.Api
         public const string GetBackupImportProgress = "/CreditsDetector/GetBackupImportProgress";
         public const string UpdateCreditsMarker = "/CreditsDetector/UpdateCreditsMarker";
         public const string ApplyToSeason = "/CreditsDetector/ApplyToSeason";
+        public const string AddTimestampFromDryRun = "/CreditsDetector/AddTimestampFromDryRun";
         public const string GetImage = "/CreditsDetector/Images/{ImageName}";
         public const string GetSeasonValidation = "/CreditsDetector/GetSeasonValidation";
         public const string GetThumbnail = "/CreditsDetector/Thumbnail/{ThumbnailId}";

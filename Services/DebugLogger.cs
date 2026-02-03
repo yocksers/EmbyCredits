@@ -57,8 +57,7 @@ namespace EmbyCredits.Services
                 _debugLog.AppendLine($"  Text Detection:                   {(_configuration.EnableTextDetection ? $"Yes (Priority: {_configuration.TextDetectionPriority})" : "No")}");
                 _debugLog.AppendLine($"  Scene Change Detection:           {(_configuration.EnableSceneChangeDetection ? $"Yes (Priority: {_configuration.SceneChangePriority})" : "No")}");
                 _debugLog.AppendLine($"  Keyword Detection:                {(_configuration.EnableKeywordDetection ? $"Yes (Priority: {_configuration.KeywordDetectionPriority})" : "No")}");
-                _debugLog.AppendLine($"  OCR Detection:                    {(_configuration.EnableOcrDetection ? $"Yes (Priority: {_configuration.OcrDetectionPriority})" : "No")}");
-                _debugLog.AppendLine($"  Chromaprint Detection:            {(_configuration.EnableChromaprintDetection ? $"Yes (Priority: {_configuration.ChromaprintDetectionPriority})" : "No")}");
+                _debugLog.AppendLine($"  Detection Mode:                   {_configuration.DetectionMode}");
                 _debugLog.AppendLine($"  Combined Heuristic:               {(_configuration.EnableCombinedHeuristic ? $"Yes (Priority: {_configuration.CombinedHeuristicPriority})" : "No")}");
                 _debugLog.AppendLine();
 
@@ -140,7 +139,7 @@ namespace EmbyCredits.Services
                     _debugLog.AppendLine();
                 }
 
-                if (_configuration.EnableOcrDetection)
+                if (_configuration.DetectionMode == DetectionMode.OcrOnly || _configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
                 {
                     _debugLog.AppendLine("OCR DETECTION SETTINGS");
                     _debugLog.AppendLine("-".PadRight(80, '-'));
@@ -264,7 +263,7 @@ namespace EmbyCredits.Services
                     _debugLog.AppendLine();
                 }
 
-                if (_configuration.EnableChromaprintDetection)
+                if (_configuration.DetectionMode == DetectionMode.HashOnly || _configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
                 {
                     _debugLog.AppendLine("CHROMAPRINT DETECTION SETTINGS");
                     _debugLog.AppendLine("-".PadRight(80, '-'));

@@ -31,7 +31,10 @@ namespace EmbyCredits.Services
         {
             try
             {
-                _logger.Info("Manual credits detection triggered");
+                if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+                {
+                    _logger.Info("Manual credits detection triggered");
+                }
 
                 var allEpisodes = _libraryManager.GetItemList(new InternalItemsQuery
                 {
@@ -71,7 +74,10 @@ namespace EmbyCredits.Services
 
         public object Post(ProcessSeriesRequest request)
         {
-            _logger?.Info("=== ProcessSeriesRequest received ===");
+            if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+            {
+                _logger?.Info("=== ProcessSeriesRequest received ===");
+            }
 
             var result = RequestProcessorHelper.ProcessDetectionRequest(
                 _libraryManager,
@@ -87,7 +93,10 @@ namespace EmbyCredits.Services
 
         public object Post(ProcessSeasonRequest request)
         {
-            _logger?.Info($"=== ProcessSeasonRequest received for Season {request.SeasonNumber} ===");
+            if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+            {
+                _logger?.Info($"=== ProcessSeasonRequest received for Season {request.SeasonNumber} ===");
+            }
 
             try
             {
@@ -139,7 +148,10 @@ namespace EmbyCredits.Services
 
         public object Post(ProcessSeasonMissingMarkersRequest request)
         {
-            _logger?.Info($"=== ProcessSeasonMissingMarkersRequest received for Season {request.SeasonNumber} ===");
+            if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+            {
+                _logger?.Info($"=== ProcessSeasonMissingMarkersRequest received for Season {request.SeasonNumber} ===");
+            }
 
             try
             {
@@ -193,7 +205,10 @@ namespace EmbyCredits.Services
                         if (hasMarker && episodeId != null)
                         {
                             episodesWithMarkers.Add(episodeId);
-                            _logger?.Info($"Episode {episodeId} already has credits marker");
+                            if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+                            {
+                                _logger?.Info($"Episode {episodeId} already has credits marker");
+                            }
                         }
                     }
                 }
@@ -234,7 +249,10 @@ namespace EmbyCredits.Services
 
         public object Post(BatchUpdateSeasonMissingMarkersRequest request)
         {
-            _logger?.Info($"=== BatchUpdateSeasonMissingMarkersRequest received for Season {request.SeasonNumber} ===");
+            if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+            {
+                _logger?.Info($"=== BatchUpdateSeasonMissingMarkersRequest received for Season {request.SeasonNumber} ===");
+            }
 
             try
             {
@@ -301,7 +319,10 @@ namespace EmbyCredits.Services
                     .Where(ep => !episodesWithMarkers.Contains(ep.Id.ToString()))
                     .ToList();
                 
-                _logger?.Info($"Found {episodesWithoutMarkers.Count} episodes without markers (out of {seasonEpisodes.Count} total)");
+                if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+                {
+                    _logger?.Info($"Found {episodesWithoutMarkers.Count} episodes without markers (out of {seasonEpisodes.Count} total)");
+                }
 
                 if (episodesWithoutMarkers.Count == 0)
                 {
@@ -362,7 +383,10 @@ namespace EmbyCredits.Services
 
                         chapterMarkerService.SaveCreditsMarker(episode, actualCreditsStartSeconds);
                         successCount++;
-                        _logger?.Info($"Set credits marker at {FormatTime(actualCreditsStartSeconds)} for {episode.Name}");
+                        if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+                        {
+                            _logger?.Info($"Set credits marker at {FormatTime(actualCreditsStartSeconds)} for {episode.Name}");
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -427,7 +451,10 @@ namespace EmbyCredits.Services
 
         public object Post(ProcessLibraryRequest request)
         {
-            _logger?.Info("=== ProcessLibraryRequest received ===");
+            if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+            {
+                _logger?.Info("=== ProcessLibraryRequest received ===");
+            }
 
             var result = RequestProcessorHelper.ProcessDetectionRequest(
                 _libraryManager,
@@ -775,7 +802,10 @@ namespace EmbyCredits.Services
 
         public object Post(DryRunSeriesRequest request)
         {
-            _logger?.Info("=== DryRunSeriesRequest START ===");
+            if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+            {
+                _logger?.Info("=== DryRunSeriesRequest START ===");
+            }
 
             if (request?.SeasonNumber.HasValue == true && !string.IsNullOrEmpty(request.SeriesId))
             {
@@ -983,7 +1013,10 @@ namespace EmbyCredits.Services
 
         public object Post(DryRunSeriesDebugRequest request)
         {
-            _logger?.Info("=== DryRunSeriesDebugRequest START ===");
+            if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+            {
+                _logger?.Info("=== DryRunSeriesDebugRequest START ===");
+            }
 
             if (request?.SeasonNumber.HasValue == true && !string.IsNullOrEmpty(request.SeriesId))
             {
@@ -1029,7 +1062,10 @@ namespace EmbyCredits.Services
         {
             try
             {
-                _logger?.Info("Debug log requested");
+                if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+                {
+                    _logger?.Info("Debug log requested");
+                }
                 var debugLog = CreditsDetectionService.GetDebugLog();
 
                 var bytes = System.Text.Encoding.UTF8.GetBytes(debugLog);
@@ -1055,7 +1091,10 @@ namespace EmbyCredits.Services
         {
             try
             {
-                _logger?.Info("Credits backup export requested");
+                if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+                {
+                    _logger?.Info("Credits backup export requested");
+                }
 
                 var backupService = Plugin.CreditsBackupService;
                 if (backupService == null)
@@ -1089,7 +1128,10 @@ namespace EmbyCredits.Services
         {
             try
             {
-                _logger?.Info("Credits backup import requested");
+                if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+                {
+                    _logger?.Info("Credits backup import requested");
+                }
 
                 if (string.IsNullOrEmpty(request.JsonData))
                 {
@@ -1132,7 +1174,10 @@ namespace EmbyCredits.Services
                     return new { Success = false, Message = "SeriesId is required" };
                 }
 
-                _logger?.Info($"Single series credits export requested for SeriesId: {request.SeriesId}");
+                if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+                {
+                    _logger?.Info($"Single series credits export requested for SeriesId: {request.SeriesId}");
+                }
 
                 var series = ItemLookupHelper.ResolveSeries(_libraryManager, request.SeriesId, _logger);
                 if (series == null)
@@ -1518,6 +1563,49 @@ namespace EmbyCredits.Services
                 _logger?.Debug($"Error reading MarkerType property: {ex.Message}");
             }
             return null;
+        }
+
+        public object Post(AddTimestampFromDryRunRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.EpisodeId))
+                {
+                    return new { Success = false, Message = "EpisodeId is required" };
+                }
+
+                if (request.TimestampSeconds <= 0)
+                {
+                    return new { Success = false, Message = "Valid timestamp is required" };
+                }
+
+                var episode = _libraryManager.GetItemById(request.EpisodeId) as Episode;
+                if (episode == null)
+                {
+                    return new { Success = false, Message = "Episode not found" };
+                }
+
+                var chapterMarkerService = Plugin.ChapterMarkerService;
+                if (chapterMarkerService == null)
+                {
+                    return new { Success = false, Message = "Chapter marker service not initialized" };
+                }
+
+                var episodeInfo = $"{episode.Series?.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00} - {episode.Name}";
+                _logger?.Info($"Manually adding timestamp from dry run: {episodeInfo} at {FormatTime(request.TimestampSeconds)}");
+
+                chapterMarkerService.SaveCreditsMarker(episode, request.TimestampSeconds);
+
+                return new { 
+                    Success = true, 
+                    Message = $"Credits marker added at {FormatTime(request.TimestampSeconds)} for {episodeInfo}" 
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error adding timestamp from dry run", ex);
+                return new { Success = false, Message = ex.Message };
+            }
         }
 
         public object Get(GetMemoryUsageRequest request)

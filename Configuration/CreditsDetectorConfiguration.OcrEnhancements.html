@@ -7,6 +7,35 @@
     <h2 style="margin-top:0;">OCR Enhancements</h2>
     <p class="fieldDescription">Advanced features to improve OCR detection accuracy and performance. All features are disabled by default.</p>
 
+    <h3 style="margin-top: 1.5em; color: #52b54b;">Tesseract Language Configuration</h3>
+    <p class="fieldDescription">Configure Tesseract OCR engine for better multi-language support, especially Japanese text with spacing.</p>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrLanguages">OCR Languages</label>
+        <input is="emby-input" type="text" id="txtOcrLanguages" data-config-key="OcrLanguages" />
+        <div class="fieldDescription"><strong>Default: eng+jpn.</strong> Language codes separated by + (e.g., "eng+jpn+kor"). Common: eng (English), jpn (Japanese), kor (Korean), chi_sim (Chinese Simplified), chi_tra (Chinese Traditional), spa (Spanish), fra (French), deu (German)</div>
+    </div>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrPageSegmentationMode">Page Segmentation Mode (PSM)</label>
+        <input is="emby-input" type="number" id="txtOcrPageSegmentationMode" data-config-key="OcrPageSegmentationMode" min="0" max="13" />
+        <div class="fieldDescription"><strong>Default: 3.</strong> How Tesseract segments the page. 3=Auto (recommended), 6=Single uniform block, 11=Sparse text, 12=Sparse text with OSD, 13=Raw line</div>
+    </div>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrEngineMode">OCR Engine Mode (OEM)</label>
+        <input is="emby-input" type="number" id="txtOcrEngineMode" data-config-key="OcrEngineMode" min="0" max="3" />
+        <div class="fieldDescription"><strong>Default: 3.</strong> 0=Legacy, 1=LSTM only, 2=Legacy+LSTM, 3=Default (LSTM if available). LSTM (mode 1 or 3) works better for Japanese</div>
+    </div>
+
+    <div class="checkboxContainer">
+        <label>
+            <input is="emby-checkbox" type="checkbox" id="chkOcrPreserveInterwordSpaces" data-config-key="OcrPreserveInterwordSpaces" />
+            <span>Preserve Spaces Between Characters</span>
+        </label>
+        <div class="fieldDescription">Essential for Japanese shows with spaces between characters. Preserves spacing in OCR output for accurate keyword matching</div>
+    </div>
+
     <h3 style="margin-top: 1.5em; color: #52b54b;">Credit Structure Detection</h3>
     <p class="fieldDescription">Recognize typical credit formatting (uppercase roles + mixed case names) without keywords.</p>
 

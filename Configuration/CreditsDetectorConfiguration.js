@@ -99,16 +99,19 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 backupManager.importBackup(view);
             });
 
-            const ocrCheckbox = view.querySelector('#chkEnableOcrDetection');
-            const hashCheckbox = view.querySelector('#chkEnableHashDetection');
+            const detectionModeSelect = view.querySelector('#selectDetectionMode');
             
-            if (ocrCheckbox && hashCheckbox) {
+            if (detectionModeSelect) {
                 const updateCollapsibleColors = () => {
+                    const mode = detectionModeSelect.value;
                     const ocrHeaders = view.querySelectorAll('.collapsible-header[data-detection-type="ocr"]');
                     const hashHeaders = view.querySelectorAll('.collapsible-header[data-detection-type="hash"]');
                     
+                    // For fallback modes, both OCR and Hash settings are used
+                    const isFallbackMode = mode === 'OcrWithHashFallback' || mode === 'HashWithOcrFallback';
+                    
                     ocrHeaders.forEach(header => {
-                        if (ocrCheckbox.checked) {
+                        if (mode === 'OcrOnly' || mode === 'OcrWithHashFallback' || mode === 'HashWithOcrFallback') {
                             header.style.backgroundColor = '#52B54B';
                         } else {
                             header.style.backgroundColor = '#808080';
@@ -116,7 +119,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     });
                     
                     hashHeaders.forEach(header => {
-                        if (hashCheckbox.checked) {
+                        if (mode === 'HashOnly' || mode === 'HashWithOcrFallback' || mode === 'OcrWithHashFallback') {
                             header.style.backgroundColor = '#52B54B';
                         } else {
                             header.style.backgroundColor = '#808080';
@@ -124,17 +127,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     });
                 };
                 
-                ocrCheckbox.addEventListener('change', (e) => {
-                    if (e.target.checked) {
-                        hashCheckbox.checked = false;
-                    }
-                    updateCollapsibleColors();
-                });
-
-                hashCheckbox.addEventListener('change', (e) => {
-                    if (e.target.checked) {
-                        ocrCheckbox.checked = false;
-                    }
+                detectionModeSelect.addEventListener('change', () => {
                     updateCollapsibleColors();
                 });
                 
@@ -192,7 +185,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
 
             view.querySelector('#btnResetKeywords').addEventListener('click', () => {
                 if (confirm('Reset keywords to defaults? This will replace all current keywords.')) {
-                    const defaults = 'associate producer,based on,cast,casting,cinematography,co-producer,composer,costume design,created by,credits,developed by,directed by,director of photography,editing,editor,end credits,ende,executive producer,fim,fin,fine,guest starring,music by,produced by,producer,production company,production design,screenplay,series producer,sound,special thanks,starring,story by,the end,visual effects,written by,끝,終';
+                    const defaults = 'associate producer,based on,cast,casting,cinematography,co-producer,composer,costume design,created by,credits,developed by,directed by,director of photography,editing,editor,end credits,ende,executive producer,fim,fin,fine,guest starring,music by,produced by,producer,production company,production design,screenplay,series producer,sound,special thanks,starring,story by,the end,visual effects,written by,끝,終,キャスト,スタッフ,監督,脚本,音楽,製作,制作,プロデューサー,原作,演出,撮影,編集,おわり,提供,協力,出演';
                     view.querySelector('#txtOcrDetectionKeywords').value = defaults;
                     this.updateKeywordDisplay(view);
                     

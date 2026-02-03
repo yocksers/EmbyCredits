@@ -48,6 +48,8 @@ namespace EmbyCredits.Services
 
         private static ConcurrentDictionary<string, List<(string method, double timestamp)>> _batchDetectionCache = new ConcurrentDictionary<string, List<(string method, double timestamp)>>();
         private static bool _isBatchMode = false;
+        
+        private static ConcurrentDictionary<string, List<string>> _episodeStatusMessages = new ConcurrentDictionary<string, List<string>>();
 
         private static void LogInfo(string message)
         {
@@ -72,6 +74,24 @@ namespace EmbyCredits.Services
         public static void LogToDebug(string level, string message)
         {
             _debugLogger?.LogToDebug(level, message);
+        }
+        
+        public static void AddEpisodeStatusMessage(string episodeId, string message)
+        {
+            var messages = _episodeStatusMessages.GetOrAdd(episodeId, _ => new List<string>());
+            lock (messages)
+            {
+                messages.Add(message);
+            }
+        }
+        
+        private static List<string> GetAndClearEpisodeStatusMessages(string episodeId)
+        {
+            if (_episodeStatusMessages.TryRemove(episodeId, out var messages))
+            {
+                return messages;
+            }
+            return new List<string>();
         }
 
         public static bool IsDebugMode => _debugLogger?.IsDebugMode ?? false;
@@ -612,6 +632,16 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
 
         public static void QueueEpisodeManual(Episode episode, bool skipExistingMarkers = false)
         {
+            var series = episode.Series;
+            if (series != null && episode.ParentIndexNumber.HasValue)
+            {
+                var seriesId = series.Id.ToString();
+                var seasonNumber = episode.ParentIndexNumber.Value;
+                EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearSeriesCache(seriesId, seasonNumber);
+                EmbyCredits.Services.DetectionMethods.OcrDetection.ClearSeriesCache(seriesId, seasonNumber);
+                LogDebug($"Cleared episode comparison cache for {series.Name} Season {seasonNumber} (manual detection)");
+            }
+
             if (skipExistingMarkers && _itemRepository != null)
             {
                 var chapters = _itemRepository.GetChapters(episode);
@@ -627,7 +657,6 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                     
                     if (Plugin.Instance != null)
                     {
-                        var series = episode.Series;
                         var episodeKey = series != null
                             ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
                             : episode.Name;
@@ -644,6 +673,20 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
 
         public static void QueueSeriesManual(List<Episode> episodes, bool skipExistingMarkers = false)
         {
+            if (episodes.Count > 0)
+            {
+                var firstEpisode = episodes.First();
+                var series = firstEpisode.Series;
+                if (series != null && firstEpisode.ParentIndexNumber.HasValue)
+                {
+                    var seriesId = series.Id.ToString();
+                    var seasonNumber = firstEpisode.ParentIndexNumber.Value;
+                    EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearSeriesCache(seriesId, seasonNumber);
+                    EmbyCredits.Services.DetectionMethods.OcrDetection.ClearSeriesCache(seriesId, seasonNumber);
+                    LogDebug($"Cleared episode comparison cache for {series.Name} Season {seasonNumber} (manual series detection)");
+                }
+            }
+
             if (skipExistingMarkers && _itemRepository != null)
             {
                 var episodesToQueue = episodes.Where(episode =>
@@ -692,6 +735,17 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
         public static void QueueEpisodeDryRun(Episode episode, bool skipExistingMarkers = false)
         {
             _isDryRun = true;
+            
+            var series = episode.Series;
+            if (series != null && episode.ParentIndexNumber.HasValue)
+            {
+                var seriesId = series.Id.ToString();
+                var seasonNumber = episode.ParentIndexNumber.Value;
+                EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearSeriesCache(seriesId, seasonNumber);
+                EmbyCredits.Services.DetectionMethods.OcrDetection.ClearSeriesCache(seriesId, seasonNumber);
+                LogDebug($"Cleared episode comparison cache for {series.Name} Season {seasonNumber} (dry run)");
+            }
+            
             if (skipExistingMarkers)
             {
                 QueueEpisodeManual(episode, skipExistingMarkers: true);
@@ -705,6 +759,21 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
         public static void QueueSeriesDryRun(List<Episode> episodes, bool skipExistingMarkers = false)
         {
             _isDryRun = true;
+            
+            if (episodes.Count > 0)
+            {
+                var firstEpisode = episodes.First();
+                var series = firstEpisode.Series;
+                if (series != null && firstEpisode.ParentIndexNumber.HasValue)
+                {
+                    var seriesId = series.Id.ToString();
+                    var seasonNumber = firstEpisode.ParentIndexNumber.Value;
+                    EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearSeriesCache(seriesId, seasonNumber);
+                    EmbyCredits.Services.DetectionMethods.OcrDetection.ClearSeriesCache(seriesId, seasonNumber);
+                    LogDebug($"Cleared episode comparison cache for {series.Name} Season {seasonNumber} (dry run series)");
+                }
+            }
+            
             if (skipExistingMarkers)
             {
                 QueueSeriesManual(episodes, skipExistingMarkers: true);
@@ -719,6 +788,17 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
         {
             _isDryRun = true;
             StartDebugMode();
+            
+            var series = episode.Series;
+            if (series != null && episode.ParentIndexNumber.HasValue)
+            {
+                var seriesId = series.Id.ToString();
+                var seasonNumber = episode.ParentIndexNumber.Value;
+                EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearSeriesCache(seriesId, seasonNumber);
+                EmbyCredits.Services.DetectionMethods.OcrDetection.ClearSeriesCache(seriesId, seasonNumber);
+                LogDebug($"Cleared episode comparison cache for {series.Name} Season {seasonNumber} (dry run debug)");
+            }
+            
             if (skipExistingMarkers)
             {
                 QueueEpisodeManual(episode, skipExistingMarkers: true);
@@ -733,6 +813,21 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
         {
             _isDryRun = true;
             StartDebugMode();
+            
+            if (episodes.Count > 0)
+            {
+                var firstEpisode = episodes.First();
+                var series = firstEpisode.Series;
+                if (series != null && firstEpisode.ParentIndexNumber.HasValue)
+                {
+                    var seriesId = series.Id.ToString();
+                    var seasonNumber = firstEpisode.ParentIndexNumber.Value;
+                    EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearSeriesCache(seriesId, seasonNumber);
+                    EmbyCredits.Services.DetectionMethods.OcrDetection.ClearSeriesCache(seriesId, seasonNumber);
+                    LogDebug($"Cleared episode comparison cache for {series.Name} Season {seasonNumber} (dry run debug series)");
+                }
+            }
+            
             if (skipExistingMarkers)
             {
                 QueueSeriesManual(episodes, skipExistingMarkers: true);
@@ -942,7 +1037,15 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                         var episodeKey = series != null
                             ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
                             : episode.Name;
-                        Plugin.Progress.SuccessDetails[episodeKey] = FormatTime(creditsStart);
+                        
+                        var statusMessages = GetAndClearEpisodeStatusMessages(episodeId);
+                        var successDetail = FormatTime(creditsStart);
+                        if (statusMessages.Count > 0)
+                        {
+                            successDetail += " (" + string.Join(", ", statusMessages) + ")";
+                        }
+                        
+                        Plugin.Progress.SuccessDetails[episodeKey] = successDetail;
                         Plugin.Progress.ConfidenceScores[episodeKey] = confidence;
                         Plugin.Progress.EpisodeIds[episodeKey] = episode.Id.ToString();
 
@@ -980,6 +1083,8 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                             : episode.Name;
                         Plugin.Progress.FailureReasons[episodeKey] = failureReason;
                     }
+                    
+                    GetAndClearEpisodeStatusMessages(episodeId);
 
                     if (!_isDryRun)
                     {

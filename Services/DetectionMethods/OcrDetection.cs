@@ -1,5 +1,6 @@
 using MediaBrowser.Model.Logging;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -22,7 +23,8 @@ namespace EmbyCredits.Services.DetectionMethods
         public override double Confidence => _calculatedConfidence;
         
         public override int Priority => Configuration.OcrDetectionPriority;
-        public override bool IsEnabled => Configuration.EnableOcrDetection;
+        public override bool IsEnabled => Configuration.DetectionMode == DetectionMode.OcrOnly || 
+                                          Configuration.DetectionMode == DetectionMode.OcrWithHashFallback;
 
         private List<double> _ocrTextConfidences = new List<double>();
         private int _totalKeywordMatches = 0;
@@ -39,6 +41,11 @@ namespace EmbyCredits.Services.DetectionMethods
             Timeout = TimeSpan.FromMinutes(2)
         };
 
+        private static readonly ConcurrentDictionary<string, List<double>> _seriesCreditsTimestamps = new ConcurrentDictionary<string, List<double>>();
+        private static readonly ConcurrentDictionary<string, DateTime> _cacheLastAccess = new ConcurrentDictionary<string, DateTime>();
+        private const int MaxCacheEntries = 100;
+        private static readonly TimeSpan CacheExpiration = TimeSpan.FromHours(24);
+
         static OcrDetection()
         {
             _httpClient.DefaultRequestHeaders.ConnectionClose = false;
@@ -49,7 +56,147 @@ namespace EmbyCredits.Services.DetectionMethods
         {
         }
 
+        public static void ClearSeriesCache(string seriesId, int seasonNumber)
+        {
+            var cacheKey = $"{seriesId}_S{seasonNumber:D2}";
+            _seriesCreditsTimestamps.TryRemove(cacheKey, out _);
+            _cacheLastAccess.TryRemove(cacheKey, out _);
+        }
+
+        public static void ClearAllCache()
+        {
+            _seriesCreditsTimestamps.Clear();
+            _cacheLastAccess.Clear();
+        }
+
+        public async Task<double> DetectCreditsWithContext(string videoPath, double duration, string episodeId, string seriesId, int seasonNumber, int episodeNumber, CancellationToken cancellationToken = default)
+        {
+            if (!Configuration.OcrEnableEpisodeComparison || string.IsNullOrEmpty(seriesId))
+            {
+                return await DetectCredits(videoPath, duration, cancellationToken).ConfigureAwait(false);
+            }
+
+            var cacheKey = $"{seriesId}_S{seasonNumber:D2}";
+            _cacheLastAccess[cacheKey] = DateTime.UtcNow;
+
+            if (_seriesCreditsTimestamps.Count > MaxCacheEntries)
+            {
+                CleanupExpiredCacheEntries();
+            }
+
+            double result;
+            
+            if (_seriesCreditsTimestamps.TryGetValue(cacheKey, out var cachedTimestamps) && cachedTimestamps.Count >= Configuration.OcrEpisodeComparisonMinimumEpisodes)
+            {
+                double averageTimestamp;
+                double standardDeviation;
+                lock (cachedTimestamps)
+                {
+                    averageTimestamp = cachedTimestamps.Average();
+                    var variance = cachedTimestamps.Select(t => Math.Pow(t - averageTimestamp, 2)).Average();
+                    standardDeviation = Math.Sqrt(variance);
+                }
+
+                var tolerance = Math.Max(Configuration.OcrEpisodeComparisonTolerance, standardDeviation * 4);
+                var narrowStartTime = Math.Max(0, averageTimestamp - tolerance);
+                var narrowEndTime = Math.Min(duration, averageTimestamp + tolerance);
+                var narrowDuration = narrowEndTime - narrowStartTime;
+
+                LogInfo($"OCR Episode comparison for {cacheKey} E{episodeNumber:D2}: Using {cachedTimestamps.Count} episodes, avg={FormatTime(averageTimestamp)}, stdDev={standardDeviation:F1}s");
+                LogInfo($"OCR Narrowing search to {FormatTime(narrowStartTime)} - {FormatTime(narrowEndTime)} (window: {narrowDuration:F0}s, tolerance: ±{tolerance:F0}s)");
+
+                result = await DetectCreditsNarrowed(videoPath, duration, narrowStartTime, narrowDuration, cancellationToken).ConfigureAwait(false);
+
+                if (result > 0)
+                {
+                    _calculatedConfidence = 0.95;
+                }
+                else
+                {
+                    LogWarn($"OCR Episode comparison failed to detect credits in narrowed window for {cacheKey} E{episodeNumber:D2}");
+                    LogInfo($"Retrying with full search window (keeping cache)...");
+                    
+                    EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Retrying with full window");
+                    
+                    result = await DetectCredits(videoPath, duration, cancellationToken).ConfigureAwait(false);
+                    
+                    if (result > 0)
+                    {
+                        LogInfo($"OCR Retry successful - credits found at {FormatTime(result)} (was outside comparison window)");
+                        LogInfo($"Adding new timestamp to cache - this will widen tolerance for future episodes");
+                        EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Retry successful");
+                    }
+                }
+            }
+            else
+            {
+                result = await DetectCredits(videoPath, duration, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (result > 0)
+            {
+                var episodeTimestamps = _seriesCreditsTimestamps.GetOrAdd(cacheKey, _ => new List<double>());
+                lock (episodeTimestamps)
+                {
+                    episodeTimestamps.Add(result);
+                    
+                    if (episodeTimestamps.Count > 1)
+                    {
+                        var newAvg = episodeTimestamps.Average();
+                        var newStdDev = Math.Sqrt(episodeTimestamps.Average(t => Math.Pow(t - newAvg, 2)));
+                        LogInfo($"Stored OCR timestamp {FormatTime(result)} for {cacheKey} E{episodeNumber:D2} (total: {episodeTimestamps.Count} episodes, new avg: {FormatTime(newAvg)}, stdDev: {newStdDev:F1}s)");
+                    }
+                    else
+                    {
+                        LogInfo($"Stored OCR timestamp {FormatTime(result)} for {cacheKey} E{episodeNumber:D2} (first episode in cache)");
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private static void CleanupExpiredCacheEntries()
+        {
+            var now = DateTime.UtcNow;
+            var expiredKeys = _cacheLastAccess
+                .Where(kvp => now - kvp.Value > CacheExpiration)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in expiredKeys)
+            {
+                _seriesCreditsTimestamps.TryRemove(key, out _);
+                _cacheLastAccess.TryRemove(key, out _);
+            }
+
+            if (_seriesCreditsTimestamps.Count > MaxCacheEntries)
+            {
+                var oldestKeys = _cacheLastAccess
+                    .OrderBy(kvp => kvp.Value)
+                    .Take(_seriesCreditsTimestamps.Count - MaxCacheEntries)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                foreach (var key in oldestKeys)
+                {
+                    _seriesCreditsTimestamps.TryRemove(key, out _);
+                    _cacheLastAccess.TryRemove(key, out _);
+                }
+            }
+        }
+
         public override async Task<double> DetectCredits(string videoPath, double duration, CancellationToken cancellationToken = default)
+        {
+            return await DetectCreditsInternal(videoPath, duration, null, null, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<double> DetectCreditsNarrowed(string videoPath, double duration, double narrowStartTime, double narrowDuration, CancellationToken cancellationToken)
+        {
+            return await DetectCreditsInternal(videoPath, duration, narrowStartTime, narrowDuration, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<double> DetectCreditsInternal(string videoPath, double duration, double? overrideStartTime, double? overrideDuration, CancellationToken cancellationToken)
         {
             LastError = string.Empty;
             
@@ -99,23 +246,34 @@ namespace EmbyCredits.Services.DetectionMethods
                 LogDebug($"OCR searching for {keywords.Count} keywords: {string.Join(", ", keywords.Take(5))}{(keywords.Count > 5 ? "..." : "")}");
 
                 double startTime;
-                var searchUnit = Configuration.OcrSearchStartUnit ?? "minutes";
-                var searchValue = Configuration.OcrSearchStartValue;
+                double analysisDuration;
 
-                if (searchUnit == "minutes")
+                if (overrideStartTime.HasValue && overrideDuration.HasValue)
                 {
-                    startTime = Math.Max(0, duration - (searchValue * 60));
-                    LogDebug($"OCR starting {searchValue} minutes from end at {FormatTime(startTime)}");
+                    startTime = overrideStartTime.Value;
+                    analysisDuration = overrideDuration.Value;
+                    LogDebug($"OCR using narrowed search window: {FormatTime(startTime)} to {FormatTime(startTime + analysisDuration)} (duration: {analysisDuration:F0}s)");
                 }
                 else
                 {
+                    var searchUnit = Configuration.OcrSearchStartUnit ?? "minutes";
+                    var searchValue = Configuration.OcrSearchStartValue;
 
-                    var searchStartPercentage = searchValue / 100.0;
-                    startTime = duration * searchStartPercentage;
-                    LogDebug($"OCR starting at {searchValue}% ({FormatTime(startTime)})");
+                    if (searchUnit == "minutes")
+                    {
+                        startTime = Math.Max(0, duration - (searchValue * 60));
+                        LogDebug($"OCR starting {searchValue} minutes from end at {FormatTime(startTime)}");
+                    }
+                    else
+                    {
+
+                        var searchStartPercentage = searchValue / 100.0;
+                        startTime = duration * searchStartPercentage;
+                        LogDebug($"OCR starting at {searchValue}% ({FormatTime(startTime)})");
+                    }
+
+                    analysisDuration = duration - startTime;
                 }
-
-                var analysisDuration = duration - startTime;
 
                 if (Configuration.OcrStopSecondsFromEnd > 0)
                 {
@@ -386,6 +544,10 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
                 });
 
+                // Declare outside try block so they're accessible in catch block for cleanup
+                List<byte>? buffer = null;
+                List<(byte[] data, double timestamp, int index)>? frameQueue = null;
+
                 try
                 {
                     var stdoutStream = process.StandardOutput.BaseStream;
@@ -393,9 +555,9 @@ namespace EmbyCredits.Services.DetectionMethods
                     byte[] imageSignature = new byte[] { 0xFF, 0xD8, 0xFF };
                     byte[] imageEndMarker = new byte[] { 0xFF, 0xD9 };
                     
-                    var buffer = new List<byte>();
+                    buffer = new List<byte>();
                     var readBuffer = new byte[65536];
-                    var frameQueue = new List<(byte[] data, double timestamp, int index)>();
+                    frameQueue = new List<(byte[] data, double timestamp, int index)>();
                     var batchSize = Configuration.OcrEnableParallelProcessing ? Configuration.OcrParallelBatchSize : 1;
                     const int MaxBufferSize = 20 * 1024 * 1024;
                     
@@ -520,6 +682,22 @@ namespace EmbyCredits.Services.DetectionMethods
                 catch (OperationCanceledException)
                 {
                     LogInfo("Frame extraction cancelled");
+                    
+                    // Clean up collections to prevent memory leak on cancellation
+                    if (buffer != null)
+                    {
+                        buffer.Clear();
+                        buffer = null;
+                    }
+                    if (frameQueue != null)
+                    {
+                        frameQueue.Clear();
+                        frameQueue = null;
+                    }
+                    detectionScores?.Clear();
+                    characterDensityHistory?.Clear();
+                    recentTextFrames?.Clear();
+                    
                     return 0;
                 }
 
@@ -674,6 +852,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 {
                     await ProcessOcrResult(ocrText, timestamp, index, analysisDuration, fps, keywords,
                         detectionScores, characterDensityHistory, recentTextFrames, maxFramesToProcess).ConfigureAwait(false);
+                    _totalFramesProcessed++;
                 }
                 
                 ocrTasks.Clear();
@@ -704,6 +883,7 @@ namespace EmbyCredits.Services.DetectionMethods
                         
                         await ProcessOcrResult(ocrText, frame.timestamp, frame.index, analysisDuration, fps, keywords,
                             detectionScores, characterDensityHistory, recentTextFrames, maxFramesToProcess).ConfigureAwait(false);
+                        _totalFramesProcessed++;
                     }
                     catch (Exception ex)
                     {
@@ -1267,6 +1447,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                 }
 
                                 frameIndex++;
+                                _totalFramesProcessed++;
 
                                 if (Configuration.OcrEnableSmartFrameSkipping && consecutiveMatches > 0)
                                 {
@@ -1416,12 +1597,25 @@ namespace EmbyCredits.Services.DetectionMethods
                     imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
                     content.Add(imageContent, "file", filename);
                     
+                    var languages = Configuration.OcrLanguages.Split(new[] { '+', ',' }, StringSplitOptions.RemoveEmptyEntries)
+                                                                    .Select(l => l.Trim())
+                                                                    .ToArray();
+                    
                     var optionsDict = new Dictionary<string, object>
                     {
-                        { "languages", new[] { "eng" } },
-                        { "dpi", 300 }
+                        { "languages", languages },
+                        { "dpi", 300 },
+                        { "pageSegmentationMethod", Configuration.OcrPageSegmentationMode },
+                        { "ocrEngineMode", Configuration.OcrEngineMode }
                     };
                     
+                    if (Configuration.OcrPreserveInterwordSpaces)
+                    {
+                        optionsDict["configParams"] = new Dictionary<string, string>
+                        {
+                            { "preserve_interword_spaces", "1" }
+                        };
+                    }
                     
                     var options = JsonSerializer.Serialize(optionsDict);
                     using (var optionsContent = new StringContent(options))
@@ -1912,11 +2106,25 @@ namespace EmbyCredits.Services.DetectionMethods
             var imageBytes = File.ReadAllBytes(imagePath);
             LogDebug($"Image size: {imageBytes.Length} bytes");
 
+            var languages = Configuration.OcrLanguages.Split(new[] { '+', ',' }, StringSplitOptions.RemoveEmptyEntries)
+                                                            .Select(l => l.Trim())
+                                                            .ToArray();
+            
             var optionsDict = new Dictionary<string, object>
             {
-                { "languages", new[] { "eng" } },
-                { "dpi", 300 }
+                { "languages", languages },
+                { "dpi", 300 },
+                { "pageSegmentationMethod", Configuration.OcrPageSegmentationMode },
+                { "ocrEngineMode", Configuration.OcrEngineMode }
             };
+            
+            if (Configuration.OcrPreserveInterwordSpaces)
+            {
+                optionsDict["configParams"] = new Dictionary<string, string>
+                {
+                    { "preserve_interword_spaces", "1" }
+                };
+            }
             
             var options = JsonSerializer.Serialize(optionsDict);
 
@@ -2142,22 +2350,53 @@ namespace EmbyCredits.Services.DetectionMethods
         {
             var matches = new List<string>();
             var lowerText = text.ToLowerInvariant();
+            
+            var textCollapsedSpaces = System.Text.RegularExpressions.Regex.Replace(text, @"\s{2,}", "").ToLowerInvariant();
 
             foreach (var keyword in keywords)
             {
-                if (lowerText.Contains(keyword.ToLowerInvariant()))
+                var lowerKeyword = keyword.ToLowerInvariant();
+                
+                if (lowerText.Contains(lowerKeyword))
                 {
                     matches.Add(keyword);
+                }
+                else
+                {
+                    var keywordCollapsedSpaces = System.Text.RegularExpressions.Regex.Replace(keyword, @"\s{2,}", "");
+                    if (textCollapsedSpaces.Contains(keywordCollapsedSpaces.ToLowerInvariant()))
+                    {
+                        matches.Add(keyword);
+                    }
                 }
             }
 
             return matches;
+        }
+        
+        private bool IsJapaneseText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+            
+            foreach (char c in text)
+            {
+                if ((c >= 0x3040 && c <= 0x309F) ||
+                    (c >= 0x30A0 && c <= 0x30FF) ||
+                    (c >= 0x4E00 && c <= 0x9FFF) ||
+                    (c >= 0x3400 && c <= 0x4DBF))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private List<string> FindKeywordMatchesFuzzy(string text, List<string> keywords, int maxDistance = 2)
         {
             var matches = new List<string>();
             var lowerText = text.ToLowerInvariant();
+            var textCollapsedSpaces = System.Text.RegularExpressions.Regex.Replace(text, @"\s{2,}", "").ToLowerInvariant();
             var words = lowerText.Split(new[] { ' ', '\n', '\r', '\t', ',', '.', ';', ':', '-' }, StringSplitOptions.RemoveEmptyEntries);
 
             foreach (var keyword in keywords)
@@ -2165,6 +2404,13 @@ namespace EmbyCredits.Services.DetectionMethods
                 var lowerKeyword = keyword.ToLowerInvariant();
 
                 if (lowerText.Contains(lowerKeyword))
+                {
+                    matches.Add(keyword);
+                    continue;
+                }
+
+                var keywordCollapsedSpaces = System.Text.RegularExpressions.Regex.Replace(keyword, @"\s{2,}", "");
+                if (textCollapsedSpaces.Contains(keywordCollapsedSpaces.ToLowerInvariant()))
                 {
                     matches.Add(keyword);
                     continue;

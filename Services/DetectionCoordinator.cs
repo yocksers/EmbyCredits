@@ -34,15 +34,24 @@ namespace EmbyCredits.Services
 
         private void InitializeDetectionMethods()
         {
-            _logger.Debug($"[DetectionCoordinator] Initializing detection methods");
+            if (_configuration.EnableDetailedLogging)
+            {
+                _logger.Debug($"[DetectionCoordinator] Initializing detection methods");
+            }
             
             var chromaprintMethod = new ChromaprintDetection(_logger, _configuration);
             _detectionMethods.Add(chromaprintMethod);
-            _logger.Debug($"[DetectionCoordinator] Added ChromaprintDetection. IsEnabled: {chromaprintMethod.IsEnabled}");
+            if (_configuration.EnableDetailedLogging)
+            {
+                _logger.Debug($"[DetectionCoordinator] Added ChromaprintDetection. IsEnabled: {chromaprintMethod.IsEnabled}");
+            }
             
             var ocrMethod = new OcrDetection(_logger, _configuration);
             _detectionMethods.Add(ocrMethod);
-            _logger.Debug($"[DetectionCoordinator] Added OcrDetection. IsEnabled: {ocrMethod.IsEnabled}, Config.EnableOcrDetection: {_configuration.EnableOcrDetection}");
+            if (_configuration.EnableDetailedLogging)
+            {
+                _logger.Debug($"[DetectionCoordinator] Added OcrDetection. IsEnabled: {ocrMethod.IsEnabled}");
+            }
         }
 
         private void LogDebug(string message)
@@ -63,8 +72,89 @@ namespace EmbyCredits.Services
 
         public async Task<(double timestamp, string failureReason, double confidence)> DetectCredits(string videoPath, double duration, string episodeId)
         {
+            return await DetectCreditsInternal(videoPath, duration, episodeId, null!, null, null);
+        }
+
+        public async Task<(double timestamp, string failureReason, double confidence)> DetectCreditsWithContext(string videoPath, double duration, string episodeId, string seriesId, int? seasonNumber, int? episodeNumber)
+        {
+            return await DetectCreditsInternal(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber);
+        }
+
+        private async Task<(double timestamp, string failureReason, double confidence)> DetectCreditsInternal(string videoPath, double duration, string episodeId, string seriesId, int? seasonNumber, int? episodeNumber)
+        {
             LogDebug($"DetectCredits called: duration={FormatTime(duration)}");
-            var (detectionResults, methodErrors) = await RunAllDetectionMethods(videoPath, duration, episodeId);
+            var (detectionResults, methodErrors) = await RunAllDetectionMethods(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber);
+
+            // Check if fallback is needed
+            bool shouldTryFallback = false;
+            DetectionMode fallbackMode = _configuration.DetectionMode;
+            
+            if (detectionResults.Count == 0)
+            {
+                if (_configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
+                {
+                    LogDebug("OCR detection failed, attempting Hash fallback...");
+                    EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "OCR failed, using Hash fallback");
+                    shouldTryFallback = true;
+                    fallbackMode = DetectionMode.HashOnly;
+                }
+                else if (_configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
+                {
+                    LogDebug("Hash detection failed, attempting OCR fallback...");
+                    EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash failed, using OCR fallback");
+                    shouldTryFallback = true;
+                    fallbackMode = DetectionMode.OcrOnly;
+                }
+            }
+
+            // Try fallback if needed
+            if (shouldTryFallback)
+            {
+                var originalMode = _configuration.DetectionMode;
+                try
+                {
+                    // Temporarily change mode for fallback
+                    _configuration.DetectionMode = fallbackMode;
+                    
+                    // Re-initialize detection methods with fallback mode
+                    // Dispose old detection methods before clearing
+                    foreach (var method in _detectionMethods)
+                    {
+                        try { method?.Dispose(); } catch { }
+                    }
+                    _detectionMethods.Clear();
+                    InitializeDetectionMethods();
+                    
+                    LogDebug($"Running fallback detection with mode: {fallbackMode}");
+                    var (fallbackResults, fallbackErrors) = await RunAllDetectionMethods(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber);
+                    
+                    if (fallbackResults.Count > 0)
+                    {
+                        LogDebug($"Fallback detection successful! Found {fallbackResults.Count} result(s)");
+                        EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Fallback method successful");
+                        var fallbackResult = SelectByStrategy(fallbackResults);
+                        LogDebug($"Selected timestamp: {FormatTime(fallbackResult.timestamp)} with confidence: {fallbackResult.confidence:F2}");
+                        return (fallbackResult.timestamp, $"Fallback: {fallbackResult.reason}", fallbackResult.confidence);
+                    }
+                    else
+                    {
+                        LogDebug("Fallback detection also failed");
+                        methodErrors = methodErrors.Concat(fallbackErrors).ToDictionary(x => x.Key, x => x.Value);
+                    }
+                }
+                finally
+                {
+                    // Restore original mode
+                    _configuration.DetectionMode = originalMode;
+                    // Dispose detection methods from fallback mode
+                    foreach (var method in _detectionMethods)
+                    {
+                        try { method?.Dispose(); } catch { }
+                    }
+                    _detectionMethods.Clear();
+                    InitializeDetectionMethods();
+                }
+            }
 
             if (detectionResults.Count == 0)
             {
@@ -129,7 +219,10 @@ namespace EmbyCredits.Services
         private async Task<(List<(string method, double timestamp, double confidence, int priority, string reason)> results, Dictionary<string, string> errors)> RunAllDetectionMethods(
             string videoPath, 
             double duration,
-            string episodeId)
+            string episodeId,
+            string? seriesId = null,
+            int? seasonNumber = null,
+            int? episodeNumber = null)
         {
             var results = new List<(string method, double timestamp, double confidence, int priority, string reason)>();
             var errors = new Dictionary<string, string>();
@@ -142,7 +235,10 @@ namespace EmbyCredits.Services
             {
                 if (!method.IsEnabled)
                 {
-                    _logger.Debug($"Skipping {method.MethodName} (disabled)");
+                    if (_configuration.EnableDetailedLogging)
+                    {
+                        _logger.Debug($"Skipping {method.MethodName} (disabled)");
+                    }
                     LogDebug($"Skipping {method.MethodName} (disabled)");
                     continue;
                 }
@@ -150,12 +246,29 @@ namespace EmbyCredits.Services
                 try
                 {
                     LogDebug($"Running {method.MethodName}...");
-                    var timestamp = await method.DetectCredits(videoPath, duration, _cancellationTokenSource?.Token ?? default);
+                    
+                    double timestamp = 0;
+                    if (method is ChromaprintDetection chromaprintMethod && !string.IsNullOrEmpty(seriesId) && seasonNumber.HasValue && episodeNumber.HasValue)
+                    {
+                        timestamp = await chromaprintMethod.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                    }
+                    else if (method is OcrDetection ocrMethod && !string.IsNullOrEmpty(seriesId) && seasonNumber.HasValue && episodeNumber.HasValue)
+                    {
+                        timestamp = await ocrMethod.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                    }
+                    else
+                    {
+                        timestamp = await method.DetectCredits(videoPath, duration, _cancellationTokenSource?.Token ?? default);
+                    }
+                    
                     if (timestamp > 0)
                     {
                         var reason = method.GetDetectionReason();
                         results.Add((method.MethodName, timestamp, method.Confidence, method.Priority, reason));
-                        _logger.Info($"{method.MethodName} detection: {FormatTime(timestamp)}");
+                        if (_configuration.EnableDetailedLogging)
+                        {
+                            _logger.Info($"{method.MethodName} detection: {FormatTime(timestamp)}");
+                        }
                         LogInfo($"{method.MethodName} detected credits at {FormatTime(timestamp)} (confidence: {method.Confidence}, priority: {method.Priority})");
                         if (!string.IsNullOrEmpty(reason))
                         {
@@ -325,9 +438,15 @@ namespace EmbyCredits.Services
             try
             {
                 _cancellationTokenSource?.Cancel();
+                _cancellationTokenSource?.Dispose();
             }
             catch (ObjectDisposedException)
             {
+            }
+            finally
+            {
+                // Recreate for next detection run to prevent using a cancelled token
+                _cancellationTokenSource = new CancellationTokenSource();
             }
         }
 

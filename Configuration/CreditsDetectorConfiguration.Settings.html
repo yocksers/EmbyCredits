@@ -2,20 +2,19 @@
     <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
         <h2 style="margin-top:0;">General Settings</h2>
 
-        <div class="checkboxContainer">
-            <label>
-                <input is="emby-checkbox" type="checkbox" id="chkEnableOcrDetection" data-config-key="EnableOcrDetection" />
-                <span>Enable OCR Detection</span>
-            </label>
-            <div class="fieldDescription">Use OCR-based detection methods for credits. When enabled, hash detection will be disabled.</div>
-        </div>
-
-        <div class="checkboxContainer">
-            <label>
-                <input is="emby-checkbox" type="checkbox" id="chkEnableHashDetection" data-config-key="EnableHashDetection" />
-                <span>Enable Hash Detection</span>
-            </label>
-            <div class="fieldDescription">Use hash-based detection methods for credits. When enabled, OCR detection will be disabled.</div>
+        <div class="selectContainer">
+            <label class="selectLabel" for="selectDetectionMode">Detection Mode</label>
+            <select id="selectDetectionMode" data-config-key="DetectionMode" class="emby-select-withcolor emby-select" style="max-width: 400px; padding: 0.6em 1em; border-radius: 8px; background-color: rgba(82, 181, 75, 0.1); border: 2px solid rgba(82, 181, 75, 0.3); font-size: 1em;">
+                <option value="OcrOnly">Enable OCR Detection</option>
+                <option value="HashOnly">Enable Hash Detection</option>
+                <option value="OcrWithHashFallback">Enable OCR with Hash Fallback</option>
+                <option value="HashWithOcrFallback">Enable Hash with OCR Fallback</option>
+            </select>
+            <div class="fieldDescription">
+                <strong>OCR Detection:</strong> Uses Tesseract OCR to detect credits by reading text. More accurate but requires Docker container.<br>
+                <strong>Hash Detection:</strong> Uses audio fingerprinting and black frame/silence detection. Faster but less accurate.<br>
+                <strong>With Fallback:</strong> If primary method fails to detect credits, automatically tries the fallback method.
+            </div>
         </div>
 
         <div class="checkboxContainer">
@@ -63,7 +62,7 @@
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtMaxScheduledBackups">Maximum Backup Files</label>
-            <input is="emby-input" type="number" id="txtMaxScheduledBackups" data-config-key="MaxScheduledBackups" min="1" max="100" />
+            <input is="emby-input" type="number" id="txtMaxScheduledBackups" data-config-key="MaxScheduledBackups" />
             <div class="fieldDescription">Maximum number of scheduled backup files to keep. Older backups will be automatically deleted. Default: 10</div>
         </div>
 
@@ -154,33 +153,55 @@
             
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintMinDuration">Minimum Credits Duration (seconds)</label>
-                <input is="emby-input" type="number" id="txtChromaprintMinDuration" data-config-key="ChromaprintMinDuration" min="10" max="120" />
+                <input is="emby-input" type="number" id="txtChromaprintMinDuration" data-config-key="ChromaprintMinDuration" />
                 <div class="fieldDescription"><strong>Default: 15 seconds.</strong> Minimum duration for detected credits sequence. Credits shorter than this will be rejected.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintMaxDuration">Maximum Credits Duration (seconds)</label>
-                <input is="emby-input" type="number" id="txtChromaprintMaxDuration" data-config-key="ChromaprintMaxDuration" min="60" max="600" />
+                <input is="emby-input" type="number" id="txtChromaprintMaxDuration" data-config-key="ChromaprintMaxDuration" />
                 <div class="fieldDescription"><strong>Default: 120 seconds.</strong> Maximum duration for detected credits sequence. Credits longer than this will be rejected.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintAnalysisPercent">Analysis Percent</label>
-                <input is="emby-input" type="number" id="txtChromaprintAnalysisPercent" data-config-key="ChromaprintAnalysisPercent" min="10" max="50" step="5" />
+                <input is="emby-input" type="number" id="txtChromaprintAnalysisPercent" data-config-key="ChromaprintAnalysisPercent" step="5" />
                 <div class="fieldDescription"><strong>Default: 25%.</strong> Analyze this percentage from the end of each episode. For example, 25% means analyze the last quarter of the video.</div>
+            </div>
+
+            <h3 style="margin-top: 1.5em; margin-bottom: 1em;">Episode Comparison</h3>
+            
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkChromaprintEnableEpisodeComparison" data-config-key="ChromaprintEnableEpisodeComparison" />
+                    <span>Enable Episode Comparison</span>
+                </label>
+                <div class="fieldDescription"><strong>Recommended: Enabled (default).</strong> Compare episodes within the same season to improve accuracy and speed. When multiple episodes have been processed, the detection will use their timestamps to narrow the search window for new episodes. This makes detection faster and more precise, similar to Jellyfin's end credit detection.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintEpisodeComparisonTolerance">Episode Comparison Tolerance (seconds)</label>
+                <input is="emby-input" type="number" id="txtChromaprintEpisodeComparisonTolerance" data-config-key="ChromaprintEpisodeComparisonTolerance" step="0.5" />
+                <div class="fieldDescription"><strong>Default: 15 seconds.</strong> When comparing episodes, search within this time window around the average credits timestamp. If detection fails, it automatically retries with full search. Higher values = wider search but slower performance.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintEpisodeComparisonMinimumEpisodes">Minimum Episodes for Comparison</label>
+                <input is="emby-input" type="number" id="txtChromaprintEpisodeComparisonMinimumEpisodes" data-config-key="ChromaprintEpisodeComparisonMinimumEpisodes" min="1" max="20" />
+                <div class="fieldDescription"><strong>Default: 4 episodes.</strong> Episode comparison will only activate after this many episodes in a season have been processed. Lower values activate comparison sooner but may be less accurate with limited data.</div>
             </div>
 
             <h3 style="margin-top: 1.5em; margin-bottom: 1em;">Black Frame Detection</h3>
             
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintBlackFrameThreshold">Black Frame Pixel Threshold</label>
-                <input is="emby-input" type="number" id="txtChromaprintBlackFrameThreshold" data-config-key="ChromaprintBlackFrameThreshold" min="0.01" max="0.2" step="0.01" />
+                <input is="emby-input" type="number" id="txtChromaprintBlackFrameThreshold" data-config-key="ChromaprintBlackFrameThreshold" step="0.01" />
                 <div class="fieldDescription"><strong>Default: 0.05.</strong> Pixel brightness threshold for black frame detection (0.0-1.0). Lower values detect darker frames.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintBlackFrameMinDuration">Black Frame Minimum Duration (seconds)</label>
-                <input is="emby-input" type="number" id="txtChromaprintBlackFrameMinDuration" data-config-key="ChromaprintBlackFrameMinDuration" min="0.1" max="5.0" step="0.1" />
+                <input is="emby-input" type="number" id="txtChromaprintBlackFrameMinDuration" data-config-key="ChromaprintBlackFrameMinDuration" step="0.1" />
                 <div class="fieldDescription"><strong>Default: 0.5 seconds.</strong> Minimum duration a black frame must persist to be considered a credits boundary.</div>
             </div>
 
@@ -188,13 +209,13 @@
             
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintSilenceThreshold">Audio Silence Threshold (dB)</label>
-                <input is="emby-input" type="number" id="txtChromaprintSilenceThreshold" data-config-key="ChromaprintSilenceThreshold" min="-100" max="-20" step="5" />
+                <input is="emby-input" type="number" id="txtChromaprintSilenceThreshold" data-config-key="ChromaprintSilenceThreshold" step="5" />
                 <div class="fieldDescription"><strong>Default: -60dB.</strong> Audio level threshold for silence detection. More negative values are quieter (e.g., -60dB is quieter than -40dB).</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintSilenceMinDuration">Silence Minimum Duration (seconds)</label>
-                <input is="emby-input" type="number" id="txtChromaprintSilenceMinDuration" data-config-key="ChromaprintSilenceMinDuration" min="0.1" max="5.0" step="0.1" />
+                <input is="emby-input" type="number" id="txtChromaprintSilenceMinDuration" data-config-key="ChromaprintSilenceMinDuration" step="0.1" />
                 <div class="fieldDescription"><strong>Default: 0.5 seconds.</strong> Minimum duration audio must be silent to be considered a credits boundary.</div>
             </div>
 
@@ -202,13 +223,13 @@
             
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintMinConfidence">Minimum Confidence</label>
-                <input is="emby-input" type="number" id="txtChromaprintMinConfidence" data-config-key="ChromaprintMinConfidence" min="0.5" max="1.0" step="0.05" />
+                <input is="emby-input" type="number" id="txtChromaprintMinConfidence" data-config-key="ChromaprintMinConfidence" step="0.05" />
                 <div class="fieldDescription"><strong>Default: 0.85.</strong> Minimum confidence level (0.0-1.0) required for detection result to be accepted.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintStopSecondsFromEnd">Stop Seconds Before End</label>
-                <input is="emby-input" type="number" id="txtChromaprintStopSecondsFromEnd" data-config-key="ChromaprintStopSecondsFromEnd" min="0" max="60" />
+                <input is="emby-input" type="number" id="txtChromaprintStopSecondsFromEnd" data-config-key="ChromaprintStopSecondsFromEnd" />
                 <div class="fieldDescription"><strong>Default: 20 seconds.</strong> Stop analyzing this many seconds before the end of the video.</div>
             </div>
 
@@ -224,13 +245,13 @@
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintFfmpegThreads">FFmpeg Thread Limit</label>
-                <input is="emby-input" type="number" id="txtChromaprintFfmpegThreads" data-config-key="ChromaprintFfmpegThreads" min="0" max="32" />
+                <input is="emby-input" type="number" id="txtChromaprintFfmpegThreads" data-config-key="ChromaprintFfmpegThreads" />
                 <div class="fieldDescription"><strong>Recommended: 2-4 for smaller machines, 0 for unlimited (default).</strong> Limits CPU threads FFmpeg uses. Set to 2-4 to prevent saturating all cores. 0 = no limit.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintDelayBetweenOperationsMs">Delay Between Operations (ms)</label>
-                <input is="emby-input" type="number" id="txtChromaprintDelayBetweenOperationsMs" data-config-key="ChromaprintDelayBetweenOperationsMs" min="0" max="5000" step="100" />
+                <input is="emby-input" type="number" id="txtChromaprintDelayBetweenOperationsMs" data-config-key="ChromaprintDelayBetweenOperationsMs" step="100" />
                 <div class="fieldDescription"><strong>Recommended: 0 (no delay) for normal systems, 500-1000ms for smaller machines.</strong> Adds delay between FFmpeg operations to reduce sustained CPU load.</div>
             </div>
         </div>
@@ -270,25 +291,25 @@
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtCpuUsageLimit">CPU Usage Limit (%)</label>
-                <input is="emby-input" type="number" id="txtCpuUsageLimit" data-config-key="CpuUsageLimit" min="1" max="100" step="1" />
+                <input is="emby-input" type="number" id="txtCpuUsageLimit" data-config-key="CpuUsageLimit" step="1" />
                 <div class="fieldDescription"><strong>Recommended: 100 (no limit).</strong> Target maximum CPU usage percentage (1-100). Values below 100 will add automatic delays between processing operations to throttle CPU usage. Set to 50-75% on systems where high CPU usage is problematic.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtCpuThrottleDelayMs">CPU Throttle Delay (ms)</label>
-                <input is="emby-input" type="number" id="txtCpuThrottleDelayMs" data-config-key="CpuThrottleDelayMs" min="0" max="1000" step="50" />
+                <input is="emby-input" type="number" id="txtCpuThrottleDelayMs" data-config-key="CpuThrottleDelayMs" step="50" />
                 <div class="fieldDescription"><strong>Recommended: 100ms.</strong> Minimum delay added between operations when CPU limiting is active. Higher values provide more consistent throttling. Only applies when CPU Usage Limit is below 100%.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtDelayBetweenEpisodesMs">Delay Between Episodes (ms)</label>
-                <input is="emby-input" type="number" id="txtDelayBetweenEpisodesMs" data-config-key="DelayBetweenEpisodesMs" min="0" max="60000" step="1000" />
+                <input is="emby-input" type="number" id="txtDelayBetweenEpisodesMs" data-config-key="DelayBetweenEpisodesMs" step="1000" />
                 <div class="fieldDescription"><strong>Recommended: 0 (no delay).</strong> Add delay between processing each episode to reduce sustained system load. Use 2000-5000ms on slower machines. This is the delay between episodes, not between frames.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtOcrDelayBetweenFramesMs">Delay Between Frames (ms)</label>
-                <input is="emby-input" type="number" id="txtOcrDelayBetweenFramesMs" data-config-key="OcrDelayBetweenFramesMs" min="0" max="5000" step="100" />
+                <input is="emby-input" type="number" id="txtOcrDelayBetweenFramesMs" data-config-key="OcrDelayBetweenFramesMs" step="100" />
                 <div class="fieldDescription"><strong>Recommended: 0 (no delay).</strong> Add delay between processing frames to reduce load on slower machines. Use 500-1000ms on very slow systems. Higher values = slower processing but less resource usage.</div>
             </div>
 
@@ -297,13 +318,13 @@
             
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtOcrFfmpegThreads">FFmpeg Thread Limit</label>
-                <input is="emby-input" type="number" id="txtOcrFfmpegThreads" data-config-key="OcrFfmpegThreads" min="0" max="32" />
+                <input is="emby-input" type="number" id="txtOcrFfmpegThreads" data-config-key="OcrFfmpegThreads" />
                 <div class="fieldDescription"><strong>Recommended: 2-4 for shared servers, 0 for unlimited (default).</strong> Limits the number of CPU threads FFmpeg uses for decoding. Set to 2-4 to prevent FFmpeg from saturating all cores. Set to 0 for no limit.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtOcrFfmpegFilterThreads">FFmpeg Filter Thread Limit</label>
-                <input is="emby-input" type="number" id="txtOcrFfmpegFilterThreads" data-config-key="OcrFfmpegFilterThreads" min="0" max="16" />
+                <input is="emby-input" type="number" id="txtOcrFfmpegFilterThreads" data-config-key="OcrFfmpegFilterThreads" />
                 <div class="fieldDescription"><strong>Recommended: 1 for shared servers, 0 for unlimited (default).</strong> Limits threads for FFmpeg filters (like fps). Set to 1 to reduce CPU usage. Set to 0 for no limit.</div>
             </div>
 
@@ -384,13 +405,13 @@
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtOcrParallelBatchSize">Parallel Batch Size</label>
-                <input is="emby-input" type="number" id="txtOcrParallelBatchSize" data-config-key="OcrParallelBatchSize" min="2" max="10" />
+                <input is="emby-input" type="number" id="txtOcrParallelBatchSize" data-config-key="OcrParallelBatchSize" />
                 <div class="fieldDescription"><strong>Recommended: 4.</strong> Number of frames to process in parallel when parallel processing is enabled. Higher = faster but more resource intensive.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtOcrDelayBetweenBatchesMs">Delay Between Batches (ms)</label>
-                <input is="emby-input" type="number" id="txtOcrDelayBetweenBatchesMs" data-config-key="OcrDelayBetweenBatchesMs" min="0" max="5000" step="100" />
+                <input is="emby-input" type="number" id="txtOcrDelayBetweenBatchesMs" data-config-key="OcrDelayBetweenBatchesMs" step="100" />
                 <div class="fieldDescription"><strong>Recommended: 0-500ms.</strong> Pause between parallel batches to prevent OCR server overload. Use 200-500ms if experiencing timeouts or stuck detection. 0 = no delay.</div>
             </div>
 
@@ -406,13 +427,13 @@
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtOcrConsecutiveMatchesForEarlyStop">Consecutive Matches for Early Stop</label>
-                <input is="emby-input" type="number" id="txtOcrConsecutiveMatchesForEarlyStop" data-config-key="OcrConsecutiveMatchesForEarlyStop" min="0" max="10" />
+                <input is="emby-input" type="number" id="txtOcrConsecutiveMatchesForEarlyStop" data-config-key="OcrConsecutiveMatchesForEarlyStop" />
                 <div class="fieldDescription"><strong>Recommended: 3.</strong> Stop processing after finding this many consecutive frames with keywords (0 = disabled). Speeds up detection when credits are found.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtOcrMinimumConfidence">Minimum OCR Confidence (0-1)</label>
-                <input is="emby-input" type="number" step="0.1" id="txtOcrMinimumConfidence" data-config-key="OcrMinimumConfidence" min="0" max="1" />
+                <input is="emby-input" type="number" step="0.1" id="txtOcrMinimumConfidence" data-config-key="OcrMinimumConfidence" />
                 <div class="fieldDescription"><strong>Recommended: 0 (disabled).</strong> Minimum OCR confidence score to accept a match (0 = accept all). Set to 0.6-0.8 to filter out false positives. Requires OCR API that returns confidence scores.</div>
             </div>
         </div>
@@ -428,13 +449,13 @@
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrRetryAttempts">OCR Retry Attempts</label>
-            <input is="emby-input" type="number" id="txtOcrRetryAttempts" data-config-key="OcrRetryAttempts" min="1" max="10" />
+            <input is="emby-input" type="number" id="txtOcrRetryAttempts" data-config-key="OcrRetryAttempts" />
             <div class="fieldDescription"><strong>Recommended: 5.</strong> Number of times to retry OCR requests on temporary failures (network issues, service outages)</div>
         </div>
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrRetryDelayMs">Retry Delay (milliseconds)</label>
-            <input is="emby-input" type="number" id="txtOcrRetryDelayMs" data-config-key="OcrRetryDelayMs" min="500" max="10000" step="500" />
+            <input is="emby-input" type="number" id="txtOcrRetryDelayMs" data-config-key="OcrRetryDelayMs" step="500" />
             <div class="fieldDescription"><strong>Recommended: 2000ms (2 seconds).</strong> Delay between retry attempts to allow service to recover</div>
         </div>
 
@@ -454,15 +475,37 @@
             </div>
         </div>
 
+        <h3 style="margin-top: 1.5em; margin-bottom: 1em;">Episode Comparison</h3>
+        
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkOcrEnableEpisodeComparison" data-config-key="OcrEnableEpisodeComparison" />
+                <span>Enable Episode Comparison</span>
+            </label>
+            <div class="fieldDescription"><strong>Recommended: Enabled (default).</strong> Compare episodes within the same season to improve accuracy and speed. When 4+ episodes have been processed, the detection will use their timestamps to narrow the search window for new episodes. This dramatically reduces OCR processing time since fewer frames need to be analyzed.</div>
+        </div>
+
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtOcrEpisodeComparisonTolerance">Episode Comparison Tolerance (seconds)</label>
+            <input is="emby-input" type="number" id="txtOcrEpisodeComparisonTolerance" data-config-key="OcrEpisodeComparisonTolerance" step="0.5" />
+            <div class="fieldDescription"><strong>Default: 20 seconds.</strong> When comparing episodes, search within this time window around the average credits timestamp. If detection fails, it automatically retries with full search. Higher values = wider search but more frames to process.</div>
+        </div>
+
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtOcrEpisodeComparisonMinimumEpisodes">Minimum Episodes for Comparison</label>
+            <input is="emby-input" type="number" id="txtOcrEpisodeComparisonMinimumEpisodes" data-config-key="OcrEpisodeComparisonMinimumEpisodes" min="1" max="20" />
+            <div class="fieldDescription"><strong>Default: 4 episodes.</strong> Episode comparison will only activate after this many episodes in a season have been processed. Lower values activate comparison sooner but may be less accurate with limited data.</div>
+        </div>
+
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrFrameRate">Frame Rate (fps)</label>
-            <input is="emby-input" type="number" step="0.01" id="txtOcrFrameRate" data-config-key="OcrFrameRate" min="0.25" max="3" />
+            <input is="emby-input" type="number" step="0.01" id="txtOcrFrameRate" data-config-key="OcrFrameRate" />
             <div class="fieldDescription"><strong>Recommended: 0.5 fps</strong> (1 frame every 2 seconds - fast & sufficient). Credits are static for several seconds, so no need to check every frame. Lower = faster!</div>
         </div>
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrMinimumMatches">Minimum Keyword Matches</label>
-            <input is="emby-input" type="number" id="txtOcrMinimumMatches" data-config-key="OcrMinimumMatches" min="1" max="5" />
+            <input is="emby-input" type="number" id="txtOcrMinimumMatches" data-config-key="OcrMinimumMatches" />
             <div class="fieldDescription"><strong>Recommended: 1.</strong> Minimum number of keyword detections within 10 seconds to confirm credits</div>
         </div>
 
@@ -490,13 +533,13 @@
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrCharacterDensityThreshold">Character Count Threshold</label>
-            <input is="emby-input" type="number" id="txtOcrCharacterDensityThreshold" data-config-key="OcrCharacterDensityThreshold" min="10" max="200" />
+            <input is="emby-input" type="number" id="txtOcrCharacterDensityThreshold" data-config-key="OcrCharacterDensityThreshold" />
             <div class="fieldDescription"><strong>Recommended: 20.</strong> Frames with this many characters or more are considered potential credits. Typical: Pre-credits ~5 chars, Credits ~100+ chars</div>
         </div>
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrCharacterDensityConsecutiveFrames">Consecutive High-Density Frames</label>
-            <input is="emby-input" type="number" id="txtOcrCharacterDensityConsecutiveFrames" data-config-key="OcrCharacterDensityConsecutiveFrames" min="1" max="10" />
+            <input is="emby-input" type="number" id="txtOcrCharacterDensityConsecutiveFrames" data-config-key="OcrCharacterDensityConsecutiveFrames" />
             <div class="fieldDescription"><strong>Recommended: 3.</strong> How many consecutive frames must exceed the threshold to confirm credits (prevents false positives from occasional text overlays)</div>
         </div>
 
@@ -513,7 +556,7 @@
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrDensityKeywordWindowSeconds">Keyword Window (seconds)</label>
-            <input is="emby-input" type="number" id="txtOcrDensityKeywordWindowSeconds" data-config-key="OcrDensityKeywordWindowSeconds" min="1" max="30" step="1" />
+            <input is="emby-input" type="number" id="txtOcrDensityKeywordWindowSeconds" data-config-key="OcrDensityKeywordWindowSeconds" step="1" />
             <div class="fieldDescription"><strong>Recommended: 10.</strong> How many seconds before/after a density detection to search for keyword matches.</div>
         </div>
 
@@ -527,7 +570,7 @@
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrDensityMinimumDurationSeconds">Minimum Sustained Duration (seconds)</label>
-            <input is="emby-input" type="number" id="txtOcrDensityMinimumDurationSeconds" data-config-key="OcrDensityMinimumDurationSeconds" min="5" max="60" step="5" />
+            <input is="emby-input" type="number" id="txtOcrDensityMinimumDurationSeconds" data-config-key="OcrDensityMinimumDurationSeconds" step="5" />
             <div class="fieldDescription"><strong>Recommended: 15.</strong> Minimum duration of sustained text density required. Credits typically last 30+ seconds.</div>
         </div>
 
@@ -541,31 +584,31 @@
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrDensityStyleConsistencyThreshold">Style Consistency Threshold</label>
-            <input is="emby-input" type="number" id="txtOcrDensityStyleConsistencyThreshold" data-config-key="OcrDensityStyleConsistencyThreshold" min="0.1" max="2.0" step="0.1" />
+            <input is="emby-input" type="number" id="txtOcrDensityStyleConsistencyThreshold" data-config-key="OcrDensityStyleConsistencyThreshold" step="0.1" />
             <div class="fieldDescription"><strong>Recommended: 0.7.</strong> Maximum variation allowed (coefficient of variation). Lower = stricter. Credits typically have consistent text amounts per frame.</div>
         </div>
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrMaxFramesToProcess">Max Frames to Process (0=unlimited)</label>
-            <input is="emby-input" type="number" id="txtOcrMaxFramesToProcess" data-config-key="OcrMaxFramesToProcess" min="0" max="1000" />
+            <input is="emby-input" type="number" id="txtOcrMaxFramesToProcess" data-config-key="OcrMaxFramesToProcess" />
             <div class="fieldDescription">Limit frames for faster testing (0=no limit for production, default: 0)</div>
         </div>
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrMaxAnalysisDuration">Max Analysis Duration (seconds)</label>
-            <input is="emby-input" type="number" id="txtOcrMaxAnalysisDuration" data-config-key="OcrMaxAnalysisDuration" min="0" step="60" />
+            <input is="emby-input" type="number" id="txtOcrMaxAnalysisDuration" data-config-key="OcrMaxAnalysisDuration" step="60" />
             <div class="fieldDescription"><strong>Recommended: 600 seconds (10 minutes).</strong> Maximum seconds of video to analyze. Prevents excessive processing on long videos. Set to 0 for unlimited.</div>
         </div>
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrStopSecondsFromEnd">Stop Seconds Before End</label>
-            <input is="emby-input" type="number" id="txtOcrStopSecondsFromEnd" data-config-key="OcrStopSecondsFromEnd" min="0" max="120" />
+            <input is="emby-input" type="number" id="txtOcrStopSecondsFromEnd" data-config-key="OcrStopSecondsFromEnd" />
             <div class="fieldDescription"><strong>Recommended: 20 seconds.</strong> Stop analyzing when this close to the end of the video. No reason to process the last few seconds where credits rarely start. Set to 0 to disable.</div>
         </div>
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrJpegQuality">JPEG Quality (1-100)</label>
-            <input is="emby-input" type="number" id="txtOcrJpegQuality" data-config-key="OcrJpegQuality" min="1" max="100" />
+            <input is="emby-input" type="number" id="txtOcrJpegQuality" data-config-key="OcrJpegQuality" />
             <div class="fieldDescription"><strong>Recommended: 92.</strong> Only used when Image Format is JPEG. Higher = better quality but larger files. 85-95 is ideal for OCR.</div>
         </div>
 
@@ -583,7 +626,7 @@
     </div>
 
     <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
-        <h2 class="collapsible-header" data-detection-type="ocr" style="margin-top: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
+        <h2 class="collapsible-header" style="margin-top: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
             <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
             <span>Detection Thumbnails</span>
         </h2>
@@ -600,13 +643,13 @@
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtThumbnailWidth">Thumbnail Width (pixels)</label>
-            <input is="emby-input" type="number" id="txtThumbnailWidth" data-config-key="ThumbnailWidth" min="160" max="1920" step="10" />
+            <input is="emby-input" type="number" id="txtThumbnailWidth" data-config-key="ThumbnailWidth" step="10" />
             <div class="fieldDescription"><strong>Default: 320.</strong> Width of generated thumbnails (height is auto-scaled). Larger sizes provide better quality but use more disk space.</div>
         </div>
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtThumbnailQuality">Thumbnail JPEG Quality</label>
-            <input is="emby-input" type="number" id="txtThumbnailQuality" data-config-key="ThumbnailQuality" min="50" max="100" step="5" />
+            <input is="emby-input" type="number" id="txtThumbnailQuality" data-config-key="ThumbnailQuality" step="5" />
             <div class="fieldDescription"><strong>Default: 85.</strong> JPEG quality (50-100). Higher values = better quality but larger file sizes.</div>
         </div>
         </div>

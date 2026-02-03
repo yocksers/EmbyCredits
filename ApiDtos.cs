@@ -108,6 +108,13 @@ namespace EmbyCredits.Api
     [Route(ApiRoutes.GetDebugLog, "GET", Summary = "Downloads the debug log from the last debug dry run.")]
     public class GetDebugLogRequest : IReturn<System.IO.Stream> { }
 
+    [Route(ApiRoutes.AddTimestampFromDryRun, "POST", Summary = "Manually adds a timestamp from a dry run detection.")]
+    public class AddTimestampFromDryRunRequest : IReturn<object>
+    {
+        public string EpisodeId { get; set; } = string.Empty;
+        public double TimestampSeconds { get; set; }
+    }
+
     [Route(ApiRoutes.ExportCreditsBackup, "POST", Summary = "Exports credits markers to JSON for download")]
     public class ExportCreditsBackupRequest : IReturn<System.IO.Stream>
     {

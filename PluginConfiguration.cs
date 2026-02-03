@@ -3,6 +3,14 @@ using System;
 
 namespace EmbyCredits
 {
+    public enum DetectionMode
+    {
+        OcrOnly,
+        HashOnly,
+        OcrWithHashFallback,
+        HashWithOcrFallback
+    }
+
     public class PluginConfiguration : BasePluginConfiguration
     {
         public string ConfigurationVersion { get; set; } = Guid.NewGuid().ToString();
@@ -46,10 +54,22 @@ namespace EmbyCredits
         public int KeywordDetectionMinTextScore { get; set; } = 50;
         public int KeywordDetectionRegionHeight { get; set; } = 120;
 
+        public DetectionMode DetectionMode { get; set; } = DetectionMode.OcrOnly;
+        
+        [Obsolete("Use DetectionMode instead")]
         public bool EnableOcrDetection { get; set; } = true;
+        
         public string OcrEndpoint { get; set; } = "http://localhost:8884";
-        public string OcrDetectionKeywords { get; set; } = "associate producer,based on,cast,casting,cinematography,co-producer,composer,costume design,created by,credits,developed by,directed by,director of photography,editing,editor,end credits,ende,executive producer,fim,fin,fine,guest starring,music by,produced by,producer,production company,production design,screenplay,series producer,sound,special thanks,starring,story by,the end,visual effects,written by,끝,終";
+        public string OcrDetectionKeywords { get; set; } = "associate producer,based on,cast,casting,cinematography,co-producer,composer,costume design,created by,credits,developed by,directed by,director of photography,editing,editor,end credits,ende,executive producer,fim,fin,fine,guest starring,music by,produced by,producer,production company,production design,screenplay,series producer,sound,special thanks,starring,story by,the end,visual effects,written by,끝,終,キャスト,スタッフ,監督,脚本,音楽,製作,制作,プロデューサー,原作,演出,撮影,編集,おわり,提供,協力,出演";
+        
+        public string OcrLanguages { get; set; } = "eng+jpn";
+        public int OcrPageSegmentationMode { get; set; } = 3;
+        public int OcrEngineMode { get; set; } = 3;
+        public bool OcrPreserveInterwordSpaces { get; set; } = true;
 
+        public bool OcrEnableEpisodeComparison { get; set; } = true;
+        public double OcrEpisodeComparisonTolerance { get; set; } = 20.0;
+        public int OcrEpisodeComparisonMinimumEpisodes { get; set; } = 4;
         public string OcrSearchStartUnit { get; set; } = "minutes";
         public double OcrSearchStartValue { get; set; } = 3.0;
 
@@ -178,8 +198,12 @@ namespace EmbyCredits
         public int ThumbnailWidth { get; set; } = 320;
         public int ThumbnailQuality { get; set; } = 85;
 
+        [Obsolete("Use DetectionMode instead")]
         public bool EnableChromaprintDetection { get; set; } = false;
         public int ChromaprintDetectionPriority { get; set; } = 1;
+        public bool ChromaprintEnableEpisodeComparison { get; set; } = true;
+        public double ChromaprintEpisodeComparisonTolerance { get; set; } = 15.0;
+        public int ChromaprintEpisodeComparisonMinimumEpisodes { get; set; } = 4;
         public int ChromaprintMinDuration { get; set; } = 10;
         public int ChromaprintMaxDuration { get; set; } = 300;
         public double ChromaprintSimilarityThreshold { get; set; } = 0.85;
