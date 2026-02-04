@@ -197,7 +197,7 @@ define(['loading', 'toast'], function (loading, toast) {
             toast(message);
             view.querySelector('#progressContainer').style.display = 'block';
             require(['configurationpage?name=CreditsDetectorConfigurationProgressMonitor'], (progressMonitor) => {
-                progressMonitor.startProgressPolling(instance, view, isDebug);
+                progressMonitor.startProgressPolling(instance, view, isDebug, true);
             });
         }).catch(error => {
             loading.hide();

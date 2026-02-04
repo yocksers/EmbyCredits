@@ -17,6 +17,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             this.partialsLoaded = false;
             this.progressInterval = null;
             this.progressHideTimeout = null;
+            this.lastProgress = null;
         }
 
         bindEventListeners(view) {
@@ -355,6 +356,16 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     
                     // Load memory usage
                     this.refreshMemoryUsage(view);
+                    
+                    // Restore last progress if available (only if not currently running)
+                    if (this.lastProgress && !this.lastProgress.IsRunning) {
+                        setTimeout(() => {
+                            progressMonitor.updateProgressUI(view, this.lastProgress);
+                            progressMonitor.updateResults(view, this.lastProgress, this.isDryRun);
+                            const container = view.querySelector('#progressContainer');
+                            if (container) container.style.display = 'block';
+                        }, 100);
+                    }
                         
                         // Load donate image
                         const donateImg = view.querySelector('#donateImage');

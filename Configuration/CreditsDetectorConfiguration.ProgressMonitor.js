@@ -1,22 +1,32 @@
 ﻿define(['loading', 'toast'], function (loading, toast) {
     'use strict';
     
-    function startProgressPolling(instance, view, isDebugMode = false) {
+    function startProgressPolling(instance, view, isDebugMode = false, isDryRun = false) {
         if (instance.progressInterval) clearInterval(instance.progressInterval);
         if (instance.progressHideTimeout) {
             clearTimeout(instance.progressHideTimeout);
             instance.progressHideTimeout = null;
         }
         
+        // Clear stored progress when new detection starts
+        instance.lastProgress = null;
+        
         // Store dry run state for use in updateResults
-        instance.isDryRun = true;
+        instance.isDryRun = isDryRun;
+        
+        // Flag to prevent multiple completion handlers
+        instance.hasCompleted = false;
         
         const btnCancel = view.querySelector('#btnCancelProcessing');
         if (btnCancel) btnCancel.style.display = 'inline-block';
         
         instance.progressInterval = setInterval(() => {
             ApiClient.getJSON(ApiClient.getUrl('CreditsDetector/GetProgress')).then(progress => {
-                if (!progress.IsRunning) {
+                // Store progress in instance for persistence
+                instance.lastProgress = progress;
+                
+                if (!progress.IsRunning && !instance.hasCompleted) {
+                    instance.hasCompleted = true;
                     clearInterval(instance.progressInterval);
                     instance.progressInterval = null;
                     if (btnCancel) btnCancel.style.display = 'none';
@@ -39,8 +49,9 @@
                         setTimeout(() => downloadDebugLog(), 1000);
                     }
                     
-                    // Clear dry run flag when complete
-                    instance.isDryRun = false;
+                    // Use the stored dry run flag (it was set when polling started)
+                    // Update results one final time with the correct dry run state
+                    updateResults(view, progress, instance.isDryRun);
                     return;
                 }
                 updateProgressUI(view, progress);
@@ -122,8 +133,6 @@
                 etaText.textContent = '-';
             }
         }
-        
-        updateResults(view, progress);
     }
     
     function updateResults(view, progress, isDryRun = false) {
@@ -148,9 +157,14 @@
         if (progress.SuccessDetails && Object.keys(progress.SuccessDetails).length > 0) {
             successDetails.style.display = 'block';
             successList.innerHTML = '';
-            Object.entries(progress.SuccessDetails).forEach(([episode, timestamp]) => {
+            Object.entries(progress.SuccessDetails).forEach(([episode, successDetail]) => {
                 const item = document.createElement('div');
                 item.style.cssText = 'padding: 0.5em; margin-bottom: 0.5em; display: flex; align-items: center; gap: 1em;';
+                
+                // Extract just the timestamp from the beginning of the success detail string
+                // Format is "HH:MM:SS [Method] - details..." or "MM:SS [Method] - details..."
+                const timestampMatch = successDetail.match(/^(\d{1,2}:\d{2}(?::\d{2})?)/);
+                const timestamp = timestampMatch ? timestampMatch[1] : '';
                 
                 const confidence = progress.ConfidenceScores && progress.ConfidenceScores[episode];
                 const confidenceText = confidence !== undefined && confidence !== null
@@ -182,6 +196,7 @@
                     
                     // Add "Add Timestamp" button if this is a dry run
                     if (isDryRun) {
+
                         const addButton = document.createElement('button');
                         addButton.className = 'button-flat';
                         addButton.style.cssText = 'padding: 0.2em 0.5em; font-size: 0.8em; min-width: auto; background-color: #1e88e5; color: white; margin-left: 0.5em;';
@@ -193,13 +208,25 @@
                             addTimestampFromDryRun(episodeId, timestampSeconds, episode, addButton);
                         });
                         episodeTitle.appendChild(addButton);
+                    } else {
+                        const editButton = document.createElement('button');
+                        editButton.className = 'button-flat';
+                        editButton.style.cssText = 'padding: 0.2em 0.5em; font-size: 0.8em; min-width: auto; background-color: #ff9800; color: white; margin-left: 0.5em;';
+                        editButton.innerHTML = '<i class="md-icon">edit</i> Edit Timestamp';
+                        editButton.title = 'Fine-tune this timestamp';
+                        editButton.addEventListener('click', function() {
+                            const episodeId = progress.EpisodeIds[episode];
+                            const timestampSeconds = parseTimestamp(timestamp);
+                            showEditTimestampDialog(episodeId, timestampSeconds, episode, editButton);
+                        });
+                        episodeTitle.appendChild(editButton);
                     }
                 }
                 
                 textContent.appendChild(episodeTitle);
                 
                 const detailsText = document.createElement('div');
-                detailsText.innerHTML = `<span style="font-size: 0.9em; font-weight: bold;">Credits marker added at ${timestamp}</span><span>${confidenceText}</span>`;
+                detailsText.innerHTML = `<span style="font-size: 0.9em; font-weight: bold;">${successDetail}</span><span>${confidenceText}</span>`;
                 textContent.appendChild(detailsText);
                 
                 item.appendChild(textContent);
@@ -284,13 +311,14 @@
             type: 'POST',
             url: ApiClient.getUrl('CreditsDetector/AddTimestampFromDryRun'),
             contentType: 'application/json',
+            dataType: 'json',
             data: JSON.stringify({
                 EpisodeId: episodeId,
                 TimestampSeconds: timestampSeconds
             })
         }).then(response => {
             loading.hide();
-            if (response.Success) {
+            if (response && response.Success) {
                 toast({ type: 'success', text: response.Message || 'Timestamp added successfully!' });
                 
                 // Update button to show it's been added
@@ -298,7 +326,7 @@
                 buttonElement.innerHTML = '<i class="md-icon">check</i> Added';
                 buttonElement.disabled = true;
             } else {
-                toast({ type: 'error', text: response.Message || 'Failed to add timestamp' });
+                toast({ type: 'error', text: (response && response.Message) || 'Failed to add timestamp' });
             }
         }).catch(error => {
             loading.hide();
@@ -307,8 +335,72 @@
         });
     }
     
+    function showEditTimestampDialog(episodeId, currentTimestampSeconds, episodeName, buttonElement) {
+        const hours = Math.floor(currentTimestampSeconds / 3600);
+        const minutes = Math.floor((currentTimestampSeconds % 3600) / 60);
+        const seconds = Math.floor(currentTimestampSeconds % 60);
+        
+        let currentTimeStr;
+        if (hours > 0) {
+            currentTimeStr = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        } else {
+            currentTimeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        const promptMessage = `Edit Timestamp - ${episodeName}\n\nEnter the new timestamp (format: MM:SS or HH:MM:SS):`;
+        const newTimeStr = prompt(promptMessage, currentTimeStr);
+        
+        if (newTimeStr && newTimeStr !== currentTimeStr) {
+            const newTimestampSeconds = parseTimestamp(newTimeStr);
+            if (newTimestampSeconds > 0) {
+                require(['loading', 'toast'], (loading, toast) => {
+                    loading.show();
+                    
+                    fetch(ApiClient.getUrl('CreditsDetector/UpdateCreditsMarker'), {
+                        method: 'POST',
+                        headers: {
+                            'X-Emby-Token': ApiClient.accessToken(),
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            EpisodeId: episodeId,
+                            CreditsStartSeconds: newTimestampSeconds,
+                            IsRelativeFromEnd: false
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(result => {
+                        loading.hide();
+                        if (result.Success) {
+                            toast({ type: 'success', text: result.Message || 'Timestamp updated successfully!' });
+                            
+                            buttonElement.style.backgroundColor = '#4caf50';
+                            buttonElement.innerHTML = '<i class="md-icon">check</i> Saved';
+                            setTimeout(() => {
+                                buttonElement.style.backgroundColor = '#ff9800';
+                                buttonElement.innerHTML = '<i class="md-icon">edit</i> Edit Timestamp';
+                            }, 2000);
+                        } else {
+                            toast({ type: 'error', text: result.Message || 'Failed to update timestamp' });
+                        }
+                    })
+                    .catch(error => {
+                        loading.hide();
+                        console.error('Error updating timestamp:', error);
+                        toast({ type: 'error', text: 'Failed to update timestamp. Check server logs.' });
+                    });
+                });
+            } else {
+                require(['toast'], (toast) => {
+                    toast({ type: 'error', text: 'Invalid timestamp format. Use MM:SS or HH:MM:SS' });
+                });
+            }
+        }
+    }
+    
     return {
         startProgressPolling: startProgressPolling,
-        updateProgressUI: updateProgressUI
+        updateProgressUI: updateProgressUI,
+        updateResults: updateResults
     };
 });
