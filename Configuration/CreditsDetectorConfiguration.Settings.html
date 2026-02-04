@@ -169,6 +169,28 @@
                 <div class="fieldDescription"><strong>Default: 25%.</strong> Analyze this percentage from the end of each episode. For example, 25% means analyze the last quarter of the video.</div>
             </div>
 
+            <h3 style="margin-top: 1.5em; margin-bottom: 1em;">Audio Fingerprinting</h3>
+            
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkChromaprintUseAudioFingerprinting" data-config-key="ChromaprintUseAudioFingerprinting" />
+                    <span>Enable Audio Fingerprinting</span>
+                </label>
+                <div class="fieldDescription"><strong>Recommended: Disabled (default).</strong> Use chromaprint audio fingerprinting to compare audio patterns across episodes. This is more accurate than black frame/silence detection but requires more processing. Falls back to black frame/silence detection if fingerprinting fails.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintFingerprintDuration">Fingerprint Duration (seconds)</label>
+                <input is="emby-input" type="number" id="txtChromaprintFingerprintDuration" data-config-key="ChromaprintFingerprintDuration" />
+                <div class="fieldDescription"><strong>Default: 30 seconds.</strong> Length of audio to fingerprint for comparison. Longer durations are more accurate but slower.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintFingerprintSimilarityThreshold">Fingerprint Similarity Threshold</label>
+                <input is="emby-input" type="number" id="txtChromaprintFingerprintSimilarityThreshold" data-config-key="ChromaprintFingerprintSimilarityThreshold" step="0.01" min="0" max="1" />
+                <div class="fieldDescription"><strong>Default: 0.90.</strong> Minimum similarity (0.0-1.0) between audio fingerprints to be considered a match. Higher values require closer matches.</div>
+            </div>
+
             <h3 style="margin-top: 1.5em; margin-bottom: 1em;">Episode Comparison</h3>
             
             <div class="checkboxContainer">

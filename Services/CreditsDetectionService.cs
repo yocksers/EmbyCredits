@@ -1019,7 +1019,7 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                     Plugin.Progress.CurrentItemProgress = 10;
                 }
 
-                var (success, creditsStart, failureReason, confidence) = await _episodeProcessor.ProcessEpisode(
+                var (success, creditsStart, failureReason, confidence, methodName, detectionReason) = await _episodeProcessor.ProcessEpisode(
                     episode, _isDryRun, _isBatchMode, _batchDetectionCache);
 
                 if (Plugin.Instance != null)
@@ -1040,6 +1040,17 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                         
                         var statusMessages = GetAndClearEpisodeStatusMessages(episodeId);
                         var successDetail = FormatTime(creditsStart);
+                        
+                        if (!string.IsNullOrEmpty(methodName))
+                        {
+                            successDetail += $" [{methodName}]";
+                        }
+                        
+                        if (!string.IsNullOrEmpty(detectionReason))
+                        {
+                            successDetail += $" - {detectionReason}";
+                        }
+                        
                         if (statusMessages.Count > 0)
                         {
                             successDetail += " (" + string.Join(", ", statusMessages) + ")";

@@ -201,6 +201,9 @@ namespace EmbyCredits
         [Obsolete("Use DetectionMode instead")]
         public bool EnableChromaprintDetection { get; set; } = false;
         public int ChromaprintDetectionPriority { get; set; } = 1;
+        public bool ChromaprintUseAudioFingerprinting { get; set; } = false;
+        public int ChromaprintFingerprintDuration { get; set; } = 30;
+        public double ChromaprintFingerprintSimilarityThreshold { get; set; } = 0.90;
         public bool ChromaprintEnableEpisodeComparison { get; set; } = true;
         public double ChromaprintEpisodeComparisonTolerance { get; set; } = 15.0;
         public int ChromaprintEpisodeComparisonMinimumEpisodes { get; set; } = 4;

@@ -136,6 +136,9 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtThumbnailWidth').value = config.ThumbnailWidth || 320;
             view.querySelector('#txtThumbnailQuality').value = config.ThumbnailQuality || 85;
 
+            view.querySelector('#chkChromaprintUseAudioFingerprinting').checked = config.ChromaprintUseAudioFingerprinting || false;
+            view.querySelector('#txtChromaprintFingerprintDuration').value = config.ChromaprintFingerprintDuration || 30;
+            view.querySelector('#txtChromaprintFingerprintSimilarityThreshold').value = config.ChromaprintFingerprintSimilarityThreshold || 0.90;
             view.querySelector('#chkChromaprintEnableEpisodeComparison').checked = config.ChromaprintEnableEpisodeComparison !== false;
             view.querySelector('#txtChromaprintEpisodeComparisonTolerance').value = config.ChromaprintEpisodeComparisonTolerance !== undefined ? config.ChromaprintEpisodeComparisonTolerance : 15.0;
             view.querySelector('#txtChromaprintEpisodeComparisonMinimumEpisodes').value = config.ChromaprintEpisodeComparisonMinimumEpisodes !== undefined ? config.ChromaprintEpisodeComparisonMinimumEpisodes : 4;
@@ -318,6 +321,9 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.ThumbnailQuality = Number.parseInt(view.querySelector('#txtThumbnailQuality').value, 10) || 85;
 
         instance.config.EnableChromaprintDetection = instance.config.EnableHashDetection;
+        instance.config.ChromaprintUseAudioFingerprinting = view.querySelector('#chkChromaprintUseAudioFingerprinting').checked;
+        instance.config.ChromaprintFingerprintDuration = Number.parseInt(view.querySelector('#txtChromaprintFingerprintDuration').value, 10) || 30;
+        instance.config.ChromaprintFingerprintSimilarityThreshold = Number.parseFloat(view.querySelector('#txtChromaprintFingerprintSimilarityThreshold').value) || 0.90;
         instance.config.ChromaprintEnableEpisodeComparison = view.querySelector('#chkChromaprintEnableEpisodeComparison').checked;
         instance.config.ChromaprintEpisodeComparisonTolerance = Number.parseFloat(view.querySelector('#txtChromaprintEpisodeComparisonTolerance').value) || 15.0;
         instance.config.ChromaprintEpisodeComparisonMinimumEpisodes = Number.parseInt(view.querySelector('#txtChromaprintEpisodeComparisonMinimumEpisodes').value, 10) || 4;

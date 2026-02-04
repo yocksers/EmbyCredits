@@ -70,17 +70,17 @@ namespace EmbyCredits.Services
             }
         }
 
-        public async Task<(double timestamp, string failureReason, double confidence)> DetectCredits(string videoPath, double duration, string episodeId)
+        public async Task<(double timestamp, string failureReason, double confidence, string methodName, string detectionReason)> DetectCredits(string videoPath, double duration, string episodeId)
         {
             return await DetectCreditsInternal(videoPath, duration, episodeId, null!, null, null);
         }
 
-        public async Task<(double timestamp, string failureReason, double confidence)> DetectCreditsWithContext(string videoPath, double duration, string episodeId, string seriesId, int? seasonNumber, int? episodeNumber)
+        public async Task<(double timestamp, string failureReason, double confidence, string methodName, string detectionReason)> DetectCreditsWithContext(string videoPath, double duration, string episodeId, string seriesId, int? seasonNumber, int? episodeNumber)
         {
             return await DetectCreditsInternal(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber);
         }
 
-        private async Task<(double timestamp, string failureReason, double confidence)> DetectCreditsInternal(string videoPath, double duration, string episodeId, string seriesId, int? seasonNumber, int? episodeNumber)
+        private async Task<(double timestamp, string failureReason, double confidence, string methodName, string detectionReason)> DetectCreditsInternal(string videoPath, double duration, string episodeId, string seriesId, int? seasonNumber, int? episodeNumber)
         {
             LogDebug($"DetectCredits called: duration={FormatTime(duration)}");
             var (detectionResults, methodErrors) = await RunAllDetectionMethods(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber);
@@ -134,7 +134,8 @@ namespace EmbyCredits.Services
                         EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Fallback method successful");
                         var fallbackResult = SelectByStrategy(fallbackResults);
                         LogDebug($"Selected timestamp: {FormatTime(fallbackResult.timestamp)} with confidence: {fallbackResult.confidence:F2}");
-                        return (fallbackResult.timestamp, $"Fallback: {fallbackResult.reason}", fallbackResult.confidence);
+                        var fallbackMethodName = fallbackResults.FirstOrDefault(r => Math.Abs(r.timestamp - fallbackResult.timestamp) < 0.1).method ?? "Unknown";
+                        return (fallbackResult.timestamp, $"Fallback: {fallbackResult.reason}", fallbackResult.confidence, fallbackMethodName, fallbackResult.reason);
                     }
                     else
                     {
@@ -194,14 +195,14 @@ namespace EmbyCredits.Services
                     ? string.Join("; ", methodErrors.Values)
                     : "No credits detected by any enabled method";
                 LogDebug($"Overall failure reason: {failureReason}");
-                return (0, failureReason, 0);
+                return (0, failureReason, 0, string.Empty, string.Empty);
             }
 
             LogDebug($"Found {detectionResults.Count} detection result(s)");
             var result = SelectByStrategy(detectionResults);
             LogDebug($"Selected timestamp: {FormatTime(result.timestamp)} with confidence: {result.confidence:F2}");
-
-            return (result.timestamp, result.reason, result.confidence);
+            var selectedMethod = detectionResults.FirstOrDefault(r => Math.Abs(r.timestamp - result.timestamp) < 0.1).method ?? "Unknown";
+            return (result.timestamp, result.reason, result.confidence, selectedMethod, result.reason);
         }
 
         public void ClearCache()

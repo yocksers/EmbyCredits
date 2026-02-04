@@ -42,7 +42,7 @@ namespace EmbyCredits.Services
             _cpuThrottler = new CpuThrottler(configuration);
         }
 
-        public async Task<(bool success, double creditsStart, string failureReason, double confidence)> ProcessEpisode(
+        public async Task<(bool success, double creditsStart, string failureReason, double confidence, string methodName, string detectionReason)> ProcessEpisode(
             Episode episode,
             bool isDryRun,
             bool isBatchMode,
@@ -83,7 +83,7 @@ namespace EmbyCredits.Services
                 if (string.IsNullOrEmpty(normalizedPath))
                 {
                     _debugLogger.LogWarn($"Path normalization failed for: {episode.Path}");
-                    return (false, 0, "Path normalization failed", 0);
+                    return (false, 0, "Path normalization failed", 0, string.Empty, string.Empty);
                 }
 
                 if (!normalizedPath.StartsWith("smb://"))
@@ -107,7 +107,7 @@ namespace EmbyCredits.Services
                         {
                             _debugLogger.LogDebug($"Also tried normalized path: {normalizedPath}");
                         }
-                        return (false, 0, "File not found", 0);
+                        return (false, 0, "File not found", 0, string.Empty, string.Empty);
                     }
                 }
                 else
@@ -130,7 +130,7 @@ namespace EmbyCredits.Services
                 if (duration <= 0)
                 {
                     _debugLogger.LogWarn($"Could not determine video duration for {episode.Name}");
-                    return (false, 0, "Could not determine video duration", 0);
+                    return (false, 0, "Could not determine video duration", 0, string.Empty, string.Empty);
                 }
 
                 _debugLogger.LogInfo($"Video duration: {FormatTime(duration)}");
@@ -148,14 +148,16 @@ namespace EmbyCredits.Services
                 double creditsStart = result.timestamp;
                 string failureReason = result.failureReason;
                 double confidence = result.confidence;
-                _debugLogger.LogDebug($"Detection result: timestamp={creditsStart}, confidence={confidence:F2}, reason={failureReason}");
+                string methodName = result.methodName;
+                string detectionReason = result.detectionReason;
+                _debugLogger.LogDebug($"Detection result: timestamp={creditsStart}, confidence={confidence:F2}, method={methodName}, reason={detectionReason}");
 
                 if (creditsStart > 0)
                 {
                     if (creditsStart >= duration)
                     {
                         _debugLogger.LogWarn($"✗ Detected timestamp ({FormatTime(creditsStart)}) exceeds video duration ({FormatTime(duration)}) for {episode.Name}");
-                        return (false, 0, $"Detected timestamp exceeds duration: {creditsStart:F1}s >= {duration:F1}s", 0);
+                        return (false, 0, $"Detected timestamp exceeds duration: {creditsStart:F1}s >= {duration:F1}s", 0, string.Empty, string.Empty);
                     }
 
                     if (!isDryRun)
@@ -165,7 +167,7 @@ namespace EmbyCredits.Services
                     }
                     _debugLogger.LogInfo($"✓ [{(isDryRun ? "DRY RUN" : "SAVED")}] Credits detected at {FormatTime(creditsStart)} for {episode.Name} (confidence: {confidence:F2})");
 
-                    return (true, creditsStart, string.Empty, confidence);
+                    return (true, creditsStart, string.Empty, confidence, methodName, detectionReason);
                 }
                 else
                 {
@@ -175,13 +177,13 @@ namespace EmbyCredits.Services
                         _debugLogger.LogDebug($"Failure reason: {failureReason}");
                     }
 
-                    return (false, 0, failureReason, 0);
+                    return (false, 0, failureReason, 0, string.Empty, string.Empty);
                 }
             }
             catch (Exception ex)
             {
                 _logger.ErrorException($"Error processing episode {episode.Name}", ex);
-                return (false, 0, $"Exception: {ex.Message}", 0);
+                return (false, 0, $"Exception: {ex.Message}", 0, string.Empty, string.Empty);
             }
             finally
             {

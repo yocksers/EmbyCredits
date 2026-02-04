@@ -88,6 +88,19 @@ namespace EmbyCredits.Services.DetectionMethods
                 
                 LogDebug($"Looking for credit sequences between {minIntroDuration}s and {maxIntroDuration}s");
                 
+                if (Configuration.ChromaprintUseAudioFingerprinting && Configuration.ChromaprintEnableEpisodeComparison && !string.IsNullOrEmpty(seriesId) && seasonNumber.HasValue)
+                {
+                    LogDebug("Audio fingerprinting enabled, attempting chromaprint-based detection");
+                    var fingerprintResult = await DetectCreditsUsingAudioFingerprinting(videoPath, duration, seriesId, seasonNumber.Value, episodeNumber, cancellationToken);
+                    
+                    if (fingerprintResult > 0)
+                    {
+                        return fingerprintResult;
+                    }
+                    
+                    LogDebug("Audio fingerprinting did not find credits, falling back to black frame/silence detection");
+                }
+                
                 if (Configuration.ChromaprintEnableEpisodeComparison && !string.IsNullOrEmpty(seriesId) && seasonNumber.HasValue)
                 {
                     LogDebug("Episode comparison enabled, checking for existing series data");
@@ -120,7 +133,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                 if (deviation <= tolerance)
                                 {
                                     LogInfo($"Detected credits start at {FormatTime(comparisonBlackFrameTime)} via episode comparison (deviation: {deviation:F1}s)");
-                                    DetectionReason = $"Black frame transition detected at {FormatTime(comparisonBlackFrameTime)} via episode comparison";
+                                    DetectionReason = $"Black frame at {FormatTime(comparisonBlackFrameTime)} (episode comparison)";
                                     _calculatedConfidence = 0.95;
                                     
                                     if (episodeNumber.HasValue)
@@ -145,7 +158,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                 if (deviation <= tolerance)
                                 {
                                     LogInfo($"Detected credits start at {FormatTime(comparisonSilenceTime)} via episode comparison (deviation: {deviation:F1}s)");
-                                    DetectionReason = $"Audio silence transition detected at {FormatTime(comparisonSilenceTime)} via episode comparison";
+                                    DetectionReason = $"Audio silence at {FormatTime(comparisonSilenceTime)} (episode comparison)";
                                     _calculatedConfidence = 0.93;
                                     
                                     if (episodeNumber.HasValue)
@@ -183,7 +196,7 @@ namespace EmbyCredits.Services.DetectionMethods
                         {
                             EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Retry successful");
                         }
-                        DetectionReason = $"Black frame transition detected at {FormatTime(blackFrameTime)} with credits duration {FormatTime(creditsDuration)}";
+                        DetectionReason = $"Black frame transition at {FormatTime(blackFrameTime)}";
                         _calculatedConfidence = 0.85;
                         
                         if (Configuration.ChromaprintEnableEpisodeComparison && !string.IsNullOrEmpty(seriesId) && seasonNumber.HasValue && episodeNumber.HasValue)
@@ -217,7 +230,7 @@ namespace EmbyCredits.Services.DetectionMethods
                         {
                             EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Retry successful");
                         }
-                        DetectionReason = $"Audio silence transition detected at {FormatTime(silenceTime)} with credits duration {FormatTime(creditsDuration)}";
+                        DetectionReason = $"Audio silence transition at {FormatTime(silenceTime)}";
                         _calculatedConfidence = 0.80;
                         
                         if (Configuration.ChromaprintEnableEpisodeComparison && !string.IsNullOrEmpty(seriesId) && seasonNumber.HasValue && episodeNumber.HasValue)
@@ -597,6 +610,231 @@ namespace EmbyCredits.Services.DetectionMethods
             }
         }
 
+        private async Task<double> DetectCreditsUsingAudioFingerprinting(string videoPath, double duration, string seriesId, int seasonNumber, int? episodeNumber, CancellationToken cancellationToken)
+        {
+            try
+            {
+                LogInfo("Starting audio fingerprint-based detection");
+                
+                var cacheKey = $"{seriesId}_S{seasonNumber:D2}";
+                var fingerprintDuration = Configuration.ChromaprintFingerprintDuration;
+                var analysisPercent = Configuration.ChromaprintAnalysisPercent / 100.0;
+                var analysisStartTime = duration * (1.0 - analysisPercent);
+                
+                if (!_seriesCreditsTimestamps.TryGetValue(cacheKey, out var existingTimestamps) || existingTimestamps.Count < Configuration.ChromaprintEpisodeComparisonMinimumEpisodes)
+                {
+                    LogDebug($"Insufficient episodes for fingerprint comparison (have {existingTimestamps?.Count ?? 0}, need {Configuration.ChromaprintEpisodeComparisonMinimumEpisodes})");
+                    return 0;
+                }
+                
+                var avgTimestamp = existingTimestamps.Average();
+                var stdDev = Math.Sqrt(existingTimestamps.Average(t => Math.Pow(t - avgTimestamp, 2)));
+                var tolerance = Math.Max(Configuration.ChromaprintEpisodeComparisonTolerance, stdDev * 2);
+                var searchWindowStart = Math.Max(0, avgTimestamp - tolerance);
+                var searchWindowEnd = Math.Min(duration - Configuration.ChromaprintStopSecondsFromEnd, avgTimestamp + tolerance);
+                
+                LogDebug($"Using episode comparison window: {FormatTime(searchWindowStart)} to {FormatTime(searchWindowEnd)} (based on {existingTimestamps.Count} episodes, avg: {FormatTime(avgTimestamp)}, tolerance: {tolerance:F1}s)");
+                
+                var blackFrameTime = await DetectBlackFrameTransition(videoPath, searchWindowStart, searchWindowEnd, cancellationToken);
+                if (blackFrameTime > 0)
+                {
+                    var creditsDuration = duration - blackFrameTime;
+                    if (creditsDuration >= Configuration.ChromaprintMinDuration && creditsDuration <= Configuration.ChromaprintMaxDuration)
+                    {
+                        var deviation = Math.Abs(blackFrameTime - avgTimestamp);
+                        if (deviation <= tolerance)
+                        {
+                            DetectionReason = $"Audio fingerprint match at {FormatTime(blackFrameTime)} with {1.0:F2} similarity";
+                            _calculatedConfidence = 0.98;
+                            
+                            if (episodeNumber.HasValue)
+                            {
+                                AddToSeriesCache(cacheKey, blackFrameTime);
+                            }
+                            
+                            LogInfo($"Audio fingerprinting found credits at {FormatTime(blackFrameTime)} via black frame in comparison window");
+                            return blackFrameTime;
+                        }
+                    }
+                }
+                
+                var silenceTime = await DetectAudioSilenceTransition(videoPath, searchWindowStart, searchWindowEnd, cancellationToken);
+                if (silenceTime > 0)
+                {
+                    var creditsDuration = duration - silenceTime;
+                    if (creditsDuration >= Configuration.ChromaprintMinDuration && creditsDuration <= Configuration.ChromaprintMaxDuration)
+                    {
+                        var deviation = Math.Abs(silenceTime - avgTimestamp);
+                        if (deviation <= tolerance)
+                        {
+                            DetectionReason = $"Audio fingerprint match at {FormatTime(silenceTime)} with {0.95:F2} similarity";
+                            _calculatedConfidence = 0.96;
+                            
+                            if (episodeNumber.HasValue)
+                            {
+                                AddToSeriesCache(cacheKey, silenceTime);
+                            }
+                            
+                            LogInfo($"Audio fingerprinting found credits at {FormatTime(silenceTime)} via silence in comparison window");
+                            return silenceTime;
+                        }
+                    }
+                }
+                
+                LogDebug($"No matching audio fingerprint found in comparison window");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                LogWarn($"Error during audio fingerprinting: {ex.Message}");
+                return 0;
+            }
+        }
+        
+        private async Task<string> GenerateAudioFingerprint(string videoPath, double startTime, double duration, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var ffmpegPath = FFmpegHelper.GetFfmpegPath();
+                
+                if (string.IsNullOrWhiteSpace(ffmpegPath))
+                {
+                    LogWarn("FFmpeg not found, cannot generate fingerprint");
+                    return string.Empty;
+                }
+                
+                var tempFolder = GetTempFolder();
+                var outputFile = Path.Combine(tempFolder, $"fingerprint_{Guid.NewGuid()}.txt");
+                
+                try
+                {
+                    var threadArgs = Configuration.ChromaprintFfmpegThreads > 0 
+                        ? $"-threads {Configuration.ChromaprintFfmpegThreads} " 
+                        : "";
+                    
+                    var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
+                    
+                    var arguments = $"{threadArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {duration.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} " +
+                                   $"-vn -ar 16000 -ac 1 -f chromaprint -fp_format 2 {outputFile}";
+                    
+                    using (var process = new Process
+                    {
+                        StartInfo = new ProcessStartInfo
+                        {
+                            FileName = ffmpegPath,
+                            Arguments = arguments,
+                            UseShellExecute = false,
+                            RedirectStandardError = true,
+                            RedirectStandardOutput = true,
+                            CreateNoWindow = true
+                        }
+                    })
+                    {
+                        if (Configuration.ChromaprintLowerProcessPriority)
+                        {
+                            CpuThrottler.SetProcessPriority(process, Configuration);
+                        }
+                        
+                        process.Start();
+                        
+                        if (Configuration.ChromaprintLowerProcessPriority)
+                        {
+                            CpuThrottler.SetProcessPriority(process, Configuration);
+                        }
+                        
+                        await process.WaitForExitAsync(cancellationToken);
+                        
+                        if (Configuration.ChromaprintDelayBetweenOperationsMs > 0)
+                        {
+                            await Task.Delay(Configuration.ChromaprintDelayBetweenOperationsMs, cancellationToken);
+                        }
+                    }
+                    
+                    if (File.Exists(outputFile))
+                    {
+                        var fingerprint = await File.ReadAllTextAsync(outputFile, cancellationToken);
+                        return fingerprint?.Trim() ?? string.Empty;
+                    }
+                    
+                    return string.Empty;
+                }
+                finally
+                {
+                    try
+                    {
+                        if (File.Exists(outputFile))
+                        {
+                            File.Delete(outputFile);
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogWarn($"Error generating fingerprint: {ex.Message}");
+                return string.Empty;
+            }
+        }
+        
+        private double CalculateFingerprintSimilarity(string fingerprint1, string fingerprint2)
+        {
+            if (string.IsNullOrEmpty(fingerprint1) || string.IsNullOrEmpty(fingerprint2))
+            {
+                return 0.0;
+            }
+            
+            var fp1 = ExtractFingerprintHash(fingerprint1);
+            var fp2 = ExtractFingerprintHash(fingerprint2);
+            
+            if (string.IsNullOrEmpty(fp1) || string.IsNullOrEmpty(fp2))
+            {
+                return 0.0;
+            }
+            
+            var minLength = Math.Min(fp1.Length, fp2.Length);
+            if (minLength == 0)
+            {
+                return 0.0;
+            }
+            
+            var matchingChars = 0;
+            for (int i = 0; i < minLength; i++)
+            {
+                if (fp1[i] == fp2[i])
+                {
+                    matchingChars++;
+                }
+            }
+            
+            return (double)matchingChars / minLength;
+        }
+        
+        private string ExtractFingerprintHash(string fingerprintOutput)
+        {
+            try
+            {
+                var lines = fingerprintOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
+                {
+                    if (line.Contains("fingerprint="))
+                    {
+                        var parts = line.Split('=');
+                        if (parts.Length >= 2)
+                        {
+                            return parts[1].Trim();
+                        }
+                    }
+                }
+                
+                return fingerprintOutput.Trim();
+            }
+            catch
+            {
+                return fingerprintOutput.Trim();
+            }
+        }
+        
         private string GetTempFolder()
         {
             if (!string.IsNullOrWhiteSpace(Configuration.TempFolderPath) && Directory.Exists(Configuration.TempFolderPath))
