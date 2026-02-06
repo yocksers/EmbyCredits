@@ -30,8 +30,6 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkOcrEnableEpisodeComparison').checked = config.OcrEnableEpisodeComparison !== false;
             view.querySelector('#txtOcrEpisodeComparisonTolerance').value = config.OcrEpisodeComparisonTolerance !== undefined ? config.OcrEpisodeComparisonTolerance : 20.0;
             view.querySelector('#txtOcrEpisodeComparisonMinimumEpisodes').value = config.OcrEpisodeComparisonMinimumEpisodes !== undefined ? config.OcrEpisodeComparisonMinimumEpisodes : 4;
-                        view.querySelector('#txtOcrRetryAttempts').value = config.OcrRetryAttempts !== undefined ? config.OcrRetryAttempts : 5;
-            view.querySelector('#txtOcrRetryDelayMs').value = config.OcrRetryDelayMs !== undefined ? config.OcrRetryDelayMs : 2000;
                         // Load unified search start setting (with legacy fallback)
             const searchStartUnit = config.OcrSearchStartUnit || 'minutes';
             let searchStartValue;
@@ -54,8 +52,6 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtOcrMaxFramesToProcess').value = config.OcrMaxFramesToProcess || 0;
             view.querySelector('#txtOcrMaxAnalysisDuration').value = config.OcrMaxAnalysisDuration || 600;
             view.querySelector('#txtOcrStopSecondsFromEnd').value = config.OcrStopSecondsFromEnd || 20;
-            view.querySelector('#txtOcrJpegQuality').value = config.OcrJpegQuality || 92;
-            view.querySelector('#selectOcrMaxResolutionHeight').value = config.OcrMaxResolutionHeight !== undefined ? config.OcrMaxResolutionHeight : 1080;
             view.querySelector('#txtOcrDelayBetweenFramesMs').value = config.OcrDelayBetweenFramesMs || 0;
 
             view.querySelector('#txtOcrFfmpegThreads').value = config.OcrFfmpegThreads || 0;
@@ -90,6 +86,7 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtOcrDensityStyleConsistencyThreshold').value = config.OcrDensityStyleConsistencyThreshold || 0.7;
 
             // OCR Enhancements - Tesseract Language Configuration
+            view.querySelector('#selectOcrEngine').value = config.OcrEngine || 'Tesseract';
             view.querySelector('#txtOcrLanguages').value = config.OcrLanguages || 'eng+jpn';
             view.querySelector('#txtOcrPageSegmentationMode').value = config.OcrPageSegmentationMode ?? 3;
             view.querySelector('#txtOcrEngineMode').value = config.OcrEngineMode ?? 3;
@@ -137,7 +134,7 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtThumbnailQuality').value = config.ThumbnailQuality || 85;
 
             view.querySelector('#chkChromaprintUseAudioFingerprinting').checked = config.ChromaprintUseAudioFingerprinting || false;
-            view.querySelector('#txtChromaprintFingerprintDuration').value = config.ChromaprintFingerprintDuration || 30;
+            view.querySelector('#txtChromaprintFingerprintDuration').value = config.ChromaprintFingerprintDuration || 360;
             view.querySelector('#txtChromaprintFingerprintSimilarityThreshold').value = config.ChromaprintFingerprintSimilarityThreshold || 0.90;
             view.querySelector('#chkChromaprintEnableEpisodeComparison').checked = config.ChromaprintEnableEpisodeComparison !== false;
             view.querySelector('#txtChromaprintEpisodeComparisonTolerance').value = config.ChromaprintEpisodeComparisonTolerance !== undefined ? config.ChromaprintEpisodeComparisonTolerance : 15.0;
@@ -147,13 +144,27 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtChromaprintAnalysisPercent').value = config.ChromaprintAnalysisPercent || 25;
             view.querySelector('#txtChromaprintBlackFrameThreshold').value = config.ChromaprintBlackFrameThreshold || 0.05;
             view.querySelector('#txtChromaprintBlackFrameMinDuration').value = config.ChromaprintBlackFrameMinDuration || 0.5;
-            view.querySelector('#txtChromaprintSilenceThreshold').value = config.ChromaprintSilenceThreshold || -60;
+            view.querySelector('#chkChromaprintUseSilenceDetection').checked = config.ChromaprintUseSilenceDetection !== false;
+            view.querySelector('#txtChromaprintSilenceThreshold').value = config.ChromaprintSilenceThreshold || -50;
             view.querySelector('#txtChromaprintSilenceMinDuration').value = config.ChromaprintSilenceMinDuration || 0.5;
+            view.querySelector('#txtChromaprintSilenceSearchWindow').value = config.ChromaprintSilenceSearchWindow || 30;
             view.querySelector('#txtChromaprintMinConfidence').value = config.ChromaprintMinConfidence || 0.85;
             view.querySelector('#txtChromaprintStopSecondsFromEnd').value = config.ChromaprintStopSecondsFromEnd || 20;
             view.querySelector('#chkChromaprintLowerProcessPriority').checked = config.ChromaprintLowerProcessPriority || false;
             view.querySelector('#txtChromaprintFfmpegThreads').value = config.ChromaprintFfmpegThreads || 0;
             view.querySelector('#txtChromaprintDelayBetweenOperationsMs').value = config.ChromaprintDelayBetweenOperationsMs || 0;
+
+            // Anime Detection settings
+            view.querySelector('#chkEnableAnimeDetection').checked = config.EnableAnimeDetection !== false;
+            
+            let animeDetectionMethod = config.AnimeDetectionMethod || 'BlackFrame';
+            if (config.EnableBlackFrameForAnime !== undefined && !config.AnimeDetectionMethod) {
+                animeDetectionMethod = config.EnableBlackFrameForAnime ? 'BlackFrame' : 'Ocr';
+            }
+            view.querySelector('#selectAnimeDetectionMethod').value = animeDetectionMethod;
+            
+            view.querySelector('#txtBlackFrameMinimumPercentage').value = config.BlackFrameMinimumPercentage !== undefined ? config.BlackFrameMinimumPercentage : 85;
+            view.querySelector('#txtBlackFrameThreshold').value = config.BlackFrameThreshold !== undefined ? config.BlackFrameThreshold : 28;
 
             // Load libraries and series/episode dropdowns
             require(['configurationpage?name=CreditsDetectorConfigurationSeriesManager'], (seriesManager) => {
@@ -187,6 +198,22 @@ define(['loading', 'toast'], function (loading, toast) {
                     progressMonitor.startProgressPolling(instance, view);
                 });
             }
+            
+            const selectOcrEngine = view.querySelector('#selectOcrEngine');
+            if (selectOcrEngine) {
+                const selectedEngine = selectOcrEngine.value;
+                const lblOcrEndpoint = view.querySelector('#lblOcrEndpoint');
+                const descOcrEndpoint = view.querySelector('#descOcrEndpoint');
+                
+                if (selectedEngine === 'PaddleOCR') {
+                    if (lblOcrEndpoint) lblOcrEndpoint.textContent = 'PaddleOCR API Endpoint';
+                    if (descOcrEndpoint) descOcrEndpoint.innerHTML = 'URL of your PaddleOCR API (e.g., <code>http://localhost:8866</code> or <code>http://192.168.1.100:8866</code>)';
+                } else {
+                    if (lblOcrEndpoint) lblOcrEndpoint.textContent = 'Tesseract OCR API Endpoint';
+                    if (descOcrEndpoint) descOcrEndpoint.innerHTML = 'URL of your Tesseract OCR API (e.g., <code>http://localhost:8884</code> or <code>http://192.168.1.100:8884</code>)';
+                }
+            }
+            
             loading.hide();
         }).catch(error => {
             loading.hide();
@@ -217,8 +244,8 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrEnableEpisodeComparison = view.querySelector('#chkOcrEnableEpisodeComparison').checked;
         instance.config.OcrEpisodeComparisonTolerance = Number.parseFloat(view.querySelector('#txtOcrEpisodeComparisonTolerance').value) || 20.0;
         instance.config.OcrEpisodeComparisonMinimumEpisodes = Number.parseInt(view.querySelector('#txtOcrEpisodeComparisonMinimumEpisodes').value, 10) || 4;
-                instance.config.OcrRetryAttempts = Number.parseInt(view.querySelector('#txtOcrRetryAttempts').value, 10) || 5;
-        instance.config.OcrRetryDelayMs = Number.parseInt(view.querySelector('#txtOcrRetryDelayMs').value, 10) || 2000;
+                instance.config.OcrRetryAttempts = 5;
+        instance.config.OcrRetryDelayMs = 2000;
                 // Save unified search start setting
         instance.config.OcrSearchStartUnit = view.querySelector('#selectOcrSearchStartUnit').value || 'minutes';
         instance.config.OcrSearchStartValue = Number.parseFloat(view.querySelector('#txtOcrSearchStartValue').value) || 3;
@@ -237,8 +264,8 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrMaxFramesToProcess = Number.parseInt(view.querySelector('#txtOcrMaxFramesToProcess').value, 10) || 0;
         instance.config.OcrMaxAnalysisDuration = Number.parseFloat(view.querySelector('#txtOcrMaxAnalysisDuration').value) || 600;
         instance.config.OcrStopSecondsFromEnd = Number.parseFloat(view.querySelector('#txtOcrStopSecondsFromEnd').value) || 20;
-        instance.config.OcrJpegQuality = Number.parseInt(view.querySelector('#txtOcrJpegQuality').value, 10) || 92;
-        instance.config.OcrMaxResolutionHeight = Number.parseInt(view.querySelector('#selectOcrMaxResolutionHeight').value, 10) || 1080;
+        instance.config.OcrJpegQuality = 92;
+        instance.config.OcrMaxResolutionHeight = 1080;
         instance.config.OcrDelayBetweenFramesMs = Number.parseInt(view.querySelector('#txtOcrDelayBetweenFramesMs').value, 10) || 0;
 
         instance.config.OcrFfmpegThreads = Number.parseInt(view.querySelector('#txtOcrFfmpegThreads').value, 10) || 0;
@@ -273,6 +300,7 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrDensityStyleConsistencyThreshold = Number.parseFloat(view.querySelector('#txtOcrDensityStyleConsistencyThreshold').value) || 0.7;
 
         // OCR Enhancements - Tesseract Language Configuration
+        instance.config.OcrEngine = view.querySelector('#selectOcrEngine').value || 'Tesseract';
         instance.config.OcrLanguages = view.querySelector('#txtOcrLanguages').value || 'eng+jpn';
         instance.config.OcrPageSegmentationMode = Number.parseInt(view.querySelector('#txtOcrPageSegmentationMode').value, 10) ?? 3;
         instance.config.OcrEngineMode = Number.parseInt(view.querySelector('#txtOcrEngineMode').value, 10) ?? 3;
@@ -322,7 +350,7 @@ define(['loading', 'toast'], function (loading, toast) {
 
         instance.config.EnableChromaprintDetection = instance.config.EnableHashDetection;
         instance.config.ChromaprintUseAudioFingerprinting = view.querySelector('#chkChromaprintUseAudioFingerprinting').checked;
-        instance.config.ChromaprintFingerprintDuration = Number.parseInt(view.querySelector('#txtChromaprintFingerprintDuration').value, 10) || 30;
+        instance.config.ChromaprintFingerprintDuration = Number.parseInt(view.querySelector('#txtChromaprintFingerprintDuration').value, 10) || 360;
         instance.config.ChromaprintFingerprintSimilarityThreshold = Number.parseFloat(view.querySelector('#txtChromaprintFingerprintSimilarityThreshold').value) || 0.90;
         instance.config.ChromaprintEnableEpisodeComparison = view.querySelector('#chkChromaprintEnableEpisodeComparison').checked;
         instance.config.ChromaprintEpisodeComparisonTolerance = Number.parseFloat(view.querySelector('#txtChromaprintEpisodeComparisonTolerance').value) || 15.0;
@@ -332,13 +360,21 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.ChromaprintAnalysisPercent = Number.parseFloat(view.querySelector('#txtChromaprintAnalysisPercent').value) || 25;
         instance.config.ChromaprintBlackFrameThreshold = Number.parseFloat(view.querySelector('#txtChromaprintBlackFrameThreshold').value) || 0.05;
         instance.config.ChromaprintBlackFrameMinDuration = Number.parseFloat(view.querySelector('#txtChromaprintBlackFrameMinDuration').value) || 0.5;
-        instance.config.ChromaprintSilenceThreshold = Number.parseInt(view.querySelector('#txtChromaprintSilenceThreshold').value, 10) || -60;
+        instance.config.ChromaprintUseSilenceDetection = view.querySelector('#chkChromaprintUseSilenceDetection').checked;
+        instance.config.ChromaprintSilenceThreshold = Number.parseInt(view.querySelector('#txtChromaprintSilenceThreshold').value, 10) || -50;
         instance.config.ChromaprintSilenceMinDuration = Number.parseFloat(view.querySelector('#txtChromaprintSilenceMinDuration').value) || 0.5;
+        instance.config.ChromaprintSilenceSearchWindow = Number.parseFloat(view.querySelector('#txtChromaprintSilenceSearchWindow').value) || 30;
         instance.config.ChromaprintMinConfidence = Number.parseFloat(view.querySelector('#txtChromaprintMinConfidence').value) || 0.85;
         instance.config.ChromaprintStopSecondsFromEnd = Number.parseFloat(view.querySelector('#txtChromaprintStopSecondsFromEnd').value) || 20;
         instance.config.ChromaprintLowerProcessPriority = view.querySelector('#chkChromaprintLowerProcessPriority').checked;
         instance.config.ChromaprintFfmpegThreads = Number.parseInt(view.querySelector('#txtChromaprintFfmpegThreads').value, 10) || 0;
         instance.config.ChromaprintDelayBetweenOperationsMs = Number.parseInt(view.querySelector('#txtChromaprintDelayBetweenOperationsMs').value, 10) || 0;
+
+        // Anime Detection settings
+        instance.config.EnableAnimeDetection = view.querySelector('#chkEnableAnimeDetection').checked;
+        instance.config.AnimeDetectionMethod = view.querySelector('#selectAnimeDetectionMethod').value || 'BlackFrame';
+        instance.config.BlackFrameMinimumPercentage = Number.parseInt(view.querySelector('#txtBlackFrameMinimumPercentage').value, 10) || 85;
+        instance.config.BlackFrameThreshold = Number.parseInt(view.querySelector('#txtBlackFrameThreshold').value, 10) || 28;
 
         const checkboxes = view.querySelectorAll('.chkLibrary');
         const selectedLibraryIds = [];
@@ -389,8 +425,6 @@ define(['loading', 'toast'], function (loading, toast) {
         view.querySelector('#txtOcrMaxFramesToProcess').value = 0;
         view.querySelector('#txtOcrMaxAnalysisDuration').value = 600;
         view.querySelector('#txtOcrStopSecondsFromEnd').value = 20;
-        view.querySelector('#txtOcrJpegQuality').value = 92;
-        view.querySelector('#selectOcrMaxResolutionHeight').value = 1080;
         view.querySelector('#txtOcrDelayBetweenFramesMs').value = 0;
 
         view.querySelector('#txtOcrFfmpegThreads').value = 0;
@@ -566,7 +600,6 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#txtOcrMaxFramesToProcess', 0);
         setIfExists('#txtOcrMaxAnalysisDuration', 600);
         setIfExists('#txtOcrStopSecondsFromEnd', 10);
-        setIfExists('#txtOcrJpegQuality', 95);
         setIfExists('#txtOcrDelayBetweenFramesMs', 0);
 
         setIfExists('#txtOcrFfmpegThreads', 0);
@@ -624,6 +657,11 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkOcrEnableCreditStructureDetection', false, true);
         setIfExists('#txtOcrMinimumStructureLines', 4);
 
+        setIfExists('#chkEnableAnimeDetection', true, true);
+        setIfExists('#selectAnimeDetectionMethod', 'BlackFrame');
+        setIfExists('#txtBlackFrameMinimumPercentage', 85);
+        setIfExists('#txtBlackFrameThreshold', 28);
+
         setIfExists('#txtTempFolderPath', preservedTempFolderPath);
         setIfExists('#txtOcrEndpoint', preservedOcrEndpoint);
 
@@ -657,7 +695,6 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#txtOcrMaxFramesToProcess', 60);
         setIfExists('#txtOcrMaxAnalysisDuration', 180);
         setIfExists('#txtOcrStopSecondsFromEnd', 30);
-        setIfExists('#txtOcrJpegQuality', 85);
         setIfExists('#txtOcrDelayBetweenFramesMs', 0);
 
         setIfExists('#txtOcrFfmpegThreads', 0);
@@ -715,6 +752,11 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkOcrEnableCreditStructureDetection', false, true);
         setIfExists('#txtOcrMinimumStructureLines', 4);
 
+        setIfExists('#chkEnableAnimeDetection', true, true);
+        setIfExists('#selectAnimeDetectionMethod', 'BlackFrame');
+        setIfExists('#txtBlackFrameMinimumPercentage', 85);
+        setIfExists('#txtBlackFrameThreshold', 28);
+
         setIfExists('#txtTempFolderPath', preservedTempFolderPath);
         setIfExists('#txtOcrEndpoint', preservedOcrEndpoint);
 
@@ -759,8 +801,6 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkOcrEnableEpisodeComparison', true, true);
         setIfExists('#txtOcrEpisodeComparisonTolerance', 20);
         setIfExists('#txtOcrEpisodeComparisonMinimumEpisodes', 4);
-        setIfExists('#txtOcrRetryAttempts', 5);
-        setIfExists('#txtOcrRetryDelayMs', 2000);
 
         setIfExists('#selectOcrSearchStartUnit', 'minutes');
         setIfExists('#txtOcrSearchStartValue', 3);
@@ -771,7 +811,6 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#txtOcrMaxFramesToProcess', 0);
         setIfExists('#txtOcrMaxAnalysisDuration', 600);
         setIfExists('#txtOcrStopSecondsFromEnd', 20);
-        setIfExists('#txtOcrJpegQuality', 92);
         setIfExists('#txtOcrDelayBetweenFramesMs', 0);
 
         setIfExists('#txtOcrFfmpegThreads', 0);
@@ -829,6 +868,11 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkOcrEnableCreditStructureDetection', false, true);
         setIfExists('#txtOcrMinimumStructureLines', 4);
 
+        setIfExists('#chkEnableAnimeDetection', true, true);
+        setIfExists('#selectAnimeDetectionMethod', 'BlackFrame');
+        setIfExists('#txtBlackFrameMinimumPercentage', 85);
+        setIfExists('#txtBlackFrameThreshold', 28);
+
         setIfExists('#chkEnableScheduledTaskNotifications', false, true);
         setIfExists('#chkEnableAutoDetectionNotifications', false, true);
         setIfExists('#chkNotifyOnSuccessOnly', false, true);
@@ -839,6 +883,11 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkEnableThumbnailGeneration', true, true);
         setIfExists('#txtThumbnailWidth', 320);
         setIfExists('#txtThumbnailQuality', 85);
+
+        setIfExists('#chkEnableAnimeDetection', true, true);
+        setIfExists('#selectAnimeDetectionMethod', 'BlackFrame');
+        setIfExists('#txtBlackFrameMinimumPercentage', 85);
+        setIfExists('#txtBlackFrameThreshold', 28);
 
         setIfExists('#txtTempFolderPath', preservedTempFolderPath);
         setIfExists('#txtBackupFolderPath', preservedBackupFolderPath);

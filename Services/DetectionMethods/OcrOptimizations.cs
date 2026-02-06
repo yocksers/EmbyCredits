@@ -12,10 +12,10 @@ namespace EmbyCredits.Services.DetectionMethods
             Func<string, Task<(string text, double confidence)>> ocrFunction,
             int maxParallelism = 4)
         {
-            var results = new List<(string, string, double, double)>();
+            var results = new List<(string, string, double, double)>(frames.Count);
             using (var semaphore = new System.Threading.SemaphoreSlim(maxParallelism, maxParallelism))
             {
-                var tasks = new List<Task<(string, string, double, double)>>();
+                var tasks = new List<Task<(string, string, double, double)>>(frames.Count);
 
                 foreach (var frame in frames)
                 {

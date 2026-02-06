@@ -125,7 +125,7 @@ namespace EmbyCredits.Services
 
         public List<object> GetSeriesMarkers(List<Episode> episodes)
         {
-            var result = new List<object>();
+            var result = new List<object>(episodes.Count);
 
             foreach (var episode in episodes)
             {

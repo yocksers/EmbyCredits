@@ -34,11 +34,13 @@ namespace EmbyCredits.Services
         private static SemaphoreSlim _processingSemaphore = new SemaphoreSlim(1, 1);
         private static bool _isProcessing = false;
         private static bool _cancellationRequested = false;
+        private static CancellationTokenSource? _cancellationTokenSource = null;
         private static bool _isDryRun = false;
 
         private const int MaxQueueSize = 1000;
         private const int MaxProcessedEpisodesCache = 10000;
         private const int MaxBatchDetectionCacheSize = 5000;
+        private const int MaxEpisodeStatusMessagesCache = 1000;
 
         private static DetectionCoordinator? _detectionCoordinator;
         private static DebugLogger? _debugLogger;
@@ -83,6 +85,8 @@ namespace EmbyCredits.Services
             {
                 messages.Add(message);
             }
+            
+            CleanupEpisodeStatusMessages();
         }
         
         private static List<string> GetAndClearEpisodeStatusMessages(string episodeId)
@@ -106,7 +110,9 @@ namespace EmbyCredits.Services
             _detectionCoordinator?.Dispose();
             _detectionCoordinator = new DetectionCoordinator(_logger, _configuration);
 
+            _debugLogger?.Dispose();
             _debugLogger = new DebugLogger(_logger, configuration);
+            _pluginCoordination?.Dispose();
             _pluginCoordination = new PluginCoordinationService(_logger, configuration);
             
             if (_itemRepository != null)
@@ -140,7 +146,9 @@ namespace EmbyCredits.Services
                 _detectionCoordinator?.Dispose();
                 _detectionCoordinator = new DetectionCoordinator(_logger, configuration);
 
+                _debugLogger?.Dispose();
                 _debugLogger = new DebugLogger(_logger, configuration);
+                _pluginCoordination?.Dispose();
                 _pluginCoordination = new PluginCoordinationService(_logger, configuration);
                 
                 if (_itemRepository != null)
@@ -153,16 +161,19 @@ namespace EmbyCredits.Services
 
             if (_libraryManager != null && _isRunning)
             {
-                if (configuration.EnableAutoDetection && !previousAutoDetectionState)
+                if (configuration.EnableAutoDetection != previousAutoDetectionState)
                 {
                     _libraryManager.ItemAdded -= OnItemAdded;
-                    _libraryManager.ItemAdded += OnItemAdded;
-                    _logger?.Info("Auto-detection enabled: ItemAdded event handler registered");
-                }
-                else if (!configuration.EnableAutoDetection && previousAutoDetectionState)
-                {
-                    _libraryManager.ItemAdded -= OnItemAdded;
-                    _logger?.Info("Auto-detection disabled: ItemAdded event handler unregistered");
+                    
+                    if (configuration.EnableAutoDetection)
+                    {
+                        _libraryManager.ItemAdded += OnItemAdded;
+                        _logger?.Info("Auto-detection enabled: ItemAdded event handler registered");
+                    }
+                    else
+                    {
+                        _logger?.Info("Auto-detection disabled: ItemAdded event handler unregistered");
+                    }
                 }
             }
         }
@@ -173,17 +184,21 @@ namespace EmbyCredits.Services
             {
                 _detectionCoordinator?.ClearCache();
                 
-                // Recreate to release capacity (ConcurrentDictionary doesn't have TrimExcess)
-                _batchDetectionCache.Clear();
-                if (_batchDetectionCache.Count == 0 && _batchDetectionCache.Any())
+                if (_batchDetectionCache.Count > MaxBatchDetectionCacheSize)
                 {
-                    // Force recreation if capacity is large
                     System.Threading.Interlocked.Exchange(ref _batchDetectionCache, new ConcurrentDictionary<string, List<(string method, double timestamp)>>());
+                }
+                else
+                {
+                    _batchDetectionCache.Clear();
                 }
                 
                 CleanupOldProcessedEpisodes();
                 
                 while (_processingQueue.TryDequeue(out _)) { }
+                
+                _episodeStatusMessages.Clear();
+                System.Threading.Interlocked.Exchange(ref _episodeStatusMessages, new ConcurrentDictionary<string, List<string>>());
                 
                 _logger?.Info("Cleared in-memory batch detection cache and processing queue for fresh detection");
             }
@@ -229,15 +244,39 @@ namespace EmbyCredits.Services
             if (_batchDetectionCache.Count <= MaxBatchDetectionCacheSize)
                 return;
 
-var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
-            var keysToRemove = _batchDetectionCache.Keys.Take(entriesToRemove).ToList();
+            var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
+            var removed = 0;
             
-            foreach (var key in keysToRemove)
+            foreach (var key in _batchDetectionCache.Keys)
             {
-                _batchDetectionCache.TryRemove(key, out _);
+                if (removed >= entriesToRemove)
+                    break;
+                    
+                if (_batchDetectionCache.TryRemove(key, out _))
+                    removed++;
             }
             
-            LogDebug($"Cleaned up batch detection cache: removed {keysToRemove.Count} entries");
+            LogDebug($"Cleaned up batch detection cache: removed {removed} entries");
+        }
+        
+        private static void CleanupEpisodeStatusMessages()
+        {
+            if (_episodeStatusMessages.Count <= MaxEpisodeStatusMessagesCache)
+                return;
+
+            var entriesToRemove = _episodeStatusMessages.Count - MaxEpisodeStatusMessagesCache;
+            var removed = 0;
+            
+            foreach (var key in _episodeStatusMessages.Keys)
+            {
+                if (removed >= entriesToRemove)
+                    break;
+                    
+                if (_episodeStatusMessages.TryRemove(key, out _))
+                    removed++;
+            }
+            
+            LogDebug($"Cleaned up episode status messages cache: removed {removed} entries");
         }
 
         public static void Stop()
@@ -282,6 +321,9 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
             
             _processedEpisodes.Clear();
             System.Threading.Interlocked.Exchange(ref _processedEpisodes, new ConcurrentDictionary<string, DateTime>());
+            
+            _episodeStatusMessages.Clear();
+            System.Threading.Interlocked.Exchange(ref _episodeStatusMessages, new ConcurrentDictionary<string, List<string>>());
             
             GC.Collect(2, GCCollectionMode.Forced, true);
 
@@ -587,6 +629,8 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
             LogInfo("Cancellation requested for credits detection");
 
             _cancellationRequested = true;
+            
+            _cancellationTokenSource?.Cancel();
 
             _detectionCoordinator?.CancelDetection();
 
@@ -596,9 +640,15 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                 clearedCount++;
             }
 
-            // Recreate to release capacity
             _processedEpisodes.Clear();
             System.Threading.Interlocked.Exchange(ref _processedEpisodes, new ConcurrentDictionary<string, DateTime>());
+            
+            _episodeStatusMessages.Clear();
+            System.Threading.Interlocked.Exchange(ref _episodeStatusMessages, new ConcurrentDictionary<string, List<string>>());
+            
+            EmbyCredits.Services.DetectionMethods.OcrDetection.ClearAllCache();
+            EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearAllCache();
+            EmbyCredits.Services.DetectionMethods.BlackFrameDetection.ClearAllCache();
 
             LogInfo($"Queue cleared: {clearedCount} items removed, processed cache cleared");
             ResetProgressToCancelling();
@@ -881,6 +931,10 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
             _isProcessing = true;
             LogInfo("ProcessQueue: acquired semaphore, starting processing");
 
+            // Create a new cancellation token source for this processing session
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = new CancellationTokenSource();
+
             if (Plugin.Instance != null)
             {
                 Plugin.Progress.FailureReasons?.Clear();
@@ -889,7 +943,24 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
             var processedCount = 0;
             try
             {
+                // Collect all episodes from queue
+                var allEpisodes = new List<Episode>();
                 while (_processingQueue.TryDequeue(out var episode))
+                {
+                    allEpisodes.Add(episode);
+                }
+
+                LogInfo($"Collected {allEpisodes.Count} episodes from queue");
+
+                // Group episodes by series and season for batch processing
+                var episodesBySeason = allEpisodes
+                    .Where(e => e.Series != null && e.ParentIndexNumber.HasValue)
+                    .GroupBy(e => new { SeriesId = e.Series!.Id.ToString(), SeasonNumber = e.ParentIndexNumber!.Value })
+                    .ToList();
+
+                LogInfo($"Grouped {allEpisodes.Count} episodes into {episodesBySeason.Count} seasons for batch processing");
+
+                foreach (var seasonGroup in episodesBySeason)
                 {
                     if (!_isRunning || _cancellationRequested)
                     {
@@ -915,16 +986,20 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                         break;
                     }
 
-                    LogInfo($"Processing episode from queue: {episode.Name}");
-                    await ProcessEpisode(episode);
-
-                    processedCount++;
+                    var seasonEpisodes = seasonGroup.OrderBy(e => e.IndexNumber).ToList();
+                    var firstEpisode = seasonEpisodes.First();
+                    var seriesName = firstEpisode.Series?.Name ?? "Unknown Series";
                     
-                    if (processedCount % 10 == 0)
+                    LogInfo($"Processing season batch: {seriesName} Season {seasonGroup.Key.SeasonNumber} ({seasonEpisodes.Count} episodes)");
+
+                    await ProcessSeasonBatch(seasonEpisodes, _cancellationTokenSource?.Token ?? CancellationToken.None);
+
+                    processedCount += seasonEpisodes.Count;
+                    
+                    if (processedCount % 20 == 0)
                     {
                         CleanupBatchDetectionCache();
                         CleanupOldProcessedEpisodes();
-                        GC.Collect(1, GCCollectionMode.Optimized, false);
                     }
 
                     await Task.Delay(1000);
@@ -950,6 +1025,10 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                         Plugin.Progress.CurrentItem = _isDryRun ? "Dry Run Complete" : "Complete";
                         Plugin.Progress.CurrentItemProgress = 100;
                         LogInfo($"Processing complete: {Plugin.Progress.SuccessfulItems} succeeded, {Plugin.Progress.FailedItems} failed");
+                        
+                        EmbyCredits.Services.DetectionMethods.OcrDetection.ClearAllCache();
+                        EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearAllCache();
+                        EmbyCredits.Services.DetectionMethods.BlackFrameDetection.ClearAllCache();
 
                         if (_configuration != null && _configuration.EnableAutoDetection && !_isDryRun && Plugin.NotificationManager != null)
                         {
@@ -995,6 +1074,186 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                 _isProcessing = false;
                 _processingSemaphore.Release();
             }
+        }
+
+        public static async Task ProcessSeasonBatch(List<Episode> seasonEpisodes, CancellationToken cancellationToken)
+        {
+            if (_episodeProcessor == null || _configuration == null || seasonEpisodes.Count == 0)
+                return;
+
+            var firstEpisode = seasonEpisodes.First();
+            var seriesId = firstEpisode.Series?.Id.ToString() ?? string.Empty;
+            var seasonNumber = firstEpisode.ParentIndexNumber ?? 0;
+            var seriesName = firstEpisode.Series?.Name ?? "Unknown Series";
+
+            _logger?.Info($"Starting batch processing for {seriesName} Season {seasonNumber} ({seasonEpisodes.Count} episodes)");
+
+            bool isAnime = false;
+            if (_configuration.EnableAnimeDetection && !string.IsNullOrEmpty(seriesId))
+            {
+                _logger?.Debug($"Checking if {seriesName} is anime (seriesId: {seriesId})");
+                isAnime = CheckIfAnime(seriesId);
+                if (isAnime)
+                {
+                    _logger?.Info($"Series '{seriesName}' identified as ANIME - batch processing will use anime-specific methods");
+                }
+                else
+                {
+                    _logger?.Debug($"Series '{seriesName}' is not anime");
+                }
+            }
+
+            // Get chromaprint detection method if available
+            var chromaprintMethod = _episodeProcessor.GetDetectionMethods()
+                .OfType<DetectionMethods.ChromaprintDetection>()
+                .FirstOrDefault();
+
+            Dictionary<string, double>? batchResults = null;
+            
+            if (!isAnime && chromaprintMethod != null && chromaprintMethod.IsEnabled && !string.IsNullOrEmpty(seriesId))
+            {
+                // Process all episodes together using batch detection (non-anime only)
+                var episodeData = seasonEpisodes.Select(ep => (
+                    EpisodeId: ep.Id.ToString(),
+                    VideoPath: ep.Path,
+                    Duration: ep.RunTimeTicks.HasValue ? ep.RunTimeTicks.Value / 10000000.0 : 0
+                )).ToList();
+
+                _logger?.Info($"Using batch chromaprint detection for {episodeData.Count} episodes");
+                batchResults = await chromaprintMethod.DetectCreditsForSeason(episodeData, seriesId, seasonNumber, cancellationToken);
+                _logger?.Info($"Batch detection found credits for {batchResults.Count} episodes");
+            }
+            else if (isAnime)
+            {
+                _logger?.Info($"Anime detected - skipping chromaprint batch processing, will use individual episode detection with BlackFrameDetection");
+            }
+
+            // Process each episode with the batch results
+            foreach (var episode in seasonEpisodes)
+            {
+                if (cancellationToken.IsCancellationRequested || _cancellationRequested)
+                    break;
+
+                var episodeId = episode.Id.ToString();
+                
+                try
+                {
+                    if (Plugin.Instance != null)
+                    {
+                        Plugin.Progress.CurrentItem = $"{seriesName} - S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2} - {episode.Name}";
+                    }
+
+                    _logger?.Debug($"Processing episode {episode.Name}");
+
+                    double? batchCreditsStart = null;
+                    if (batchResults != null && batchResults.ContainsKey(episodeId))
+                    {
+                        batchCreditsStart = batchResults[episodeId];
+                    }
+
+                    var (success, creditsStart, failureReason, confidence, methodName, detectionReason) = await _episodeProcessor.ProcessEpisodeWithBatchResult(
+                        episode, _isDryRun, batchCreditsStart, chromaprintMethod);
+
+                    if (success && creditsStart > 0)
+                    {
+                        if (Plugin.Instance != null)
+                        {
+                            Plugin.Progress.SuccessfulItems++;
+
+                            var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
+                            var statusMessages = GetAndClearEpisodeStatusMessages(episodeId);
+                            var successDetail = FormatTime(creditsStart);
+                            
+                            if (!string.IsNullOrEmpty(methodName))
+                            {
+                                successDetail += $" [{methodName}]";
+                            }
+                            
+                            if (!string.IsNullOrEmpty(detectionReason))
+                            {
+                                successDetail += $" - {detectionReason}";
+                            }
+                            
+                            if (statusMessages.Count > 0)
+                            {
+                                successDetail += " (" + string.Join(", ", statusMessages) + ")";
+                            }
+                            
+                            Plugin.Progress.SuccessDetails[episodeKey] = successDetail;
+                            Plugin.Progress.ConfidenceScores[episodeKey] = confidence;
+                            Plugin.Progress.EpisodeIds[episodeKey] = episodeId;
+
+                            // Generate thumbnail if enabled
+                            if (Plugin.Instance.Configuration.EnableThumbnailGeneration)
+                            {
+                                try
+                                {
+                                    var thumbnailPath = await GenerateThumbnail(episode, creditsStart, episodeKey);
+                                    if (!string.IsNullOrEmpty(thumbnailPath))
+                                    {
+                                        Plugin.Progress.ThumbnailPaths[episodeKey] = thumbnailPath;
+                                    }
+                                }
+                                catch (Exception thumbEx)
+                                {
+                                    _logger?.Debug($"Failed to generate thumbnail for {episodeKey}: {thumbEx.Message}");
+                                }
+                            }
+                        }
+
+                        if (!_isDryRun)
+                        {
+                            _processedEpisodes.TryAdd(episodeId, DateTime.UtcNow);
+                        }
+                        
+                        _logger?.Debug($"Successfully detected credits at {FormatTime(creditsStart)} for {episode.Name}");
+                    }
+                    else
+                    {
+                        if (Plugin.Instance != null)
+                        {
+                            Plugin.Progress.FailedItems++;
+
+                            var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
+                            Plugin.Progress.FailureReasons[episodeKey] = failureReason;
+                        }
+                        
+                        GetAndClearEpisodeStatusMessages(episodeId);
+                        _logger?.Warn($"Failed to detect credits for {episode.Name}: {failureReason}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.ErrorException($"Error processing episode {episode.Name}", ex);
+                    if (Plugin.Instance != null)
+                    {
+                        Plugin.Progress.FailedItems++;
+                        var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
+                        Plugin.Progress.FailureReasons[episodeKey] = ex.Message;
+                    }
+                }
+
+                // Update progress tracking
+                if (Plugin.Instance != null)
+                {
+                    Plugin.Progress.ProcessedItems++;
+                    Plugin.Progress.CurrentItemProgress = 100;
+                    Plugin.Progress.CheckAndLimitDictionarySize();
+
+                    if (Plugin.Progress.ProcessedItems >= Plugin.Progress.TotalItems)
+                    {
+                        Plugin.Progress.IsRunning = false;
+                        Plugin.Progress.EndTime = DateTime.Now;
+                        Plugin.Progress.CurrentItem = "Complete";
+                        
+                        EmbyCredits.Services.DetectionMethods.OcrDetection.ClearAllCache();
+                        EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearAllCache();
+                        EmbyCredits.Services.DetectionMethods.BlackFrameDetection.ClearAllCache();
+                    }
+                }
+            }
+
+            _logger?.Info($"Batch processing complete for {seriesName} Season {seasonNumber}");
         }
 
 
@@ -1115,7 +1374,9 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                         Plugin.Progress.EndTime = DateTime.Now;
                         Plugin.Progress.CurrentItem = "Complete";
                         
-
+                        EmbyCredits.Services.DetectionMethods.OcrDetection.ClearAllCache();
+                        EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearAllCache();
+                        EmbyCredits.Services.DetectionMethods.BlackFrameDetection.ClearAllCache();
                     }
                 }
                 
@@ -1182,8 +1443,6 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
                 var width = config.ThumbnailWidth > 0 ? config.ThumbnailWidth : 320;
                 var quality = config.ThumbnailQuality > 0 ? config.ThumbnailQuality : 85;
                 
-                // FFmpeg quality: lower value = better quality (2-31 scale for JPEG)
-                // Convert our 50-100 scale to FFmpeg's 2-31 scale inversely
                 var ffmpegQuality = Math.Max(2, Math.Min(31, 31 - ((quality - 50) * 29 / 50)));
                 
                 var arguments = $"-ss {timestamp.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" " +
@@ -1309,6 +1568,83 @@ var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
             }
             catch { }
             return null;
+        }
+
+        private static bool CheckIfAnime(string seriesId)
+        {
+            try
+            {
+                _logger?.Debug($"CheckIfAnime called for seriesId: {seriesId}");
+                
+                if (_libraryManager == null)
+                {
+                    _logger?.Warn($"CheckIfAnime: _libraryManager is null");
+                    return false;
+                }
+
+                if (!Guid.TryParse(seriesId, out var seriesGuid))
+                {
+                    _logger?.Warn($"CheckIfAnime: Failed to parse seriesId as Guid: {seriesId}");
+                    return false;
+                }
+
+                var item = _libraryManager.GetItemById(seriesGuid);
+                if (item == null)
+                {
+                    _logger?.Warn($"CheckIfAnime: GetItemById returned null for Guid: {seriesGuid}");
+                    return false;
+                }
+
+                _logger?.Debug($"CheckIfAnime: Found item type: {item.GetType().Name}, Name: {item.Name}");
+
+                if (item is MediaBrowser.Controller.Entities.TV.Series series)
+                {
+                    _logger?.Debug($"CheckIfAnime: Series found - Name: {series.Name}");
+
+                    if (series.Tags != null && series.Tags.Length > 0)
+                    {
+                        if (_configuration?.EnableDetailedLogging == true)
+                            _logger?.Debug($"CheckIfAnime: Tags count: {series.Tags.Length}");
+                        
+                        for (int i = 0; i < series.Tags.Length; i++)
+                        {
+                            if (series.Tags[i].Equals("anime", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _logger?.Info($"CheckIfAnime: Series '{series.Name}' identified as ANIME via Tags");
+                                return true;
+                            }
+                        }
+                    }
+
+                    if (series.Genres != null && series.Genres.Length > 0)
+                    {
+                        if (_configuration?.EnableDetailedLogging == true)
+                            _logger?.Debug($"CheckIfAnime: Genres count: {series.Genres.Length}");
+                        
+                        for (int i = 0; i < series.Genres.Length; i++)
+                        {
+                            if (series.Genres[i].Equals("anime", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _logger?.Info($"CheckIfAnime: Series '{series.Name}' identified as ANIME via Genres");
+                                return true;
+                            }
+                        }
+                    }
+
+                    _logger?.Debug($"CheckIfAnime: Series '{series.Name}' is NOT anime");
+                }
+                else
+                {
+                    _logger?.Warn($"CheckIfAnime: Item is not a Series, it's: {item.GetType().Name}");
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException($"CheckIfAnime exception for seriesId: {seriesId}", ex);
+                return false;
+            }
         }
     }
 }

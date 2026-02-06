@@ -5,8 +5,13 @@
         <h3 style="margin-bottom: 0.5em;">What is OCR Detection?</h3>
         <p class="fieldDescription">
             This plugin uses <strong>Optical Character Recognition (OCR)</strong> to detect credits by reading text from video frames. 
-            It requires a Tesseract OCR server running in Docker to analyze the video frames.
+            It supports two OCR engines: Tesseract and PaddleOCR. Choose the engine in the OCR Enhancements tab.
         </p>
+    </div>
+
+    <div style="margin-bottom: 1.5em;">
+        <h3 style="margin-bottom: 0.5em; color: #52b54b;">Option 1: Tesseract OCR (Default)</h3>
+        <p class="fieldDescription">Traditional OCR engine with extensive language support.</p>
     </div>
 
     <div style="margin-bottom: 1.5em;">
@@ -60,10 +65,71 @@ services:
         </div>
     </div>
 
+    <div style="margin-bottom: 1.5em; padding: 1em; background: rgba(82, 181, 75, 0.1); border-left: 4px solid #52b54b; border-radius: 4px;">
+        <h3 style="margin-top: 0; margin-bottom: 0.5em; color: #52b54b;">Option 2: PaddleOCR with GPU Support (Alternative)</h3>
+        <p class="fieldDescription">Deep learning based OCR with excellent multi-language support and GPU acceleration for faster processing.</p>
+        
+        <div style="padding: 0.75em; background: rgba(255, 152, 0, 0.15); border-left: 3px solid #ff9800; border-radius: 4px; margin-bottom: 1em;">
+            <strong>⚠️ Requirements:</strong>
+            <ul class="fieldDescription" style="margin: 0.5em 0 0 0; padding-left: 1.5em;">
+                <li><strong>NVIDIA GPU only</strong> (requires CUDA support)</li>
+                <li><strong>~20GB disk space</strong> (large image with GPU libraries)</li>
+                <li>Docker Desktop with GPU support enabled (Windows: WSL2 backend)</li>
+            </ul>
+        </div>
+        
+        <p class="fieldDescription"><strong>Step 1: Pull and Run PaddleOCR GPU Container</strong></p>
+        <div style="background: rgba(128,128,128,0.2); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
+            <code>docker pull yock1/embycreditpaddle</code>
+        </div>
+        <div style="background: rgba(128,128,128,0.2); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
+            <code>docker run -d --gpus all --name paddleocr -p 8884:8884 --restart unless-stopped yock1/embycreditpaddle</code>
+        </div>
+        
+        <p class="fieldDescription" style="margin-top: 1em;"><strong>Docker Compose Example:</strong></p>
+        <div style="background: rgba(128,128,128,0.2); border-radius: 4px; padding: 1em; margin: 0.5em 0; font-family: monospace; overflow-x: auto;">
+            <pre style="margin: 0; opacity: 0.9;"><code>version: '3.8'
+services:
+  paddleocr:
+    image: yock1/embycreditpaddle
+    container_name: paddleocr
+    ports:
+      - "8884:8884"
+    environment:
+      - USE_GPU=true
+      - USE_ANGLE_CLS=true
+      - OCR_LANG=en
+    volumes:
+      # For Unraid: Persist models outside docker image
+      - /mnt/user/appdata/paddleocr-models:/root/.paddleocr
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped</code></pre>
+        </div>
+        
+        <p class="fieldDescription" style="margin-top: 1em;"><strong>Step 2: Configure PaddleOCR in Plugin</strong></p>
+        <ul class="fieldDescription">
+            <li>Go to the <strong>Settings</strong> tab</li>
+            <li>Set <strong>OCR Engine</strong> to <strong>PaddleOCR</strong></li>
+            <li>Set <strong>OCR API Endpoint</strong> to <code>http://localhost:8884</code></li>
+            <li>Click <strong>Test Connection</strong> to verify it's working</li>
+        </ul>
+        
+        <p class="fieldDescription" style="margin-top: 1em; font-style: italic; opacity: 0.9;">
+            💡 <strong>Tip:</strong> PaddleOCR with GPU acceleration is significantly faster than Tesseract for processing large video libraries.
+        </p>
+    </div>
+
     <div style="margin-bottom: 1.5em;">
         <h3 style="margin-bottom: 0.5em;">Step 5: Configure the Plugin</h3>
         <ul class="fieldDescription">
-            <li><strong>OCR Endpoint:</strong> <code>http://localhost:8884</code> (if on same machine) or <code>http://HOST_IP:8884</code></li>
+            <li><strong>OCR Engine:</strong> Choose between Tesseract or PaddleOCR in the Settings tab</li>
+            <li><strong>OCR API Endpoint:</strong> <code>http://localhost:8884</code> (default port for both engines)</li>
             <li><strong>Custom Temp Folder Path:</strong> <strong>CRITICAL for Docker users!</strong> Set a custom temp folder path in Settings tab to prevent filling up Docker images with temp files</li>
         </ul>
     </div>
@@ -81,7 +147,7 @@ services:
     <div style="padding: 1em; border-radius: 4px; margin-top: 1em;">
         <h4 style="margin-top: 0;">How It Works</h4>
         <p class="fieldDescription" style="margin-bottom: 0;">
-            The plugin extracts video frames using FFmpeg, sends them to the Tesseract OCR server, and searches for credit keywords 
+            The plugin extracts video frames using FFmpeg, sends them to your selected OCR server (Tesseract or PaddleOCR), and searches for credit keywords 
             (like "created by", "produced by", "directed by"). When it finds sustained keyword matches, it marks that as the credit start time.
         </p>
     </div>

@@ -248,8 +248,7 @@ define(['loading', 'toast'], function (loading, toast) {
         return isRelative ? -seconds : seconds;
     }
     
-    function editMarker(instance, view, episodeId, currentTime, seriesId, durationSeconds) {
-        console.log('editMarker - durationSeconds:', durationSeconds);
+    function editMarker(instance, view, episodeId, currentTime, seriesId, durationSeconds, successCallback) {
         const currentSeconds = currentTime ? parseTimeToSeconds(currentTime) : 0;
         const maxTime = durationSeconds > 0 ? formatTimeFromSeconds(durationSeconds) : 'Unknown';
         const promptMessage = currentTime ? 
@@ -312,7 +311,11 @@ define(['loading', 'toast'], function (loading, toast) {
                 loading.hide();
                 if (result.Success) {
                     toast({ type: 'success', text: result.Message });
-                    displayMarkers(instance, view);
+                    if (successCallback) {
+                        successCallback();
+                    } else {
+                        displayMarkers(instance, view);
+                    }
                 } else {
                     toast({ type: 'error', text: result.Message || 'Failed to update marker' });
                 }
@@ -325,7 +328,7 @@ define(['loading', 'toast'], function (loading, toast) {
         });
     }
     
-    function applyToSeason(instance, view, episodeId, seriesId, seasonNumber, episodeName) {
+    function applyToSeason(instance, view, episodeId, seriesId, seasonNumber, episodeName, successCallback) {
         const confirmMsg = `Copy the credits timestamp from "${episodeName}" to all other episodes in Season ${seasonNumber} that don't have markers?\n\nThis will only apply to episodes without existing credits markers.`;
         
         if (!confirm(confirmMsg)) {
@@ -353,7 +356,11 @@ define(['loading', 'toast'], function (loading, toast) {
                 if (result.Success) {
                     toast({ type: 'success', text: result.Message });
                     setTimeout(() => {
-                        displayMarkers(instance, view);
+                        if (successCallback) {
+                            successCallback();
+                        } else {
+                            displayMarkers(instance, view);
+                        }
                     }, 1000);
                 } else {
                     toast({ type: 'error', text: result.Message || 'Failed to apply marker to season' });
@@ -417,19 +424,12 @@ define(['loading', 'toast'], function (loading, toast) {
     }
     
     function batchSetTimeForMissing(instance, view, seriesId, seasonNumber, seasonEpisodes) {
-        console.log('batchSetTimeForMissing - seasonEpisodes:', seasonEpisodes);
         const episodesWithoutMarkers = seasonEpisodes.filter(ep => !ep.HasCreditsMarker);
-        console.log('episodesWithoutMarkers:', episodesWithoutMarkers);
         const episodeDurations = episodesWithoutMarkers
-            .map(ep => {
-                console.log('Episode:', ep.SeasonEpisode, 'DurationSeconds:', ep.DurationSeconds);
-                return ep.DurationSeconds || 0;
-            })
+            .map(ep => ep.DurationSeconds || 0)
             .filter(d => d > 0);
         
-        console.log('episodeDurations:', episodeDurations);
         const minDuration = episodeDurations.length > 0 ? Math.min(...episodeDurations) : 0;
-        console.log('minDuration:', minDuration);
         const maxTimeFormatted = minDuration > 0 ? formatTimeFromSeconds(minDuration) : 'Unknown';
         
         const promptMessage = `Set the same credits start time for ALL episodes missing markers in Season ${seasonNumber}.\nMax Duration (shortest episode): ${maxTimeFormatted}\n\nEnter time:\n• Absolute time: HH:MM:SS or MM:SS\n• Relative from end: -HH:MM:SS or -MM:SS (e.g., -00:31 for 31 seconds from end)`;
@@ -646,13 +646,28 @@ define(['loading', 'toast'], function (loading, toast) {
         });
     }
 
-    function showValidationModal(instance, view, data) {
-        const modal = document.createElement('div');
-        modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 2em;';
-        
-        const content = document.createElement('div');
-        content.style.cssText = 'background: #181818; color: #e8e8e8; border-radius: 8px; max-width: 1200px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 2em; box-shadow: 0 4px 30px rgba(0,0,0,0.5);';
-        
+    function refreshValidationModal(instance, view, modal, content, seriesId, seasonNumber) {
+        loading.show();
+        ApiClient.getJSON(ApiClient.getUrl('CreditsDetector/ValidateSeasonCredits', {
+            SeriesId: seriesId,
+            SeasonNumber: seasonNumber
+        }))
+        .then(response => {
+            loading.hide();
+            if (response.Success) {
+                updateValidationModalContent(instance, view, modal, content, response);
+            } else {
+                toast({ type: 'error', text: response.Message || 'Failed to reload validation data' });
+            }
+        })
+        .catch(error => {
+            loading.hide();
+            console.error('Error reloading validation data:', error);
+            toast({ type: 'error', text: 'Failed to reload validation data: ' + error.message });
+        });
+    }
+
+    function updateValidationModalContent(instance, view, modal, content, data) {
         const episodesWithMarkers = data.Episodes.filter(ep => ep.Marker && ep.Marker.HasMarker && ep.Marker.StartTime && ep.DurationSeconds > 0);
         let averageFromEndText = '';
         
@@ -675,8 +690,8 @@ define(['loading', 'toast'], function (loading, toast) {
         }
         
         let html = `<h2 style="margin-top: 0; color: #52B54B;">${data.SeriesName} - Season ${data.SeasonNumber} Validation</h2>`;
-        html += `<p style=\"color: #b8b8b8; margin-bottom: 1.5em;\">Side-by-side comparison of all episodes for quick validation${averageFromEndText}</p>`;
-        html += `<div style=\"display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1em;\">`;
+        html += `<p style="color: #b8b8b8; margin-bottom: 1.5em;">Side-by-side comparison of all episodes for quick validation${averageFromEndText}</p>`;
+        html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1em;">`;
         
         data.Episodes.forEach(ep => {
             const hasMarker = ep.Marker && ep.Marker.HasMarker;
@@ -684,23 +699,23 @@ define(['loading', 'toast'], function (loading, toast) {
             const statusColor = hasMarker ? '#52B54B' : '#E53935';
             const borderColor = hasMarker ? 'rgba(82, 181, 75, 0.5)' : 'rgba(229, 57, 53, 0.3)';
             
-            html += `<div style=\"background: #242424; border: 2px solid ${borderColor}; border-radius: 6px; padding: 1em;\">`;
-            html += `<div style=\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5em;\">`;
-            html += `<strong style=\"color: #e8e8e8;\">Episode ${ep.EpisodeNumber}</strong>`;
-            html += `<span style=\"font-size: 1.5em; color: ${statusColor};\">${statusIcon}</span>`;
+            html += `<div style="background: #242424; border: 2px solid ${borderColor}; border-radius: 6px; padding: 1em;">`;
+            html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5em;">`;
+            html += `<strong style="color: #e8e8e8;">Episode ${ep.EpisodeNumber}</strong>`;
+            html += `<span style="font-size: 1.5em; color: ${statusColor};">${statusIcon}</span>`;
             html += `</div>`;
-            html += `<div style=\"font-size: 0.9em; color: #d0d0d0; margin-bottom: 0.5em;\">${ep.EpisodeName}</div>`;
-            html += `<div style=\"font-size: 0.85em; color: #a0a0a0; margin-bottom: 0.5em;\">Duration: ${ep.Duration}</div>`;
+            html += `<div style="font-size: 0.9em; color: #d0d0d0; margin-bottom: 0.5em;">${ep.EpisodeName}</div>`;
+            html += `<div style="font-size: 0.85em; color: #a0a0a0; margin-bottom: 0.5em;">Duration: ${ep.Duration}</div>`;
             
             if (hasMarker) {
-                html += `<div style=\"font-weight: bold; color: #52B54B; margin-bottom: 0.5em;\">Credits: ${ep.Marker.StartTime}</div>`;
-                html += `<div style=\"display: flex; flex-direction: row; gap: 0.5em; flex-wrap: wrap;\">`;
+                html += `<div style="font-weight: bold; color: #52B54B; margin-bottom: 0.5em;">Credits: ${ep.Marker.StartTime}</div>`;
+                html += `<div style="display: flex; flex-direction: row; gap: 0.5em; flex-wrap: wrap;">`;
                 html += `<button is="emby-button" type="button" class="raised btnValidationPlay" data-episode-id="${ep.EpisodeId}" data-timestamp="${ep.Marker.StartTime}" style="padding: 0.3em 0.6em; font-size: 0.85em; background-color: #52B54B; color: white; flex: 1; min-width: 80px;"><i class="md-icon" style="font-size: 1em;">play_arrow</i> Play</button>`;
                 html += `<button is="emby-button" type="button" class="raised btnValidationEdit" data-episode-id="${ep.EpisodeId}" data-current-time="${ep.Marker.StartTime}" data-duration-seconds="${ep.DurationSeconds || 0}" data-series-id="${data.SeriesId}" style="padding: 0.3em 0.6em; font-size: 0.85em; background-color: #4A9FE5; color: white; flex: 1; min-width: 70px;">Edit</button>`;
                 html += `<button is="emby-button" type="button" class="raised btnValidationApply" data-episode-id="${ep.EpisodeId}" data-series-id="${data.SeriesId}" data-season-number="${data.SeasonNumber}" data-episode-name="${ep.EpisodeName || 'Unknown'}" style="padding: 0.3em 0.6em; font-size: 0.85em; background-color: #52B54B; color: white; flex: 1; min-width: 80px;">Apply to all</button>`;
                 html += `</div>`;
             } else {
-                html += `<div style=\"font-style: italic; color: #808080; margin-bottom: 0.5em;\">No credits marker</div>`;
+                html += `<div style="font-style: italic; color: #808080; margin-bottom: 0.5em;">No credits marker</div>`;
                 html += `<button is="emby-button" type="button" class="raised btnValidationEdit" data-episode-id="${ep.EpisodeId}" data-current-time="" data-duration-seconds="${ep.DurationSeconds || 0}" data-series-id="${data.SeriesId}" style="padding: 0.3em 0.6em; font-size: 0.85em; background-color: #4A9FE5; color: white; width: 100%;">Add Marker</button>`;
             }
             
@@ -708,13 +723,11 @@ define(['loading', 'toast'], function (loading, toast) {
         });
         
         html += `</div>`;
-        html += `<div style=\"margin-top: 2em; display: flex; justify-content: flex-end;\">`;
+        html += `<div style="margin-top: 2em; display: flex; justify-content: flex-end;">`;
         html += `<button is="emby-button" type="button" class="raised button-submit" id="btnCloseValidation" style="padding: 0.6em 1.5em; font-size: 1em; background-color: #4A9FE5; color: white;">Close</button>`;
         html += `</div>`;
         
         content.innerHTML = html;
-        modal.appendChild(content);
-        document.body.appendChild(modal);
         
         content.querySelectorAll('.btnValidationPlay').forEach(btn => {
             btn.addEventListener('click', function() {
@@ -731,8 +744,9 @@ define(['loading', 'toast'], function (loading, toast) {
                 const currentTime = this.getAttribute('data-current-time');
                 const durationSeconds = parseFloat(this.getAttribute('data-duration-seconds')) || 0;
                 const seriesId = this.getAttribute('data-series-id');
-                document.body.removeChild(modal);
-                editMarker(instance, view, episodeId, currentTime, seriesId, durationSeconds);
+                editMarker(instance, view, episodeId, currentTime, seriesId, durationSeconds, function() {
+                    refreshValidationModal(instance, view, modal, content, data.SeriesId, data.SeasonNumber);
+                });
             });
         });
         
@@ -742,14 +756,28 @@ define(['loading', 'toast'], function (loading, toast) {
                 const seriesId = this.getAttribute('data-series-id');
                 const seasonNumber = parseInt(this.getAttribute('data-season-number'));
                 const episodeName = this.getAttribute('data-episode-name');
-                document.body.removeChild(modal);
-                applyToSeason(instance, view, episodeId, seriesId, seasonNumber, episodeName);
+                applyToSeason(instance, view, episodeId, seriesId, seasonNumber, episodeName, function() {
+                    refreshValidationModal(instance, view, modal, content, data.SeriesId, data.SeasonNumber);
+                });
             });
         });
         
         document.getElementById('btnCloseValidation').addEventListener('click', () => {
             document.body.removeChild(modal);
         });
+    }
+
+    function showValidationModal(instance, view, data) {
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 2em;';
+        
+        const content = document.createElement('div');
+        content.style.cssText = 'background: #181818; color: #e8e8e8; border-radius: 8px; max-width: 1200px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 2em; box-shadow: 0 4px 30px rgba(0,0,0,0.5);';
+        
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+        
+        updateValidationModalContent(instance, view, modal, content, data);
         
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {

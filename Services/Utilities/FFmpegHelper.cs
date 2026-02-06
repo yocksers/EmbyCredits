@@ -1,8 +1,12 @@
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Model.MediaInfo;
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace EmbyCredits.Services.Utilities
@@ -182,5 +186,180 @@ namespace EmbyCredits.Services.Utilities
             }
             return deletedCount;
         }
-    }
+
+        /// <summary>
+        /// Generate chromaprint audio fingerprint for a media file.
+        /// </summary>
+        /// <param name="filePath">Path to the media file</param>
+        /// <param name="startTime">Start time in seconds</param>
+        /// <param name="endTime">End time in seconds</param>
+        /// <param name="logger">Logger instance</param>
+        /// <returns>Array of chromaprint fingerprint points (uint32 values)</returns>
+        public static uint[] GenerateChromaprint(string filePath, double startTime, double endTime, MediaBrowser.Model.Logging.ILogger? logger = null)
+        {
+            var normalizedPath = NormalizeFilePath(filePath);
+            var ffmpegPath = GetFfmpegPath();
+            var duration = endTime - startTime;
+
+            var args = string.Format(
+                CultureInfo.InvariantCulture,
+                "-hide_banner -loglevel warning -ss {0} -i \"{1}\" -to {2} -ac 2 -f chromaprint -fp_format raw -",
+                startTime,
+                normalizedPath,
+                duration);
+
+            logger?.Debug($"FFmpeg chromaprint command: {ffmpegPath} {args}");
+
+            var info = new ProcessStartInfo(ffmpegPath, args)
+            {
+                WindowStyle = ProcessWindowStyle.Hidden,
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                ErrorDialog = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            using var process = new Process { StartInfo = info };
+            process.Start();
+
+            try
+            {
+                process.PriorityClass = ProcessPriorityClass.BelowNormal;
+            }
+            catch (Exception e)
+            {
+                logger?.Debug($"FFmpeg priority could not be modified: {e.Message}");
+            }
+
+            using var ms = new MemoryStream();
+            var buf = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = process.StandardOutput.BaseStream.Read(buf, 0, buf.Length)) > 0)
+            {
+                ms.Write(buf, 0, bytesRead);
+            }
+
+            process.WaitForExit(60000);
+
+            var rawPoints = ms.ToArray();
+            if (rawPoints.Length == 0 || rawPoints.Length % 4 != 0)
+            {
+                logger?.Warn($"Chromaprint returned {rawPoints.Length} bytes for {filePath}");
+                return Array.Empty<uint>();
+            }
+
+            var pointCount = rawPoints.Length / 4;
+            var results = new uint[pointCount];
+            for (int i = 0, j = 0; i < rawPoints.Length; i += 4, j++)
+            {
+                results[j] = BitConverter.ToUInt32(rawPoints, i);
+            }
+
+            logger?.Debug($"Generated {results.Length} fingerprint points for {filePath}");
+            return results;
+        }
+
+        /// <summary>
+        /// Compare two fingerprints using XOR operations to find matching sequences.
+        /// This is similar to how Intro Skipper compares chromaprint fingerprints.
+        /// </summary>
+        /// <param name="fp1">First fingerprint</param>
+        /// <param name="fp2">Second fingerprint</param>
+        /// <param name="maxShift">Maximum time shift to consider in points</param>
+        /// <returns>Best match score and offset (0-1, where 1 is perfect match)</returns>
+        public static (double score, int offset) CompareFingerprints(uint[] fp1, uint[] fp2, int maxShift = 120)
+        {
+            if (fp1.Length == 0 || fp2.Length == 0)
+                return (0, 0);
+
+            double bestScore = 0;
+            int bestOffset = 0;
+
+            // Try different time shifts
+            for (int shift = -maxShift; shift <= maxShift; shift++)
+            {
+                int matchCount = 0;
+                int compareCount = 0;
+
+                // Calculate overlap region
+                int start1 = Math.Max(0, -shift);
+                int start2 = Math.Max(0, shift);
+                int length = Math.Min(fp1.Length - start1, fp2.Length - start2);
+
+                if (length <= 0)
+                    continue;
+
+                // Compare fingerprints using XOR
+                for (int i = 0; i < length; i++)
+                {
+                    var xorResult = fp1[start1 + i] ^ fp2[start2 + i];
+                    
+                    // Count matching bits (bits that are 0 after XOR)
+                    var matchingBits = 32 - System.Numerics.BitOperations.PopCount(xorResult);
+                    matchCount += matchingBits;
+                    compareCount += 32;
+                }
+
+                double score = (double)matchCount / compareCount;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestOffset = shift;
+                }
+            }
+
+            return (bestScore, bestOffset);
+        }
+        
+        /// <summary>
+        /// Find the best matching subsequence within two fingerprints.
+        /// This is useful for credits detection where we fingerprint a large window but need to find
+        /// where the credits music specifically begins within that window.
+        /// </summary>
+        /// <param name="fp1">First fingerprint</param>
+        /// <param name="fp2">Second fingerprint</param>
+        /// <param name="minWindowSize">Minimum window size in points (default 100 = ~13 seconds)</param>
+        /// <returns>Best match info: score, offset in fp1, offset in fp2</returns>
+        public static (double score, int offsetFp1, int offsetFp2) FindBestMatchingSubsequence(uint[] fp1, uint[] fp2, int minWindowSize = 100)
+        {
+            if (fp1.Length == 0 || fp2.Length == 0)
+                return (0, 0, 0);
+
+            double bestScore = 0;
+            int bestOffsetFp1 = 0;
+            int bestOffsetFp2 = 0;
+
+            var windowSize = Math.Min(Math.Min(fp1.Length, fp2.Length), 300);
+            windowSize = Math.Max(windowSize, minWindowSize);
+
+            for (int start1 = 0; start1 <= fp1.Length - windowSize; start1 += 10)
+            {
+                // Try different starting positions in fp2
+                for (int start2 = 0; start2 <= fp2.Length - windowSize; start2 += 10)
+                {
+                    int matchCount = 0;
+                    int compareCount = 0;
+
+                    // Compare the window
+                    for (int i = 0; i < windowSize; i++)
+                    {
+                        var xorResult = fp1[start1 + i] ^ fp2[start2 + i];
+                        var matchingBits = 32 - System.Numerics.BitOperations.PopCount(xorResult);
+                        matchCount += matchingBits;
+                        compareCount += 32;
+                    }
+
+                    double score = (double)matchCount / compareCount;
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        bestOffsetFp1 = start1;
+                        bestOffsetFp2 = start2;
+                    }
+                }
+            }
+
+            return (bestScore, bestOffsetFp1, bestOffsetFp2);
+        }    }
 }

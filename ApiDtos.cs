@@ -83,6 +83,7 @@ namespace EmbyCredits.Api
     public class TestOcrConnectionRequest : IReturn<object>
     {
         public string OcrEndpoint { get; set; } = string.Empty;
+        public string OcrEngine { get; set; } = "Tesseract";
     }
 
     [Route(ApiRoutes.DryRunSeries, "POST", Summary = "Dry run - detect credits without saving markers.")]

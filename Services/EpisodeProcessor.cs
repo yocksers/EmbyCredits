@@ -187,7 +187,7 @@ namespace EmbyCredits.Services
             }
             finally
             {
-                await _cpuThrottler.EndWork();
+                await _cpuThrottler.EndWork().ConfigureAwait(false);
 
                 if (priorityChanged)
                 {
@@ -209,6 +209,150 @@ namespace EmbyCredits.Services
                 
                 GC.Collect(2, GCCollectionMode.Optimized, false);
             }
+        }
+
+        public async Task<(bool success, double creditsStart, string failureReason, double confidence, string methodName, string detectionReason)> ProcessEpisodeWithBatchResult(
+            Episode episode,
+            bool isDryRun,
+            double? batchDetectedTime,
+            DetectionMethods.ChromaprintDetection? chromaprintMethod = null)
+        {
+            var episodeId = episode.Id.ToString();
+            var originalPriority = Thread.CurrentThread.Priority;
+            bool priorityChanged = false;
+
+            if (_configuration.LowerThreadPriority)
+            {
+                try
+                {
+                    Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
+                    priorityChanged = true;
+                    _debugLogger.LogDebug("Thread priority set to BelowNormal for reduced system impact");
+                }
+                catch (Exception ex)
+                {
+                    _debugLogger.LogWarn($"Failed to lower thread priority: {ex.Message}");
+                }
+            }
+
+            _cpuThrottler.BeginWork();
+
+            try
+            {
+                _debugLogger.LogInfo($"Processing episode with batch result: {episode.Name} (S{episode.ParentIndexNumber}E{episode.IndexNumber})");
+
+                if (batchDetectedTime.HasValue && batchDetectedTime.Value > 0)
+                {
+                    double creditsStart = batchDetectedTime.Value;
+                    
+                    if (!isDryRun)
+                    {
+                        var normalizedPath = Utilities.FFmpegHelper.NormalizeFilePath(episode.Path);
+                        double duration = 0;
+                        if (episode.RunTimeTicks.HasValue && episode.RunTimeTicks.Value > 0)
+                        {
+                            duration = episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond;
+                        }
+
+                        _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(creditsStart)}");
+                        _chapterMarkerService.SaveCreditsMarker(episode, creditsStart);
+                        _debugLogger.LogInfo($"Successfully added chapter marker");
+                    }
+                    else
+                    {
+                        _debugLogger.LogInfo($"Dry run - would add chapter marker at {FormatTime(creditsStart)}");
+                    }
+
+                    // Get actual confidence from chromaprint batch processing
+                    double confidence = chromaprintMethod?.GetBatchConfidence(episode.Id.ToString()) ?? 0.95;
+                    return (true, creditsStart, string.Empty, confidence, "Chromaprint Audio Fingerprint Detection", "Batch comparison");
+                }
+                else
+                {
+                    // No batch result - fall back to regular detection methods (OCR, etc.)
+                    _debugLogger.LogDebug($"No batch result for {episode.Name}, trying other detection methods");
+                    
+                    var normalizedPath = Utilities.FFmpegHelper.NormalizeFilePath(episode.Path);
+                    if (string.IsNullOrEmpty(normalizedPath))
+                    {
+                        _debugLogger.LogWarn($"Path normalization failed for: {episode.Path}");
+                        return (false, 0, "Path normalization failed", 0, string.Empty, string.Empty);
+                    }
+
+                    double duration = 0;
+                    if (episode.RunTimeTicks.HasValue && episode.RunTimeTicks.Value > 0)
+                    {
+                        duration = episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond;
+                    }
+                    else
+                    {
+                        _debugLogger.LogWarn($"No valid duration for episode {episode.Name}");
+                        return (false, 0, "No valid duration", 0, string.Empty, string.Empty);
+                    }
+
+                    // Try detection methods in priority order
+                    var detectionResult = await _detectionCoordinator.DetectCreditsWithContext(
+                        normalizedPath,
+                        duration,
+                        episode.Id.ToString(),
+                        episode.Series?.Id.ToString() ?? string.Empty,
+                        episode.ParentIndexNumber,
+                        episode.IndexNumber);
+
+                    if (detectionResult.timestamp > 0)
+                    {
+                        if (!isDryRun)
+                        {
+                            _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(detectionResult.timestamp)}");
+                            _chapterMarkerService.SaveCreditsMarker(episode, detectionResult.timestamp);
+                            _debugLogger.LogInfo($"Successfully added chapter marker");
+                        }
+                        else
+                        {
+                            _debugLogger.LogInfo($"Dry run - would add chapter marker at {FormatTime(detectionResult.timestamp)}");
+                        }
+
+                        return (true, detectionResult.timestamp, string.Empty, detectionResult.confidence, detectionResult.methodName, detectionResult.detectionReason);
+                    }
+                    else
+                    {
+                        _debugLogger.LogWarn($"Failed to detect credits for {episode.Name}: {detectionResult.failureReason}");
+                        return (false, 0, detectionResult.failureReason, 0, string.Empty, string.Empty);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _debugLogger.LogError($"Error processing episode: {ex.Message}", ex);
+                return (false, 0, $"Error: {ex.Message}", 0, string.Empty, string.Empty);
+            }
+            finally
+            {
+                await _cpuThrottler.EndWork().ConfigureAwait(false);
+
+                if (priorityChanged)
+                {
+                    try
+                    {
+                        Thread.CurrentThread.Priority = originalPriority;
+                    }
+                    catch (Exception ex)
+                    {
+                        _debugLogger.LogWarn($"Failed to restore thread priority: {ex.Message}");
+                    }
+                }
+
+                if (_configuration?.DelayBetweenEpisodesMs > 0)
+                {
+                    _debugLogger.LogDebug($"Applying {_configuration.DelayBetweenEpisodesMs}ms delay before next episode");
+                    await Task.Delay(_configuration.DelayBetweenEpisodesMs);
+                }
+            }
+        }
+
+        public List<DetectionMethods.IDetectionMethod> GetDetectionMethods()
+        {
+            return _detectionCoordinator.GetAllDetectionMethods();
         }
 
         private async Task<double> GetVideoDuration(string filePath)

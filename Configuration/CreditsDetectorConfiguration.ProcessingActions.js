@@ -207,7 +207,10 @@ define(['loading', 'toast'], function (loading, toast) {
     }
 
     function testOcrConnection(view) {
+        const ocrEngineSelect = view.querySelector('#selectOcrEngine');
+        const ocrEngine = ocrEngineSelect ? ocrEngineSelect.value : 'Tesseract';
         const ocrEndpoint = view.querySelector('#txtOcrEndpoint').value;
+        
         if (!ocrEndpoint) {
             toast({ type: 'error', text: 'Please enter an OCR endpoint URL first.' });
             return;
@@ -224,7 +227,7 @@ define(['loading', 'toast'], function (loading, toast) {
             url: ApiClient.getUrl('CreditsDetector/TestOcrConnection'),
             dataType: 'json',
             contentType: 'application/json',
-            data: JSON.stringify({ OcrEndpoint: ocrEndpoint })
+            data: JSON.stringify({ OcrEndpoint: ocrEndpoint, OcrEngine: ocrEngine })
         }).then(response => {
             loading.hide();
             if (response && response.Success) {

@@ -174,7 +174,15 @@ namespace EmbyCredits.ScheduledTasks
             var failedEpisodeNames = new List<string>();
             var successfulSeriesNames = new HashSet<string>();
 
-            foreach (var episode in episodesToProcess)
+            // Group episodes by series and season for batch processing
+            var episodesBySeason = episodesToProcess
+                .Where(e => e.Series != null && e.ParentIndexNumber.HasValue)
+                .GroupBy(e => new { SeriesId = e.Series!.Id.ToString(), SeasonNumber = e.ParentIndexNumber!.Value })
+                .ToList();
+
+            _logger.Info($"Grouped {episodesToProcess.Count} episodes into {episodesBySeason.Count} seasons for batch processing");
+
+            foreach (var seasonGroup in episodesBySeason)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
@@ -182,12 +190,17 @@ namespace EmbyCredits.ScheduledTasks
                     break;
                 }
 
+                var seasonEpisodes = seasonGroup.OrderBy(e => e.IndexNumber).ToList();
+                var firstEpisode = seasonEpisodes.First();
+                var seriesName = firstEpisode.Series?.Name ?? "Unknown Series";
+                
+                _logger.Info($"Processing season batch: {seriesName} Season {seasonGroup.Key.SeasonNumber} ({seasonEpisodes.Count} episodes)");
+
                 try
                 {
-                    await CreditsDetectionService.ProcessEpisode(episode);
-                    processedCount++;
-
-                    var seriesName = episode.Series?.Name ?? "Unknown Series";
+                    await CreditsDetectionService.ProcessSeasonBatch(seasonEpisodes, cancellationToken);
+                    
+                    processedCount += seasonEpisodes.Count;
                     successfulSeriesNames.Add(seriesName);
 
                     var percentComplete = (double)processedCount / episodesToProcess.Count * 100;
@@ -195,12 +208,14 @@ namespace EmbyCredits.ScheduledTasks
                 }
                 catch (Exception ex)
                 {
-                    _logger.ErrorException($"Error processing episode {episode.Name}", ex);
-                    Plugin.Progress.FailedItems++;
+                    _logger.ErrorException($"Error processing season batch {seriesName} S{seasonGroup.Key.SeasonNumber}", ex);
+                    Plugin.Progress.FailedItems += seasonEpisodes.Count;
                     
-                    var seriesName = episode.Series?.Name ?? "Unknown Series";
-                    var episodeLabel = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00} - {episode.Name}";
-                    failedEpisodeNames.Add(episodeLabel);
+                    foreach (var episode in seasonEpisodes)
+                    {
+                        var episodeLabel = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00} - {episode.Name}";
+                        failedEpisodeNames.Add(episodeLabel);
+                    }
                 }
 
                 await Task.Delay(1000, cancellationToken);
@@ -209,6 +224,10 @@ namespace EmbyCredits.ScheduledTasks
             Plugin.Progress.IsRunning = false;
             Plugin.Progress.EndTime = DateTime.Now;
             Plugin.Progress.CurrentItem = "Complete";
+            
+            EmbyCredits.Services.DetectionMethods.OcrDetection.ClearAllCache();
+            EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearAllCache();
+            EmbyCredits.Services.DetectionMethods.BlackFrameDetection.ClearAllCache();
 
             _logger.Info($"Credits detection complete. Processed: {Plugin.Progress.SuccessfulItems}, Failed: {Plugin.Progress.FailedItems}");
 

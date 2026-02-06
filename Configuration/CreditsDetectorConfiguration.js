@@ -29,76 +29,127 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 });
             });
 
-            view.querySelector('#btnResetToDefaults').addEventListener('click', () => {
-                dataManager.resetToDefaults(view);
-            });
+            const btnResetToDefaults = view.querySelector('#btnResetToDefaults');
+            if (btnResetToDefaults) {
+                btnResetToDefaults.addEventListener('click', () => {
+                    dataManager.resetToDefaults(view);
+                });
+            }
 
-            view.querySelector('#btnBrowseTempFolder').addEventListener('click', () => {
-                dataManager.browseTempFolder(view);
-            });
+            const btnBrowseTempFolder = view.querySelector('#btnBrowseTempFolder');
+            if (btnBrowseTempFolder) {
+                btnBrowseTempFolder.addEventListener('click', () => {
+                    dataManager.browseTempFolder(view);
+                });
+            }
 
-            view.querySelector('#btnBrowseBackupFolder').addEventListener('click', () => {
-                dataManager.browseBackupFolder(view);
-            });
+            const btnBrowseBackupFolder = view.querySelector('#btnBrowseBackupFolder');
+            if (btnBrowseBackupFolder) {
+                btnBrowseBackupFolder.addEventListener('click', () => {
+                    dataManager.browseBackupFolder(view);
+                });
+            }
 
-            view.querySelector('#btnResetAllExceptFolders').addEventListener('click', () => {
-                dataManager.resetAllExceptFolders(view);
-            });
+            const btnResetAllExceptFolders = view.querySelector('#btnResetAllExceptFolders');
+            if (btnResetAllExceptFolders) {
+                btnResetAllExceptFolders.addEventListener('click', () => {
+                    dataManager.resetAllExceptFolders(view);
+                });
+            }
 
-            view.querySelector('#btnProcessSeries').addEventListener('click', () => {
-                processingActions.processSeries(this, view);
-            });
+            const btnProcessSeries = view.querySelector('#btnProcessSeries');
+            if (btnProcessSeries) {
+                btnProcessSeries.addEventListener('click', () => {
+                    processingActions.processSeries(this, view);
+                });
+            }
 
-            view.querySelector('#btnQueueAllSeries').addEventListener('click', () => {
-                processingActions.queueAllSeries(this, view);
-            });
+            const btnQueueAllSeries = view.querySelector('#btnQueueAllSeries');
+            if (btnQueueAllSeries) {
+                btnQueueAllSeries.addEventListener('click', () => {
+                    processingActions.queueAllSeries(this, view);
+                });
+            }
 
-            view.querySelector('#btnCancelProcessing').addEventListener('click', () => {
-                processingActions.cancelProcessing(this, view);
-            });
+            const btnCancelProcessing = view.querySelector('#btnCancelProcessing');
+            if (btnCancelProcessing) {
+                btnCancelProcessing.addEventListener('click', () => {
+                    processingActions.cancelProcessing(this, view);
+                });
+            }
 
-            view.querySelector('#btnClearQueue').addEventListener('click', () => {
-                processingActions.clearQueue(view);
-            });
+            const btnClearQueue = view.querySelector('#btnClearQueue');
+            if (btnClearQueue) {
+                btnClearQueue.addEventListener('click', () => {
+                    processingActions.clearQueue(view);
+                });
+            }
 
-            view.querySelector('#btnDryRun').addEventListener('click', () => {
-                processingActions.startDryRun(this, view, false);
-            });
+            const btnDryRun = view.querySelector('#btnDryRun');
+            if (btnDryRun) {
+                btnDryRun.addEventListener('click', () => {
+                    processingActions.startDryRun(this, view, false);
+                });
+            }
 
-            view.querySelector('#btnDryRunDebug').addEventListener('click', () => {
-                processingActions.startDryRun(this, view, true);
-            });
+            const btnDryRunDebug = view.querySelector('#btnDryRunDebug');
+            if (btnDryRunDebug) {
+                btnDryRunDebug.addEventListener('click', () => {
+                    processingActions.startDryRun(this, view, true);
+                });
+            }
 
-            view.querySelector('#btnTestOcrConnection').addEventListener('click', () => {
-                processingActions.testOcrConnection(view);
-            });
+            const btnTestOcrConnection = view.querySelector('#btnTestOcrConnection');
+            if (btnTestOcrConnection) {
+                btnTestOcrConnection.addEventListener('click', () => {
+                    processingActions.testOcrConnection(view);
+                });
+            }
 
-            view.querySelector('#selectLibraryFilter').addEventListener('change', () => {
-                const libraryId = view.querySelector('#selectLibraryFilter').value;
-                seriesManager.loadSeriesList(view, libraryId);
-            });
+            const selectLibraryFilter = view.querySelector('#selectLibraryFilter');
+            if (selectLibraryFilter) {
+                selectLibraryFilter.addEventListener('change', () => {
+                    const libraryId = view.querySelector('#selectLibraryFilter').value;
+                    seriesManager.loadSeriesList(view, libraryId);
+                });
+            }
 
-            view.querySelector('#selectSeries').addEventListener('change', () => {
-                const seriesId = view.querySelector('#selectSeries').value;
-                seriesManager.loadEpisodesForSeries(view, seriesId);
-            });
+            const selectSeries = view.querySelector('#selectSeries');
+            if (selectSeries) {
+                selectSeries.addEventListener('change', () => {
+                    const seriesId = view.querySelector('#selectSeries').value;
+                    seriesManager.loadEpisodesForSeries(view, seriesId);
+                });
+            }
 
-            view.querySelector('#selectSeriesForMarkers').addEventListener('change', () => {
-                const seriesId = view.querySelector('#selectSeriesForMarkers').value;
-                markersManager.displayMarkers(this, view);
-            });
+            const selectSeriesForMarkers = view.querySelector('#selectSeriesForMarkers');
+            if (selectSeriesForMarkers) {
+                selectSeriesForMarkers.addEventListener('change', () => {
+                    const seriesId = view.querySelector('#selectSeriesForMarkers').value;
+                    markersManager.displayMarkers(this, view);
+                });
+            }
 
-            view.querySelector('#btnShowSeasonValidation').addEventListener('click', () => {
-                markersManager.showSeasonValidation(this, view);
-            });
+            const btnShowSeasonValidation = view.querySelector('#btnShowSeasonValidation');
+            if (btnShowSeasonValidation) {
+                btnShowSeasonValidation.addEventListener('click', () => {
+                    markersManager.showSeasonValidation(this, view);
+                });
+            }
 
-            view.querySelector('#btnExportBackup').addEventListener('click', () => {
-                backupManager.exportBackup(view);
-            });
+            const btnExportBackup = view.querySelector('#btnExportBackup');
+            if (btnExportBackup) {
+                btnExportBackup.addEventListener('click', () => {
+                    backupManager.exportBackup(view);
+                });
+            }
 
-            view.querySelector('#btnImportBackup').addEventListener('click', () => {
-                backupManager.importBackup(view);
-            });
+            const btnImportBackup = view.querySelector('#btnImportBackup');
+            if (btnImportBackup) {
+                btnImportBackup.addEventListener('click', () => {
+                    backupManager.importBackup(view);
+                });
+            }
 
             const detectionModeSelect = view.querySelector('#selectDetectionMode');
             
@@ -140,69 +191,109 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 updateCollapsibleColors();
             }
 
-            view.querySelector('#btnBulkExportSeries').addEventListener('click', () => {
-                backupManager.openBulkExportModal(view);
-            });
+            const btnBulkExportSeries = view.querySelector('#btnBulkExportSeries');
+            if (btnBulkExportSeries) {
+                btnBulkExportSeries.addEventListener('click', () => {
+                    backupManager.openBulkExportModal(view);
+                });
+            }
 
-            view.querySelector('#btnCloseBulkExportModal').addEventListener('click', () => {
-                backupManager.closeBulkExportModal(view);
-            });
+            const btnCloseBulkExportModal = view.querySelector('#btnCloseBulkExportModal');
+            if (btnCloseBulkExportModal) {
+                btnCloseBulkExportModal.addEventListener('click', () => {
+                    backupManager.closeBulkExportModal(view);
+                });
+            }
 
-            view.querySelector('#btnCancelBulkExport').addEventListener('click', () => {
-                backupManager.closeBulkExportModal(view);
-            });
+            const btnCancelBulkExport = view.querySelector('#btnCancelBulkExport');
+            if (btnCancelBulkExport) {
+                btnCancelBulkExport.addEventListener('click', () => {
+                    backupManager.closeBulkExportModal(view);
+                });
+            }
 
-            view.querySelector('#selectBulkExportLibrary').addEventListener('change', () => {
-                const libraryId = view.querySelector('#selectBulkExportLibrary').value;
-                backupManager.loadBulkExportSeriesList(view, libraryId);
-            });
+            const selectBulkExportLibrary = view.querySelector('#selectBulkExportLibrary');
+            if (selectBulkExportLibrary) {
+                selectBulkExportLibrary.addEventListener('change', () => {
+                    const libraryId = view.querySelector('#selectBulkExportLibrary').value;
+                    backupManager.loadBulkExportSeriesList(view, libraryId);
+                });
+            }
 
-            view.querySelector('#btnSelectAllSeries').addEventListener('click', () => {
-                backupManager.selectAllSeries(view);
-            });
+            const btnSelectAllSeries = view.querySelector('#btnSelectAllSeries');
+            if (btnSelectAllSeries) {
+                btnSelectAllSeries.addEventListener('click', () => {
+                    backupManager.selectAllSeries(view);
+                });
+            }
 
-            view.querySelector('#btnDeselectAllSeries').addEventListener('click', () => {
-                backupManager.deselectAllSeries(view);
-            });
+            const btnDeselectAllSeries = view.querySelector('#btnDeselectAllSeries');
+            if (btnDeselectAllSeries) {
+                btnDeselectAllSeries.addEventListener('click', () => {
+                    backupManager.deselectAllSeries(view);
+                });
+            }
 
-            view.querySelector('#btnConfirmBulkExport').addEventListener('click', () => {
-                backupManager.confirmBulkExport(view);
-            });
+            const btnConfirmBulkExport = view.querySelector('#btnConfirmBulkExport');
+            if (btnConfirmBulkExport) {
+                btnConfirmBulkExport.addEventListener('click', () => {
+                    backupManager.confirmBulkExport(view);
+                });
+            }
 
-            view.querySelector('#chkManualSkipExistingMarkers').addEventListener('change', () => {
-                dataManager.saveData(this, view);
-            });
+            const chkManualSkipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers');
+            if (chkManualSkipExistingMarkers) {
+                chkManualSkipExistingMarkers.addEventListener('change', () => {
+                    dataManager.saveData(this, view);
+                });
+            }
 
-            view.querySelector('#btnAddKeyword').addEventListener('click', () => {
-                this.addKeyword(view);
-            });
-
-            view.querySelector('#txtNewKeyword').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
+            const btnAddKeyword = view.querySelector('#btnAddKeyword');
+            if (btnAddKeyword) {
+                btnAddKeyword.addEventListener('click', () => {
                     this.addKeyword(view);
-                }
-            });
+                });
+            }
 
-            view.querySelector('#btnResetKeywords').addEventListener('click', () => {
-                if (confirm('Reset keywords to defaults? This will replace all current keywords.')) {
-                    const defaults = 'associate producer,based on,cast,casting,cinematography,co-producer,composer,costume design,created by,credits,developed by,directed by,director of photography,editing,editor,end credits,ende,executive producer,fim,fin,fine,guest starring,music by,produced by,producer,production company,production design,screenplay,series producer,sound,special thanks,starring,story by,the end,visual effects,written by,끝,終,キャスト,スタッフ,監督,脚本,音楽,製作,制作,プロデューサー,原作,演出,撮影,編集,おわり,提供,協力,出演';
-                    view.querySelector('#txtOcrDetectionKeywords').value = defaults;
-                    this.updateKeywordDisplay(view);
-                    
-                    require(['configurationpage?name=CreditsDetectorConfigurationDataManager'], (dataManager) => {
-                        dataManager.saveData(this, view);
-                    });
-                }
-            });
+            const txtNewKeyword = view.querySelector('#txtNewKeyword');
+            if (txtNewKeyword) {
+                txtNewKeyword.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        this.addKeyword(view);
+                    }
+                });
+            }
 
-            view.querySelector('#btnSaveOcrEnhancements').addEventListener('click', () => {
-                dataManager.saveData(this, view);
-            });
+            const btnResetKeywords = view.querySelector('#btnResetKeywords');
+            if (btnResetKeywords) {
+                btnResetKeywords.addEventListener('click', () => {
+                    if (confirm('Reset keywords to defaults? This will replace all current keywords.')) {
+                        const defaults = 'associate producer,based on,cast,casting,cinematography,co-producer,composer,costume design,created by,credits,developed by,directed by,director of photography,editing,editor,end credits,ende,executive producer,fim,fin,fine,guest starring,music by,produced by,producer,production company,production design,screenplay,series producer,sound,special thanks,starring,story by,the end,visual effects,written by,끝,終,キャスト,スタッフ,監督,脚本,音楽,製作,制作,プロデューサー,原作,演出,撮影,編集,おわり,提供,協力,出演';
+                        view.querySelector('#txtOcrDetectionKeywords').value = defaults;
+                        this.updateKeywordDisplay(view);
+                        
+                        require(['configurationpage?name=CreditsDetectorConfigurationDataManager'], (dataManager) => {
+                            dataManager.saveData(this, view);
+                        });
+                    }
+                });
+            }
 
-            view.querySelector('#btnRefreshMemory').addEventListener('click', () => {
-                this.refreshMemoryUsage(view);
-            });
+            const btnSaveOcrEnhancements = view.querySelector('#btnSaveOcrEnhancements');
+            if (btnSaveOcrEnhancements) {
+                btnSaveOcrEnhancements.addEventListener('click', () => {
+                    dataManager.saveData(this, view);
+                });
+            }
+
+            const selectOcrEngine = view.querySelector('#selectOcrEngine');
+            if (selectOcrEngine) {
+                selectOcrEngine.addEventListener('change', () => {
+                    this.toggleOcrEngineFields(view);
+                });
+                this.toggleOcrEngineFields(view);
+            }
         }
 
         addKeyword(view) {
@@ -299,42 +390,11 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             });
         }
 
-        refreshMemoryUsage(view) {
-            const url = ApiClient.getUrl('CreditsDetector/GetMemoryUsage');
-            
-            ApiClient.fetch({
-                url: url,
-                type: 'GET',
-                dataType: 'json',
-                headers: {
-                    'X-Emby-Token': ApiClient.accessToken()
-                }
-            }).then(response => {
-                if (response.Success) {
-                    view.querySelector('#memoryWorkingSet').textContent = `${response.WorkingSetMB} MB`;
-                    view.querySelector('#memoryPrivate').textContent = `${response.PrivateMemoryMB} MB`;
-                    view.querySelector('#memoryGC').textContent = `${response.GCTotalMemoryMB} MB`;
-                    
-                    const timestamp = new Date(response.Timestamp);
-                    view.querySelector('#memoryTimestamp').textContent = timestamp.toLocaleString();
-                } else {
-                    toast({ type: 'error', text: 'Failed to get memory usage: ' + (response.Message || 'Unknown error') });
-                }
-            }).catch(error => {
-                console.error('Error fetching memory usage:', error);
-                toast({ type: 'error', text: 'Error fetching memory usage' });
-            });
-        }
-
         onResume(options) {
             super.onResume(options);
             const view = this.view;
 
-            // Always reload partials to ensure fresh content and proper initialization
-            // This prevents CSS/component corruption from other plugins
-            console.log('Credits Detector: Loading partials...');
             loader.loadPagePartials(view).then(() => {
-                console.log('Credits Detector: Partials loaded, initializing page...');
                 
                 // Ensure event bindings happen after DOM is fully populated
                 setTimeout(() => {
@@ -353,9 +413,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     
                     // Enforce dropdown styles after load
                     this.enforceDropdownStyles(view);
-                    
-                    // Load memory usage
-                    this.refreshMemoryUsage(view);
                     
                     // Restore last progress if available (only if not currently running)
                     if (this.lastProgress && !this.lastProgress.IsRunning) {
@@ -390,6 +447,32 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     console.error('Error loading partials:', error);
                     toast({ type: 'error', text: 'Failed to load configuration page. Please refresh the page.' });
                 });
+        }
+        
+        toggleOcrEngineFields(view) {
+            const selectOcrEngine = view.querySelector('#selectOcrEngine');
+            const lblOcrEndpoint = view.querySelector('#lblOcrEndpoint');
+            const descOcrEndpoint = view.querySelector('#descOcrEndpoint');
+            const txtOcrEndpoint = view.querySelector('#txtOcrEndpoint');
+            
+            if (selectOcrEngine) {
+                const selectedEngine = selectOcrEngine.value;
+                const currentValue = txtOcrEndpoint ? txtOcrEndpoint.value : '';
+                
+                if (selectedEngine === 'PaddleOCR') {
+                    if (lblOcrEndpoint) lblOcrEndpoint.textContent = 'PaddleOCR API Endpoint';
+                    if (descOcrEndpoint) descOcrEndpoint.innerHTML = 'URL of your PaddleOCR API (e.g., <code>http://localhost:8866</code> or <code>http://192.168.1.100:8866</code>)';
+                    if (txtOcrEndpoint && (currentValue === 'http://localhost:8884' || currentValue === '')) {
+                        txtOcrEndpoint.value = 'http://localhost:8866';
+                    }
+                } else {
+                    if (lblOcrEndpoint) lblOcrEndpoint.textContent = 'Tesseract OCR API Endpoint';
+                    if (descOcrEndpoint) descOcrEndpoint.innerHTML = 'URL of your Tesseract OCR API (e.g., <code>http://localhost:8884</code> or <code>http://192.168.1.100:8884</code>)';
+                    if (txtOcrEndpoint && (currentValue === 'http://localhost:8866' || currentValue === '')) {
+                        txtOcrEndpoint.value = 'http://localhost:8884';
+                    }
+                }
+            }
         }
         
         onPause() {

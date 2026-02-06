@@ -21,7 +21,7 @@ namespace EmbyCredits
     {
         private readonly ILogger _logger;
         private readonly IApplicationPaths _appPaths;
-        private readonly ILibraryManager _libraryManager;
+        public readonly ILibraryManager _libraryManager;
         private readonly IItemRepository _itemRepository;
         private readonly IFfmpegManager _ffmpegManager;
         private readonly IMediaEncoder _mediaEncoder;

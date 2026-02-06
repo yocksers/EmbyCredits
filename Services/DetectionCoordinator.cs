@@ -54,6 +54,49 @@ namespace EmbyCredits.Services
             }
         }
 
+        private void InitializeDetectionMethodsForAnime()
+        {
+            if (_configuration.EnableDetailedLogging)
+            {
+                _logger.Debug($"[DetectionCoordinator] Initializing detection methods for anime (DetectionMode: {_configuration.DetectionMode}, AnimeDetectionMethod: {_configuration.AnimeDetectionMethod})");
+            }
+
+            if (_configuration.AnimeDetectionMethod == AnimeDetectionMethod.BlackFrame)
+            {
+                var blackFrameMethod = new BlackFrameDetection(_logger, _configuration);
+                _detectionMethods.Add(blackFrameMethod);
+                if (_configuration.EnableDetailedLogging)
+                {
+                    _logger.Debug($"[DetectionCoordinator] Added BlackFrameDetection for anime. IsEnabled: {blackFrameMethod.IsEnabled}");
+                }
+            }
+
+            if (_configuration.DetectionMode == DetectionMode.HashOnly || 
+                _configuration.DetectionMode == DetectionMode.OcrWithHashFallback ||
+                _configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
+            {
+                var chromaprintMethod = new ChromaprintDetection(_logger, _configuration);
+                _detectionMethods.Add(chromaprintMethod);
+                if (_configuration.EnableDetailedLogging)
+                {
+                    _logger.Debug($"[DetectionCoordinator] Added ChromaprintDetection for anime. IsEnabled: {chromaprintMethod.IsEnabled}");
+                }
+            }
+            
+            if (_configuration.AnimeDetectionMethod == AnimeDetectionMethod.Ocr ||
+                _configuration.DetectionMode == DetectionMode.OcrOnly || 
+                _configuration.DetectionMode == DetectionMode.OcrWithHashFallback ||
+                _configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
+            {
+                var ocrMethod = new OcrDetection(_logger, _configuration, isForAnime: true);
+                _detectionMethods.Add(ocrMethod);
+                if (_configuration.EnableDetailedLogging)
+                {
+                    _logger.Debug($"[DetectionCoordinator] Added OcrDetection for anime. IsEnabled: {ocrMethod.IsEnabled}");
+                }
+            }
+        }
+
         private void LogDebug(string message)
         {
             if (CreditsDetectionService.IsDebugMode)
@@ -70,6 +113,15 @@ namespace EmbyCredits.Services
             }
         }
 
+        private void LogWarn(string message)
+        {
+            if (CreditsDetectionService.IsDebugMode)
+            {
+                CreditsDetectionService.LogToDebug("WARN", $"[DetectionCoordinator] {message}");
+            }
+            _logger.Warn($"[DetectionCoordinator] {message}");
+        }
+
         public async Task<(double timestamp, string failureReason, double confidence, string methodName, string detectionReason)> DetectCredits(string videoPath, double duration, string episodeId)
         {
             return await DetectCreditsInternal(videoPath, duration, episodeId, null!, null, null);
@@ -82,32 +134,327 @@ namespace EmbyCredits.Services
 
         private async Task<(double timestamp, string failureReason, double confidence, string methodName, string detectionReason)> DetectCreditsInternal(string videoPath, double duration, string episodeId, string seriesId, int? seasonNumber, int? episodeNumber)
         {
-            LogDebug($"DetectCredits called: duration={FormatTime(duration)}");
+            LogDebug($"DetectCredits called: duration={FormatTime(duration)}, seriesId={seriesId}");
+
+            bool isAnime = false;
+            if (_configuration.EnableAnimeDetection && !string.IsNullOrEmpty(seriesId))
+            {
+                _logger.Debug($"[DetectionCoordinator] Anime detection enabled, checking seriesId: {seriesId}");
+                isAnime = CheckIfAnime(seriesId);
+                if (isAnime)
+                {
+                    _logger.Info($"[DetectionCoordinator] Series identified as anime - using anime-specific detection methods");
+                    LogDebug("Series identified as anime - using anime-specific detection methods");
+                    foreach (var method in _detectionMethods)
+                    {
+                        try { method?.Dispose(); } catch { }
+                    }
+                    _detectionMethods.Clear();
+                    InitializeDetectionMethodsForAnime();
+                }
+                else
+                {
+                    _logger.Debug($"[DetectionCoordinator] Series is not anime, using standard detection methods");
+                }
+            }
+            else
+            {
+                if (!_configuration.EnableAnimeDetection)
+                {
+                    _logger.Debug($"[DetectionCoordinator] Anime detection is disabled in configuration");
+                }
+                if (string.IsNullOrEmpty(seriesId))
+                {
+                    _logger.Debug($"[DetectionCoordinator] No seriesId provided for anime detection");
+                }
+            }
+
             var (detectionResults, methodErrors) = await RunAllDetectionMethods(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber);
 
-            // Check if fallback is needed
-            bool shouldTryFallback = false;
-            DetectionMode fallbackMode = _configuration.DetectionMode;
-            
-            if (detectionResults.Count == 0)
+            // For anime: If all detection methods failed, apply mode-specific fallback logic
+            if (isAnime && detectionResults.Count == 0 && _configuration.AnimeDetectionMethod == AnimeDetectionMethod.BlackFrame && seasonNumber.HasValue && episodeNumber.HasValue)
+            {
+                var blackFrameError = methodErrors.ContainsKey("BlackFrame");
+                if (blackFrameError)
+                {
+                    LogInfo("Anime detection: BlackFrame failed, attempting fallback based on detection mode...");
+                    
+                    // Determine fallback based on detection mode
+                    if (_configuration.DetectionMode == DetectionMode.HashOnly)
+                    {
+                        // HashOnly: Try Chromaprint
+                        var chromaprint = _detectionMethods.FirstOrDefault(m => m is ChromaprintDetection) as ChromaprintDetection;
+                        if (chromaprint != null)
+                        {
+                            try
+                            {
+                                LogDebug("Running Chromaprint fallback for anime (HashOnly mode)...");
+                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame failed, trying Chromaprint");
+                                double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                                
+                                if (timestamp > 0)
+                                {
+                                    LogInfo($"Chromaprint fallback successful at {FormatTime(timestamp)}");
+                                    var reason = chromaprint.GetDetectionReason();
+                                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Anime fallback: {reason}", chromaprint.Confidence, chromaprint.MethodName, reason);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogWarn($"Chromaprint fallback error: {ex.Message}");
+                            }
+                        }
+                    }
+                    else if (_configuration.DetectionMode == DetectionMode.OcrOnly)
+                    {
+                        // OcrOnly: Try OCR
+                        var ocr = _detectionMethods.FirstOrDefault(m => m is OcrDetection) as OcrDetection;
+                        if (ocr != null)
+                        {
+                            try
+                            {
+                                LogDebug("Running OCR fallback for anime (OcrOnly mode)...");
+                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame failed, trying OCR");
+                                double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                                
+                                if (timestamp > 0)
+                                {
+                                    LogInfo($"OCR fallback successful at {FormatTime(timestamp)}");
+                                    var reason = ocr.GetDetectionReason();
+                                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Anime fallback: {reason}", ocr.Confidence, ocr.MethodName, reason);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogWarn($"OCR fallback error: {ex.Message}");
+                            }
+                        }
+                    }
+                    else if (_configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
+                    {
+                        // OcrWithHashFallback: Try OCR first, then Chromaprint
+                        var ocr = _detectionMethods.FirstOrDefault(m => m is OcrDetection) as OcrDetection;
+                        if (ocr != null)
+                        {
+                            try
+                            {
+                                LogDebug("Running OCR fallback for anime (OcrWithHashFallback mode)...");
+                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame failed, trying OCR");
+                                double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                                
+                                if (timestamp > 0)
+                                {
+                                    LogInfo($"OCR fallback successful at {FormatTime(timestamp)}");
+                                    var reason = ocr.GetDetectionReason();
+                                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Anime fallback: {reason}", ocr.Confidence, ocr.MethodName, reason);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogWarn($"OCR fallback error: {ex.Message}");
+                            }
+                        }
+                        
+                        // If OCR failed, try Chromaprint
+                        var chromaprint = _detectionMethods.FirstOrDefault(m => m is ChromaprintDetection) as ChromaprintDetection;
+                        if (chromaprint != null)
+                        {
+                            try
+                            {
+                                LogDebug("OCR failed, running Chromaprint fallback for anime...");
+                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "OCR failed, trying Chromaprint");
+                                double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                                
+                                if (timestamp > 0)
+                                {
+                                    LogInfo($"Chromaprint fallback successful at {FormatTime(timestamp)}");
+                                    var reason = chromaprint.GetDetectionReason();
+                                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Anime fallback: {reason}", chromaprint.Confidence, chromaprint.MethodName, reason);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogWarn($"Chromaprint fallback error: {ex.Message}");
+                            }
+                        }
+                    }
+                    else if (_configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
+                    {
+                        // HashWithOcrFallback: Try Chromaprint first, then OCR
+                        var chromaprint = _detectionMethods.FirstOrDefault(m => m is ChromaprintDetection) as ChromaprintDetection;
+                        if (chromaprint != null)
+                        {
+                            try
+                            {
+                                LogDebug("Running Chromaprint fallback for anime (HashWithOcrFallback mode)...");
+                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame failed, trying Chromaprint");
+                                double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                                
+                                if (timestamp > 0)
+                                {
+                                    LogInfo($"Chromaprint fallback successful at {FormatTime(timestamp)}");
+                                    var reason = chromaprint.GetDetectionReason();
+                                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Anime fallback: {reason}", chromaprint.Confidence, chromaprint.MethodName, reason);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogWarn($"Chromaprint fallback error: {ex.Message}");
+                            }
+                        }
+                        
+                        // If Chromaprint failed, try OCR
+                        var ocr = _detectionMethods.FirstOrDefault(m => m is OcrDetection) as OcrDetection;
+                        if (ocr != null)
+                        {
+                            try
+                            {
+                                LogDebug("Chromaprint failed, running OCR fallback for anime...");
+                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Chromaprint failed, trying OCR");
+                                double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                                
+                                if (timestamp > 0)
+                                {
+                                    LogInfo($"OCR fallback successful at {FormatTime(timestamp)}");
+                                    var reason = ocr.GetDetectionReason();
+                                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Anime fallback: {reason}", ocr.Confidence, ocr.MethodName, reason);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogWarn($"OCR fallback error: {ex.Message}");
+                            }
+                        }
+                    }
+                    
+                    LogDebug("All anime fallback attempts failed");
+                }
+            }
+
+            if (!isAnime && detectionResults.Count == 0 && seasonNumber.HasValue && episodeNumber.HasValue)
             {
                 if (_configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
                 {
-                    LogDebug("OCR detection failed, attempting Hash fallback...");
+                    // OcrWithHashFallback: OCR failed, try Hash
+                    var chromaprint = _detectionMethods.FirstOrDefault(m => m is ChromaprintDetection) as ChromaprintDetection;
+                    if (chromaprint != null && chromaprint.IsEnabled)
+                    {
+                        try
+                        {
+                            LogDebug("OCR detection failed, attempting Hash fallback...");
+                            EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "OCR failed, trying Hash fallback");
+                            double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                            
+                            if (timestamp > 0)
+                            {
+                                LogInfo($"Hash fallback successful at {FormatTime(timestamp)}");
+                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash fallback successful");
+                                var reason = chromaprint.GetDetectionReason();
+                                return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Fallback: {reason}", chromaprint.Confidence, chromaprint.MethodName, reason);
+                            }
+                            else
+                            {
+                                LogDebug("Hash fallback also failed");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogWarn($"Hash fallback error: {ex.Message}");
+                        }
+                    }
+                }
+                else if (_configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
+                {
+                    // HashWithOcrFallback: Hash failed, try OCR
+                    var ocr = _detectionMethods.FirstOrDefault(m => m is OcrDetection) as OcrDetection;
+                    if (ocr != null && ocr.IsEnabled)
+                    {
+                        try
+                        {
+                            LogDebug("Hash detection failed, attempting OCR fallback...");
+                            EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash failed, trying OCR fallback");
+                            double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                            
+                            if (timestamp > 0)
+                            {
+                                LogInfo($"OCR fallback successful at {FormatTime(timestamp)}");
+                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "OCR fallback successful");
+                                var reason = ocr.GetDetectionReason();
+                                return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Fallback: {reason}", ocr.Confidence, ocr.MethodName, reason);
+                            }
+                            else
+                            {
+                                LogDebug("OCR fallback also failed");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogWarn($"OCR fallback error: {ex.Message}");
+                        }
+                    }
+                }
+                
+                if (_configuration.DetectionMode == DetectionMode.HashOnly || 
+                    _configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
+                {
+                    if (_configuration.EnableAnimeDetection)
+                    {
+                        LogDebug("Hash detection failed for non-anime series, attempting BlackFrame detection as fallback...");
+                        EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash failed, trying BlackFrame fallback");
+                        
+                        var blackFrame = new BlackFrameDetectionFallback(_logger, _configuration);
+                        try
+                        {
+                            double timestamp = await blackFrame.DetectCredits(videoPath, duration, _cancellationTokenSource?.Token ?? default);
+                            
+                            if (timestamp > 0)
+                            {
+                                LogInfo($"BlackFrame fallback successful at {FormatTime(timestamp)}");
+                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame fallback successful");
+                                var reason = blackFrame.GetDetectionReason();
+                                return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Fallback: {reason}", blackFrame.Confidence, blackFrame.MethodName, reason);
+                            }
+                            else
+                            {
+                                LogDebug("BlackFrame fallback also failed");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogWarn($"BlackFrame fallback error: {ex.Message}");
+                        }
+                        finally
+                        {
+                            try { blackFrame?.Dispose(); } catch { }
+                        }
+                    }
+                }
+            }
+
+            // Legacy fallback approach (kept for compatibility)
+            bool shouldTryFallback = false;
+            DetectionMode fallbackMode = _configuration.DetectionMode;
+            
+            if (detectionResults.Count == 0 && (!seasonNumber.HasValue || !episodeNumber.HasValue))
+            {
+                // Only use this path if we don't have season/episode info (edge case)
+                if (_configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
+                {
+                    LogDebug("OCR detection failed, attempting Hash fallback (legacy path)...");
                     EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "OCR failed, using Hash fallback");
                     shouldTryFallback = true;
                     fallbackMode = DetectionMode.HashOnly;
                 }
                 else if (_configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
                 {
-                    LogDebug("Hash detection failed, attempting OCR fallback...");
+                    LogDebug("Hash detection failed, attempting OCR fallback (legacy path)...");
                     EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash failed, using OCR fallback");
                     shouldTryFallback = true;
                     fallbackMode = DetectionMode.OcrOnly;
                 }
             }
 
-            // Try fallback if needed
+            // Try fallback if needed (legacy path)
             if (shouldTryFallback)
             {
                 var originalMode = _configuration.DetectionMode;
@@ -140,7 +487,11 @@ namespace EmbyCredits.Services
                     else
                     {
                         LogDebug("Fallback detection also failed");
-                        methodErrors = methodErrors.Concat(fallbackErrors).ToDictionary(x => x.Key, x => x.Value);
+                        foreach (var kvp in fallbackErrors)
+                        {
+                            if (!methodErrors.ContainsKey(kvp.Key))
+                                methodErrors[kvp.Key] = kvp.Value;
+                        }
                     }
                 }
                 finally
@@ -201,8 +552,146 @@ namespace EmbyCredits.Services
             LogDebug($"Found {detectionResults.Count} detection result(s)");
             var result = SelectByStrategy(detectionResults);
             LogDebug($"Selected timestamp: {FormatTime(result.timestamp)} with confidence: {result.confidence:F2}");
+            
+            // Get the method name BEFORE silence refinement, as refinement may change the timestamp
             var selectedMethod = detectionResults.FirstOrDefault(r => Math.Abs(r.timestamp - result.timestamp) < 0.1).method ?? "Unknown";
+            
+            if (_configuration.ChromaprintUseSilenceDetection && result.timestamp > 0)
+            {
+                _logger.Info($"[DetectionCoordinator] Applying silence refinement to timestamp {FormatTime(result.timestamp)}");
+                var refinedTimestamp = await RefineTimestampWithSilence(videoPath, result.timestamp, duration);
+                if (refinedTimestamp > 0 && refinedTimestamp != result.timestamp)
+                {
+                    _logger.Info($"[DetectionCoordinator] Refined timestamp with silence detection: {FormatTime(result.timestamp)} -> {FormatTime(refinedTimestamp)}");
+                    result = (refinedTimestamp, result.reason, result.confidence);
+                }
+                else if (refinedTimestamp == 0)
+                {
+                    _logger.Info($"[DetectionCoordinator] Silence detection found no alternative timestamp");
+                }
+                else
+                {
+                    _logger.Info($"[DetectionCoordinator] Silence detection confirmed original timestamp");
+                }
+            }
+            
             return (result.timestamp, result.reason, result.confidence, selectedMethod, result.reason);
+        }
+        
+        private async Task<(double timestamp, string failureReason, double confidence, string methodName, string detectionReason)> ApplySilenceRefinementAndReturn(
+            string videoPath, 
+            double duration, 
+            double timestamp, 
+            string failureReason, 
+            double confidence, 
+            string methodName, 
+            string detectionReason)
+        {
+            if (_configuration.ChromaprintUseSilenceDetection && timestamp > 0)
+            {
+                _logger.Info($"[DetectionCoordinator] Applying silence refinement to fallback timestamp {FormatTime(timestamp)}");
+                var refinedTimestamp = await RefineTimestampWithSilence(videoPath, timestamp, duration);
+                if (refinedTimestamp > 0 && refinedTimestamp != timestamp)
+                {
+                    _logger.Info($"[DetectionCoordinator] Refined fallback timestamp with silence detection: {FormatTime(timestamp)} -> {FormatTime(refinedTimestamp)}");
+                    return (refinedTimestamp, failureReason, confidence, methodName, detectionReason);
+                }
+                else if (refinedTimestamp == 0)
+                {
+                    _logger.Info($"[DetectionCoordinator] Silence detection found no alternative for fallback timestamp");
+                }
+                else
+                {
+                    _logger.Info($"[DetectionCoordinator] Silence detection confirmed fallback timestamp");
+                }
+            }
+            return (timestamp, failureReason, confidence, methodName, detectionReason);
+        }
+        
+        private async Task<double> RefineTimestampWithSilence(string videoPath, double targetTime, double duration)
+        {
+            try
+            {
+                var searchWindow = _configuration.ChromaprintSilenceSearchWindow;
+                var startTime = Math.Max(0, targetTime - searchWindow);
+                var endTime = Math.Min(duration, targetTime + searchWindow);
+                var analysisDuration = endTime - startTime;
+                
+                if (analysisDuration <= 0)
+                {
+                    return 0;
+                }
+                
+                var silenceThreshold = _configuration.ChromaprintSilenceThreshold;
+                var minDuration = _configuration.ChromaprintSilenceMinDuration;
+                var ffmpegPath = Utilities.FFmpegHelper.GetFfmpegPath();
+                
+                if (string.IsNullOrWhiteSpace(ffmpegPath))
+                {
+                    return 0;
+                }
+                
+                var ffmpegInputPath = Utilities.FFmpegHelper.GetInputArgument(videoPath);
+                var arguments = $"-ss {startTime.ToString(System.Globalization.CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(System.Globalization.CultureInfo.InvariantCulture)} -i {ffmpegInputPath} " +
+                               $"-af \"silencedetect=noise={silenceThreshold.ToString(System.Globalization.CultureInfo.InvariantCulture)}dB:d={minDuration.ToString(System.Globalization.CultureInfo.InvariantCulture)}\" " +
+                               $"-vn -f null -";
+                
+                _logger.Info($"[DetectionCoordinator] Running silence detection: {ffmpegPath} {arguments}");
+                
+                using (var process = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = ffmpegPath,
+                        Arguments = arguments,
+                        UseShellExecute = false,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true
+                    }
+                })
+                {
+                    process.Start();
+                    var output = await process.StandardError.ReadToEndAsync();
+                    await process.WaitForExitAsync(_cancellationTokenSource?.Token ?? default);
+                    
+                    var silenceTimes = new List<double>();
+                    var lines = output.Split('\n');
+                    
+                    foreach (var line in lines)
+                    {
+                        if (line.Contains("silencedetect") && line.Contains("silence_start:"))
+                        {
+                            var match = System.Text.RegularExpressions.Regex.Match(line, @"silence_start:\s*(\d+\.?\d*)");
+                            if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var silenceStart))
+                            {
+                                var absoluteTime = startTime + silenceStart;
+                                if (absoluteTime >= startTime && absoluteTime <= endTime)
+                                {
+                                    silenceTimes.Add(absoluteTime);
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (silenceTimes.Count > 0)
+                    {
+                        var closestSilence = silenceTimes.OrderBy(t => Math.Abs(t - targetTime)).First();
+                        _logger.Info($"[DetectionCoordinator] Found {silenceTimes.Count} silence point(s), closest at {FormatTime(closestSilence)} (target was {FormatTime(targetTime)})");
+                        return closestSilence;
+                    }
+                    else
+                    {
+                        _logger.Info($"[DetectionCoordinator] No silence points found near {FormatTime(targetTime)}");
+                    }
+                }
+                
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                LogWarn($"Silence detection refinement error: {ex.Message}");
+                return 0;
+            }
         }
 
         public void ClearCache()
@@ -215,6 +704,11 @@ namespace EmbyCredits.Services
                 _batchDetectionCache.TrimExcess();
             }
             GC.Collect(1, GCCollectionMode.Optimized, false);
+        }
+
+        public List<IDetectionMethod> GetAllDetectionMethods()
+        {
+            return _detectionMethods;
         }
 
         private async Task<(List<(string method, double timestamp, double confidence, int priority, string reason)> results, Dictionary<string, string> errors)> RunAllDetectionMethods(
@@ -256,6 +750,10 @@ namespace EmbyCredits.Services
                     else if (method is OcrDetection ocrMethod && !string.IsNullOrEmpty(seriesId) && seasonNumber.HasValue && episodeNumber.HasValue)
                     {
                         timestamp = await ocrMethod.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                    }
+                    else if (method is BlackFrameDetection blackFrameMethod && !string.IsNullOrEmpty(seriesId) && seasonNumber.HasValue && episodeNumber.HasValue)
+                    {
+                        timestamp = await blackFrameMethod.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
                     }
                     else
                     {
@@ -478,6 +976,83 @@ namespace EmbyCredits.Services
                 _disposed = true;
                 
                 GC.SuppressFinalize(this);
+            }
+        }
+
+        private bool CheckIfAnime(string seriesId)
+        {
+            try
+            {
+                _logger.Debug($"[DetectionCoordinator] CheckIfAnime called for seriesId: {seriesId}");
+                
+                if (Plugin.Instance?._libraryManager == null)
+                {
+                    _logger.Warn($"[DetectionCoordinator] CheckIfAnime: _libraryManager is null");
+                    return false;
+                }
+
+                if (!Guid.TryParse(seriesId, out var seriesGuid))
+                {
+                    _logger.Warn($"[DetectionCoordinator] CheckIfAnime: Failed to parse seriesId as Guid: {seriesId}");
+                    return false;
+                }
+
+                var item = Plugin.Instance._libraryManager.GetItemById(seriesGuid);
+                if (item == null)
+                {
+                    _logger.Warn($"[DetectionCoordinator] CheckIfAnime: GetItemById returned null for Guid: {seriesGuid}");
+                    return false;
+                }
+
+                _logger.Debug($"[DetectionCoordinator] CheckIfAnime: Found item type: {item.GetType().Name}, Name: {item.Name}");
+
+                if (item is MediaBrowser.Controller.Entities.TV.Series series)
+                {
+                    _logger.Debug($"[DetectionCoordinator] CheckIfAnime: Series found - Name: {series.Name}");
+
+                    if (series.Tags != null && series.Tags.Length > 0)
+                    {
+                        if (_configuration.EnableDetailedLogging)
+                            _logger.Debug($"[DetectionCoordinator] CheckIfAnime: Tags count: {series.Tags.Length}");
+                        
+                        for (int i = 0; i < series.Tags.Length; i++)
+                        {
+                            if (series.Tags[i].Equals("anime", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _logger.Info($"[DetectionCoordinator] CheckIfAnime: Series '{series.Name}' identified as ANIME via Tags");
+                                return true;
+                            }
+                        }
+                    }
+
+                    if (series.Genres != null && series.Genres.Length > 0)
+                    {
+                        if (_configuration.EnableDetailedLogging)
+                            _logger.Debug($"[DetectionCoordinator] CheckIfAnime: Genres count: {series.Genres.Length}");
+                        
+                        for (int i = 0; i < series.Genres.Length; i++)
+                        {
+                            if (series.Genres[i].Equals("anime", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _logger.Info($"[DetectionCoordinator] CheckIfAnime: Series '{series.Name}' identified as ANIME via Genres");
+                                return true;
+                            }
+                        }
+                    }
+
+                    _logger.Debug($"[DetectionCoordinator] CheckIfAnime: Series '{series.Name}' is NOT anime");
+                }
+                else
+                {
+                    _logger.Warn($"[DetectionCoordinator] CheckIfAnime: Item is not a Series, it's: {item.GetType().Name}");
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.ErrorException($"[DetectionCoordinator] CheckIfAnime exception for seriesId: {seriesId}", ex);
+                return false;
             }
         }
     }

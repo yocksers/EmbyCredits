@@ -1,4 +1,4 @@
-<form class="creditsDetectorForm">
+<form class="creditsDetectorForm" novalidate>
     <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
         <h2 style="margin-top:0;">General Settings</h2>
 
@@ -11,7 +11,7 @@
                 <option value="HashWithOcrFallback">Enable Hash with OCR Fallback</option>
             </select>
             <div class="fieldDescription">
-                <strong>OCR Detection:</strong> Uses Tesseract OCR to detect credits by reading text. More accurate but requires Docker container.<br>
+                <strong>OCR Detection:</strong> Uses OCR (Tesseract or PaddleOCR) to detect credits by reading text. More accurate but requires Docker container.<br>
                 <strong>Hash Detection:</strong> Uses audio fingerprinting and black frame/silence detection. Faster but less accurate.<br>
                 <strong>With Fallback:</strong> If primary method fails to detect credits, automatically tries the fallback method.
             </div>
@@ -36,10 +36,22 @@
             <div class="fieldDescription"><strong>CRITICAL FOR DOCKER USERS:</strong> Set this to prevent filling your Docker image! Leave empty only if running Emby natively on host OS. Temp files are automatically cleaned up after processing.</div>
         </div>
 
+        <div class="selectContainer" style="margin-top: 1.5em;">
+            <label class="selectLabel" for="selectOcrEngine">OCR Engine</label>
+            <select is="emby-select" id="selectOcrEngine" data-config-key="OcrEngine" style="padding: 0.6em 1em; border-radius: 8px; background-color: rgba(82, 181, 75, 0.1); border: 2px solid rgba(82, 181, 75, 0.3); font-size: 1em; max-width: 400px;">
+                <option value="Tesseract">Tesseract OCR</option>
+                <option value="PaddleOCR">PaddleOCR</option>
+            </select>
+            <div class="fieldDescription">
+                <strong>Tesseract OCR:</strong> Traditional OCR engine with extensive language support. Requires yock1/embycreditocr Docker container.<br>
+                <strong>PaddleOCR:</strong> Deep learning based OCR with GPU acceleration and excellent multi-language support. Requires yock1/embycreditpaddle Docker container (NVIDIA GPU recommended, ~20GB).
+            </div>
+        </div>
+
         <div class="inputContainer">
-            <label class="inputLabel inputLabelUnfocused" for="txtOcrEndpoint">OCR API Endpoint</label>
+            <label class="inputLabel inputLabelUnfocused" for="txtOcrEndpoint" id="lblOcrEndpoint">OCR API Endpoint</label>
             <input is="emby-input" type="text" id="txtOcrEndpoint" data-config-key="OcrEndpoint" />
-            <div class="fieldDescription">URL of your OCR API (e.g., <code>http://localhost:8884</code> or <code>http://192.168.1.100:8884</code>)</div>
+            <div class="fieldDescription" id="descOcrEndpoint">URL of your OCR API (e.g., <code>http://localhost:8884</code> - default port for both engines)</div>
             <div style="display: flex; align-items: center; gap: 0.5em; margin-top: 0.5em;">
                 <button is="emby-button" type="button" class="raised button-submit" id="btnTestOcrConnection">
                     <i class="md-icon">check_circle</i>
@@ -142,12 +154,51 @@
     </div>
 
     <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
-        <h2 class="collapsible-header" data-detection-type="hash" style="margin-top:0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
+        <h2 class="collapsible-header" style="margin-top:0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
             <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
-            <span>Audio Fingerprint Detection</span>
+            <span>Anime Detection</span>
         </h2>
         <div class="collapsible-content" style="display: none; margin-top: 1em;">
-            <p class="fieldDescription">Alternative detection method using audio fingerprinting and black frame/silence detection. When enabled, disables all OCR/Tesseract-based detection methods.</p>
+            <p class="fieldDescription">Specialized detection for anime shows using black frame detection optimized for anime credit sequences. When enabled, anime shows are automatically detected and use black frame detection first before falling back to standard methods.</p>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkEnableAnimeDetection" data-config-key="EnableAnimeDetection" />
+                    <span>Enable Anime Detection</span>
+                </label>
+                <div class="fieldDescription"><strong>Recommended: Enabled (default).</strong> Automatically detects anime series (by checking Tags or Genres for "anime") and uses optimized detection methods. Anime shows will use black frame detection first, then fall back to your configured detection mode (Hash/OCR) if needed.</div>
+            </div>
+
+            <div class="selectContainer">
+                <label class="inputLabel inputLabelUnfocused" for="selectAnimeDetectionMethod">Anime Detection Method</label>
+                <select is="emby-select" id="selectAnimeDetectionMethod" data-config-key="AnimeDetectionMethod" class="emby-select-withcolor emby-select">
+                    <option value="BlackFrame">Black Frame Detection</option>
+                    <option value="Ocr">OCR Detection</option>
+                </select>
+                <div class="fieldDescription"><strong>Default: Black Frame Detection.</strong> Choose which detection method to use for anime shows. Black Frame is optimized for anime credit sequences that commonly have black frames. OCR uses text recognition which may work better for some anime. If the selected method fails, it will fall back to your configured Detection Mode (Hash/OCR).</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameMinimumPercentage">Black Frame Minimum Percentage</label>
+                <input is="emby-input" type="number" id="txtBlackFrameMinimumPercentage" data-config-key="BlackFrameMinimumPercentage" step="1" min="0" max="100" value="85" />
+                <div class="fieldDescription"><strong>Default: 85%.</strong> Minimum percentage of pixels that must be black for a frame to be considered a black frame (0-100). Higher values require darker/more complete black frames.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameThreshold">Black Frame Pixel Threshold</label>
+                <input is="emby-input" type="number" id="txtBlackFrameThreshold" data-config-key="BlackFrameThreshold" step="1" min="0" max="255" value="28" />
+                <div class="fieldDescription"><strong>Default: 28.</strong> Pixel brightness threshold (0-255) - pixels darker than this are considered black. Lower values require darker pixels. 0 = completely black, 255 = white.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
+        <h2 class="collapsible-header" data-detection-type="hash" style="margin-top:0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
+            <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
+            <span>Hash Detection (Chromaprint)</span>
+        </h2>
+        <div class="collapsible-content" style="display: none; margin-top: 1em;">
+            <p class="fieldDescription">Audio fingerprinting and black frame/silence detection for credits detection. Faster than OCR but may be less accurate. Works well for anime and shows with consistent credit music.</p>
 
             <h3 style="margin-top: 1.5em; margin-bottom: 1em;">Credits Duration Settings</h3>
             
@@ -182,12 +233,12 @@
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintFingerprintDuration">Fingerprint Duration (seconds)</label>
                 <input is="emby-input" type="number" id="txtChromaprintFingerprintDuration" data-config-key="ChromaprintFingerprintDuration" />
-                <div class="fieldDescription"><strong>Default: 30 seconds.</strong> Length of audio to fingerprint for comparison. Longer durations are more accurate but slower.</div>
+                <div class="fieldDescription"><strong>Default: 360 seconds.</strong> Length of audio to fingerprint for comparison. Longer durations are more accurate but slower.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintFingerprintSimilarityThreshold">Fingerprint Similarity Threshold</label>
-                <input is="emby-input" type="number" id="txtChromaprintFingerprintSimilarityThreshold" data-config-key="ChromaprintFingerprintSimilarityThreshold" step="0.01" min="0" max="1" />
+                <input is="emby-input" type="number" id="txtChromaprintFingerprintSimilarityThreshold" data-config-key="ChromaprintFingerprintSimilarityThreshold" step="0.01" min="0" max="1" value="0.90" />
                 <div class="fieldDescription"><strong>Default: 0.90.</strong> Minimum similarity (0.0-1.0) between audio fingerprints to be considered a match. Higher values require closer matches.</div>
             </div>
 
@@ -198,19 +249,19 @@
                     <input is="emby-checkbox" type="checkbox" id="chkChromaprintEnableEpisodeComparison" data-config-key="ChromaprintEnableEpisodeComparison" />
                     <span>Enable Episode Comparison</span>
                 </label>
-                <div class="fieldDescription"><strong>Recommended: Enabled (default).</strong> Compare episodes within the same season to improve accuracy and speed. When multiple episodes have been processed, the detection will use their timestamps to narrow the search window for new episodes. This makes detection faster and more precise, similar to Jellyfin's end credit detection.</div>
+                <div class="fieldDescription"><strong>Recommended: Enabled (default).</strong> Compare episodes within the same season to speed up detection. After processing multiple episodes, the plugin learns where credits typically start and narrows the search window for new episodes. This makes detection significantly faster while maintaining accuracy.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintEpisodeComparisonTolerance">Episode Comparison Tolerance (seconds)</label>
-                <input is="emby-input" type="number" id="txtChromaprintEpisodeComparisonTolerance" data-config-key="ChromaprintEpisodeComparisonTolerance" step="0.5" />
-                <div class="fieldDescription"><strong>Default: 15 seconds.</strong> When comparing episodes, search within this time window around the average credits timestamp. If detection fails, it automatically retries with full search. Higher values = wider search but slower performance.</div>
+                <input is="emby-input" type="number" id="txtChromaprintEpisodeComparisonTolerance" data-config-key="ChromaprintEpisodeComparisonTolerance" step="5" />
+                <div class="fieldDescription"><strong>Default: 15 seconds.</strong> When comparing episodes, start searching this many seconds BEFORE the average credits timestamp. Higher values = safer but slightly slower. Example: If previous episodes had credits at 22:00, with 15s tolerance, start searching at 21:45 and scan to end of video.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintEpisodeComparisonMinimumEpisodes">Minimum Episodes for Comparison</label>
-                <input is="emby-input" type="number" id="txtChromaprintEpisodeComparisonMinimumEpisodes" data-config-key="ChromaprintEpisodeComparisonMinimumEpisodes" min="1" max="20" />
-                <div class="fieldDescription"><strong>Default: 4 episodes.</strong> Episode comparison will only activate after this many episodes in a season have been processed. Lower values activate comparison sooner but may be less accurate with limited data.</div>
+                <input is="emby-input" type="number" id="txtChromaprintEpisodeComparisonMinimumEpisodes" data-config-key="ChromaprintEpisodeComparisonMinimumEpisodes" min="2" max="20" value="4" />
+                <div class="fieldDescription"><strong>Default: 4 episodes.</strong> Episode comparison will activate after this many episodes in a season have been processed. Lower values (2-3) activate comparison sooner for faster processing. BlackFrame detection uses 2 episodes minimum.</div>
             </div>
 
             <h3 style="margin-top: 1.5em; margin-bottom: 1em;">Black Frame Detection</h3>
@@ -227,18 +278,32 @@
                 <div class="fieldDescription"><strong>Default: 0.5 seconds.</strong> Minimum duration a black frame must persist to be considered a credits boundary.</div>
             </div>
 
-            <h3 style="margin-top: 1.5em; margin-bottom: 1em;">Audio Silence Detection</h3>
+            <h3 style="margin-top: 1.5em; margin-bottom: 1em;">Silence Detection Refinement</h3>
             
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkChromaprintUseSilenceDetection" data-config-key="ChromaprintUseSilenceDetection" />
+                    <span>Use Silence Detection to Refine Timestamps</span>
+                </label>
+                <div class="fieldDescription"><strong>Default: Enabled.</strong> After any detection method finds credits, look for silence periods nearby to refine the exact start time. Applies to all detection methods (OCR, Chromaprint, BlackFrame).</div>
+            </div>
+
             <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintSilenceThreshold">Audio Silence Threshold (dB)</label>
+                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintSilenceThreshold">Silence Threshold (dB)</label>
                 <input is="emby-input" type="number" id="txtChromaprintSilenceThreshold" data-config-key="ChromaprintSilenceThreshold" step="5" />
-                <div class="fieldDescription"><strong>Default: -60dB.</strong> Audio level threshold for silence detection. More negative values are quieter (e.g., -60dB is quieter than -40dB).</div>
+                <div class="fieldDescription"><strong>Default: -50dB.</strong> Audio level threshold for silence detection. More negative values detect quieter sounds as silence.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintSilenceMinDuration">Silence Minimum Duration (seconds)</label>
                 <input is="emby-input" type="number" id="txtChromaprintSilenceMinDuration" data-config-key="ChromaprintSilenceMinDuration" step="0.1" />
-                <div class="fieldDescription"><strong>Default: 0.5 seconds.</strong> Minimum duration audio must be silent to be considered a credits boundary.</div>
+                <div class="fieldDescription"><strong>Default: 0.5 seconds.</strong> Minimum duration of silence required to be considered a credits boundary.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintSilenceSearchWindow">Silence Search Window (seconds)</label>
+                <input is="emby-input" type="number" id="txtChromaprintSilenceSearchWindow" data-config-key="ChromaprintSilenceSearchWindow" step="5" />
+                <div class="fieldDescription"><strong>Default: 30 seconds.</strong> How far before and after the fingerprint-detected timestamp to search for silence periods.</div>
             </div>
 
             <h3 style="margin-top: 1.5em; margin-bottom: 1em;">Advanced Settings</h3>
@@ -253,28 +318,6 @@
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintStopSecondsFromEnd">Stop Seconds Before End</label>
                 <input is="emby-input" type="number" id="txtChromaprintStopSecondsFromEnd" data-config-key="ChromaprintStopSecondsFromEnd" />
                 <div class="fieldDescription"><strong>Default: 20 seconds.</strong> Stop analyzing this many seconds before the end of the video.</div>
-            </div>
-
-            <h3 style="margin-top: 1.5em; margin-bottom: 1em;">CPU Usage Control</h3>
-            
-            <div class="checkboxContainer">
-                <label>
-                    <input is="emby-checkbox" type="checkbox" id="chkChromaprintLowerProcessPriority" data-config-key="ChromaprintLowerProcessPriority" />
-                    <span>Lower FFmpeg Process Priority</span>
-                </label>
-                <div class="fieldDescription">Run FFmpeg processes at below-normal priority to reduce CPU usage. Highly recommended for smaller machines.</div>
-            </div>
-
-            <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintFfmpegThreads">FFmpeg Thread Limit</label>
-                <input is="emby-input" type="number" id="txtChromaprintFfmpegThreads" data-config-key="ChromaprintFfmpegThreads" />
-                <div class="fieldDescription"><strong>Recommended: 2-4 for smaller machines, 0 for unlimited (default).</strong> Limits CPU threads FFmpeg uses. Set to 2-4 to prevent saturating all cores. 0 = no limit.</div>
-            </div>
-
-            <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintDelayBetweenOperationsMs">Delay Between Operations (ms)</label>
-                <input is="emby-input" type="number" id="txtChromaprintDelayBetweenOperationsMs" data-config-key="ChromaprintDelayBetweenOperationsMs" step="100" />
-                <div class="fieldDescription"><strong>Recommended: 0 (no delay) for normal systems, 500-1000ms for smaller machines.</strong> Adds delay between FFmpeg operations to reduce sustained CPU load.</div>
             </div>
         </div>
     </div>
@@ -333,6 +376,28 @@
                 <label class="inputLabel inputLabelUnfocused" for="txtOcrDelayBetweenFramesMs">Delay Between Frames (ms)</label>
                 <input is="emby-input" type="number" id="txtOcrDelayBetweenFramesMs" data-config-key="OcrDelayBetweenFramesMs" step="100" />
                 <div class="fieldDescription"><strong>Recommended: 0 (no delay).</strong> Add delay between processing frames to reduce load on slower machines. Use 500-1000ms on very slow systems. Higher values = slower processing but less resource usage.</div>
+            </div>
+
+            <h3 style="margin-top: 2em; margin-bottom: 1em;">Hash Detection (Chromaprint) Performance</h3>
+            
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkChromaprintLowerProcessPriority" data-config-key="ChromaprintLowerProcessPriority" />
+                    <span>Lower FFmpeg Process Priority</span>
+                </label>
+                <div class="fieldDescription">Run FFmpeg processes at below-normal priority to reduce CPU usage. Highly recommended for smaller machines.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintFfmpegThreads">FFmpeg Thread Limit</label>
+                <input is="emby-input" type="number" id="txtChromaprintFfmpegThreads" data-config-key="ChromaprintFfmpegThreads" />
+                <div class="fieldDescription"><strong>Recommended: 2-4 for smaller machines, 0 for unlimited (default).</strong> Limits CPU threads FFmpeg uses. Set to 2-4 to prevent saturating all cores. 0 = no limit.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintDelayBetweenOperationsMs">Delay Between Operations (ms)</label>
+                <input is="emby-input" type="number" id="txtChromaprintDelayBetweenOperationsMs" data-config-key="ChromaprintDelayBetweenOperationsMs" step="100" />
+                <div class="fieldDescription"><strong>Recommended: 0 (no delay) for normal systems, 500-1000ms for smaller machines.</strong> Adds delay between FFmpeg operations to reduce sustained CPU load.</div>
             </div>
 
             <h3 style="margin-top: 2em; margin-bottom: 1em;">FFmpeg Performance & Hardware Acceleration</h3>
@@ -468,18 +533,6 @@
         </h2>
         <div class="collapsible-content" style="display: none; margin-top: 1em;">
         <p class="fieldDescription">OCR detection is always enabled. Configure the settings below. Requires Docker container running (see Setup Guide tab).</p>
-
-        <div class="inputContainer">
-            <label class="inputLabel inputLabelUnfocused" for="txtOcrRetryAttempts">OCR Retry Attempts</label>
-            <input is="emby-input" type="number" id="txtOcrRetryAttempts" data-config-key="OcrRetryAttempts" />
-            <div class="fieldDescription"><strong>Recommended: 5.</strong> Number of times to retry OCR requests on temporary failures (network issues, service outages)</div>
-        </div>
-
-        <div class="inputContainer">
-            <label class="inputLabel inputLabelUnfocused" for="txtOcrRetryDelayMs">Retry Delay (milliseconds)</label>
-            <input is="emby-input" type="number" id="txtOcrRetryDelayMs" data-config-key="OcrRetryDelayMs" step="500" />
-            <div class="fieldDescription"><strong>Recommended: 2000ms (2 seconds).</strong> Delay between retry attempts to allow service to recover</div>
-        </div>
 
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrSearchStartValue">Search Start Position</label>
@@ -627,23 +680,6 @@
             <input is="emby-input" type="number" id="txtOcrStopSecondsFromEnd" data-config-key="OcrStopSecondsFromEnd" />
             <div class="fieldDescription"><strong>Recommended: 20 seconds.</strong> Stop analyzing when this close to the end of the video. No reason to process the last few seconds where credits rarely start. Set to 0 to disable.</div>
         </div>
-
-        <div class="inputContainer">
-            <label class="inputLabel inputLabelUnfocused" for="txtOcrJpegQuality">JPEG Quality (1-100)</label>
-            <input is="emby-input" type="number" id="txtOcrJpegQuality" data-config-key="OcrJpegQuality" />
-            <div class="fieldDescription"><strong>Recommended: 92.</strong> Only used when Image Format is JPEG. Higher = better quality but larger files. 85-95 is ideal for OCR.</div>
-        </div>
-
-        <div class="selectContainer">
-            <label class="selectLabel" for="selectOcrMaxResolutionHeight">Max Resolution</label>
-            <select id="selectOcrMaxResolutionHeight" data-config-key="OcrMaxResolutionHeight" class="emby-select-withcolor emby-select" style="max-width: 300px; padding: 0.6em 1em; border-radius: 8px; background-color: rgba(82, 181, 75, 0.1); border: 2px solid rgba(82, 181, 75, 0.3); font-size: 1em;">
-                <option value="0">Original (No scaling)</option>
-                <option value="1080">1080p (Recommended)</option>
-                <option value="720">720p (Faster)</option>
-                <option value="480">480p (Very fast)</option>
-            </select>
-            <div class="fieldDescription"><strong>Recommended: 1080p.</strong> Scale down high-resolution videos before OCR processing. <strong>For 4K videos, 1080p provides 60-75% faster processing with 75% less memory usage.</strong> Original uses native resolution (slower for 4K). Lower resolutions are faster but may reduce accuracy.</div>
-        </div>
         </div>
     </div>
 
@@ -675,28 +711,6 @@
             <div class="fieldDescription"><strong>Default: 85.</strong> JPEG quality (50-100). Higher values = better quality but larger file sizes.</div>
         </div>
         </div>
-    </div>
-
-    <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
-        <h3 style="margin-top:0;">Plugin Memory Usage</h3>
-        <div id="memoryUsageDisplay" style="font-family: monospace; font-size: 0.9em;">
-            <div style="margin-bottom: 0.5em;">
-                <span style="font-weight: bold;">Working Set:</span> <span id="memoryWorkingSet">Loading...</span>
-            </div>
-            <div style="margin-bottom: 0.5em;">
-                <span style="font-weight: bold;">Private Memory:</span> <span id="memoryPrivate">Loading...</span>
-            </div>
-            <div style="margin-bottom: 0.5em;">
-                <span style="font-weight: bold;">GC Memory:</span> <span id="memoryGC">Loading...</span>
-            </div>
-            <div style="margin-top: 1em; font-size: 0.85em; color: #999;">
-                Last updated: <span id="memoryTimestamp">Never</span>
-            </div>
-        </div>
-        <button is="emby-button" type="button" class="raised button-submit" id="btnRefreshMemory" style="margin-top: 1em;">
-            <i class="md-icon">refresh</i>
-            <span>Refresh</span>
-        </button>
     </div>
 
     <div style="margin-top: 2em; display: flex; gap: 1em;">

@@ -862,19 +862,22 @@ namespace EmbyCredits.Services
                 {
                     httpClient.Timeout = TimeSpan.FromSeconds(15);
 
-                    try
+                    if (request.OcrEngine != "PaddleOCR")
                     {
-                        using (var pingResponse = await httpClient.GetAsync(endpoint).ConfigureAwait(false))
+                        try
                         {
-                            if (!pingResponse.IsSuccessStatusCode)
+                            using (var pingResponse = await httpClient.GetAsync(endpoint).ConfigureAwait(false))
                             {
-                                return new { Success = false, Message = $"OCR server returned status: {pingResponse.StatusCode}" };
+                                if (!pingResponse.IsSuccessStatusCode)
+                                {
+                                    return new { Success = false, Message = $"OCR server returned status: {pingResponse.StatusCode}" };
+                                }
                             }
                         }
-                    }
-                    catch (System.Net.Http.HttpRequestException ex)
-                    {
-                        return new { Success = false, Message = $"Cannot connect to OCR server: {ex.Message}" };
+                        catch (System.Net.Http.HttpRequestException ex)
+                        {
+                            return new { Success = false, Message = $"Cannot connect to OCR server: {ex.Message}" };
+                        }
                     }
 
                     try
@@ -900,29 +903,56 @@ namespace EmbyCredits.Services
 
                         using (var content = new System.Net.Http.MultipartFormDataContent())
                         using (var imageContent = new System.Net.Http.ByteArrayContent(imageBytes))
-                        using (var optionsContent = new System.Net.Http.StringContent("{\"languages\":[\"eng\"]}"))
                         {
                             imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
-                            content.Add(imageContent, "file", "logo.jpg");
-                            content.Add(optionsContent, "options");
+                            
+                            string ocrEndpoint;
+                            if (request.OcrEngine == "PaddleOCR")
+                            {
+                                content.Add(imageContent, "file", "logo.jpg");
+                                ocrEndpoint = endpoint.TrimEnd('/') + "/ocr/file";
+                            }
+                            else
+                            {
+                                content.Add(imageContent, "file", "logo.jpg");
+                                using (var optionsContent = new System.Net.Http.StringContent("{\"languages\":[\"eng\"]}"))
+                                {
+                                    content.Add(optionsContent, "options");
+                                }
+                                ocrEndpoint = endpoint.TrimEnd('/') + "/tesseract";
+                            }
 
-                            var ocrEndpoint = endpoint.TrimEnd('/') + "/tesseract";
                             using (var ocrResponse = await httpClient.PostAsync(ocrEndpoint, content).ConfigureAwait(false))
                             {
                                 if (!ocrResponse.IsSuccessStatusCode)
                                 {
-                                    return new { Success = false, Message = $"OCR processing failed with status: {ocrResponse.StatusCode}" };
+                                    var errorContent = await ocrResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+                                    return new { Success = false, Message = $"OCR processing failed with status: {ocrResponse.StatusCode}. Details: {errorContent.Substring(0, Math.Min(200, errorContent.Length))}" };
                                 }
 
                                 var ocrResult = await ocrResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-                                if (ocrResult.IndexOf("EmbyCredits", StringComparison.OrdinalIgnoreCase) >= 0)
+                                if (request.OcrEngine == "PaddleOCR")
                                 {
-                                    return new { Success = true, Message = "✓ Connection successful! OCR correctly detected 'EmbyCredits' text from test image." };
+                                    if (ocrResult.Contains("\"data\"") && ocrResult.Contains("\"stdout\"") && ocrResult.Length > 20)
+                                    {
+                                        return new { Success = true, Message = "✓ Connection successful! PaddleOCR server is responding correctly." };
+                                    }
+                                    else
+                                    {
+                                        return new { Success = false, Message = $"PaddleOCR server responded but returned unexpected format: {ocrResult.Substring(0, Math.Min(150, ocrResult.Length))}..." };
+                                    }
                                 }
                                 else
                                 {
-                                    return new { Success = false, Message = $"OCR server responded but did not detect expected text. OCR returned: {ocrResult.Substring(0, Math.Min(100, ocrResult.Length))}..." };
+                                    if (ocrResult.IndexOf("EmbyCredits", StringComparison.OrdinalIgnoreCase) >= 0)
+                                    {
+                                        return new { Success = true, Message = "✓ Connection successful! OCR correctly detected 'EmbyCredits' text from test image." };
+                                    }
+                                    else
+                                    {
+                                        return new { Success = false, Message = $"OCR server responded but did not detect expected text. OCR returned: {ocrResult.Substring(0, Math.Min(100, ocrResult.Length))}..." };
+                                    }
                                 }
                             }
                         }
@@ -1001,7 +1031,6 @@ namespace EmbyCredits.Services
                     return Stream.Null;
                 }
 
-                // Return file stream
                 return new FileStream(thumbnailPath, FileMode.Open, FileAccess.Read, FileShare.Read);
             }
             catch (Exception ex)

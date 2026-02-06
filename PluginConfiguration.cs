@@ -11,10 +11,20 @@ namespace EmbyCredits
         HashWithOcrFallback
     }
 
+    public enum AnimeDetectionMethod
+    {
+        BlackFrame,
+        Ocr
+    }
+
+    public enum OcrEngine
+    {
+        Tesseract,
+        PaddleOCR
+    }
+
     public class PluginConfiguration : BasePluginConfiguration
     {
-        public string ConfigurationVersion { get; set; } = Guid.NewGuid().ToString();
-
         public bool EnableAutoDetection { get; set; } = false;
 
         public bool EnableVideoPatternDetection { get; set; } = true;
@@ -58,6 +68,8 @@ namespace EmbyCredits
         
         [Obsolete("Use DetectionMode instead")]
         public bool EnableOcrDetection { get; set; } = true;
+        
+        public OcrEngine OcrEngine { get; set; } = OcrEngine.Tesseract;
         
         public string OcrEndpoint { get; set; } = "http://localhost:8884";
         public string OcrDetectionKeywords { get; set; } = "associate producer,based on,cast,casting,cinematography,co-producer,composer,costume design,created by,credits,developed by,directed by,director of photography,editing,editor,end credits,ende,executive producer,fim,fin,fine,guest starring,music by,produced by,producer,production company,production design,screenplay,series producer,sound,special thanks,starring,story by,the end,visual effects,written by,끝,終,キャスト,スタッフ,監督,脚本,音楽,製作,制作,プロデューサー,原作,演出,撮影,編集,おわり,提供,協力,出演";
@@ -198,11 +210,16 @@ namespace EmbyCredits
         public int ThumbnailWidth { get; set; } = 320;
         public int ThumbnailQuality { get; set; } = 85;
 
+        public bool EnableAnimeDetection { get; set; } = true;
+        public AnimeDetectionMethod AnimeDetectionMethod { get; set; } = AnimeDetectionMethod.BlackFrame;
+        public int BlackFrameMinimumPercentage { get; set; } = 85;
+        public int BlackFrameThreshold { get; set; } = 28;
+
         [Obsolete("Use DetectionMode instead")]
         public bool EnableChromaprintDetection { get; set; } = false;
         public int ChromaprintDetectionPriority { get; set; } = 1;
         public bool ChromaprintUseAudioFingerprinting { get; set; } = false;
-        public int ChromaprintFingerprintDuration { get; set; } = 30;
+        public int ChromaprintFingerprintDuration { get; set; } = 360;
         public double ChromaprintFingerprintSimilarityThreshold { get; set; } = 0.90;
         public bool ChromaprintEnableEpisodeComparison { get; set; } = true;
         public double ChromaprintEpisodeComparisonTolerance { get; set; } = 15.0;
@@ -214,8 +231,10 @@ namespace EmbyCredits
         public double ChromaprintAnalysisPercent { get; set; } = 25.0;
         public double ChromaprintBlackFrameThreshold { get; set; } = 0.05;
         public double ChromaprintBlackFrameMinDuration { get; set; } = 0.5;
-        public int ChromaprintSilenceThreshold { get; set; } = -60;
+        public bool ChromaprintUseSilenceDetection { get; set; } = true;
+        public int ChromaprintSilenceThreshold { get; set; } = -50;
         public double ChromaprintSilenceMinDuration { get; set; } = 0.5;
+        public double ChromaprintSilenceSearchWindow { get; set; } = 30.0;
         public double ChromaprintMinConfidence { get; set; } = 0.85;
         public double ChromaprintStopSecondsFromEnd { get; set; } = 20.0;
         public bool ChromaprintLowerProcessPriority { get; set; } = false;
