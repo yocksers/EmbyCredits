@@ -1,6 +1,7 @@
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Model.MediaInfo;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -17,6 +18,104 @@ namespace EmbyCredits.Services.Utilities
         private static string? _customTempPath;
         private static IFfmpegManager? _ffmpegManager;
         private static IMediaEncoder? _mediaEncoder;
+        private static readonly ConcurrentDictionary<int, (Process process, DateTime startTime, string description)> _activeProcesses = new ConcurrentDictionary<int, (Process, DateTime, string)>();
+        private static readonly object _cleanupLock = new object();
+
+        public static void RegisterProcess(Process process, string description)
+        {
+            try
+            {
+                if (process != null && !process.HasExited)
+                {
+                    _activeProcesses.TryAdd(process.Id, (process, DateTime.UtcNow, description));
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        public static void UnregisterProcess(Process process)
+        {
+            try
+            {
+                if (process != null)
+                {
+                    _activeProcesses.TryRemove(process.Id, out _);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        public static int KillHungProcesses(int maxAgeSeconds = 900)
+        {
+            lock (_cleanupLock)
+            {
+                var killedCount = 0;
+                var now = DateTime.UtcNow;
+                var toRemove = new List<int>();
+
+                foreach (var kvp in _activeProcesses)
+                {
+                    try
+                    {
+                        var (process, startTime, description) = kvp.Value;
+                        var age = (now - startTime).TotalSeconds;
+
+                        if (process.HasExited)
+                        {
+                            toRemove.Add(kvp.Key);
+                            continue;
+                        }
+
+                        if (age > maxAgeSeconds)
+                        {
+                            try
+                            {
+                                process.Kill();
+                                killedCount++;
+                            }
+                            catch
+                            {
+                            }
+                            toRemove.Add(kvp.Key);
+                        }
+                    }
+                    catch
+                    {
+                        toRemove.Add(kvp.Key);
+                    }
+                }
+
+                foreach (var id in toRemove)
+                {
+                    _activeProcesses.TryRemove(id, out _);
+                }
+
+                return killedCount;
+            }
+        }
+
+        public static int GetActiveProcessCount()
+        {
+            var count = 0;
+            foreach (var kvp in _activeProcesses)
+            {
+                try
+                {
+                    if (!kvp.Value.process.HasExited)
+                    {
+                        count++;
+                    }
+                }
+                catch
+                {
+                }
+            }
+            return count;
+        }
 
         public static string NormalizeFilePath(string path)
         {
@@ -222,6 +321,8 @@ namespace EmbyCredits.Services.Utilities
 
             using var process = new Process { StartInfo = info };
             process.Start();
+            
+            RegisterProcess(process, $"Chromaprint: {Path.GetFileName(filePath)}");
 
             try
             {
@@ -232,32 +333,54 @@ namespace EmbyCredits.Services.Utilities
                 logger?.Debug($"FFmpeg priority could not be modified: {e.Message}");
             }
 
-            using var ms = new MemoryStream();
-            var buf = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = process.StandardOutput.BaseStream.Read(buf, 0, buf.Length)) > 0)
+            try
             {
-                ms.Write(buf, 0, bytesRead);
+                using var ms = new MemoryStream();
+                var buf = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = process.StandardOutput.BaseStream.Read(buf, 0, buf.Length)) > 0)
+                {
+                    ms.Write(buf, 0, bytesRead);
+                }
+
+                if (!process.WaitForExit(60000))
+                {
+                    try
+                    {
+                        if (!process.HasExited)
+                        {
+                            process.Kill();
+                            logger?.Warn($"Chromaprint process timed out and was killed for {filePath}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.Error($"Failed to kill timed out chromaprint process: {ex.Message}");
+                    }
+                    return Array.Empty<uint>();
+                }
+
+                var rawPoints = ms.ToArray();
+                if (rawPoints.Length == 0 || rawPoints.Length % 4 != 0)
+                {
+                    logger?.Warn($"Chromaprint returned {rawPoints.Length} bytes for {filePath}");
+                    return Array.Empty<uint>();
+                }
+
+                var pointCount = rawPoints.Length / 4;
+                var results = new uint[pointCount];
+                for (int i = 0, j = 0; i < rawPoints.Length; i += 4, j++)
+                {
+                    results[j] = BitConverter.ToUInt32(rawPoints, i);
+                }
+
+                logger?.Debug($"Generated {results.Length} fingerprint points for {filePath}");
+                return results;
             }
-
-            process.WaitForExit(60000);
-
-            var rawPoints = ms.ToArray();
-            if (rawPoints.Length == 0 || rawPoints.Length % 4 != 0)
+            finally
             {
-                logger?.Warn($"Chromaprint returned {rawPoints.Length} bytes for {filePath}");
-                return Array.Empty<uint>();
+                UnregisterProcess(process);
             }
-
-            var pointCount = rawPoints.Length / 4;
-            var results = new uint[pointCount];
-            for (int i = 0, j = 0; i < rawPoints.Length; i += 4, j++)
-            {
-                results[j] = BitConverter.ToUInt32(rawPoints, i);
-            }
-
-            logger?.Debug($"Generated {results.Length} fingerprint points for {filePath}");
-            return results;
         }
 
         /// <summary>

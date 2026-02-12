@@ -14,6 +14,8 @@ define(['loading', 'toast'], function (loading, toast) {
             
             view.querySelector('#chkEnableAutoDetection').checked = config.EnableAutoDetection || false;
             view.querySelector('#chkEnableDetailedLogging').checked = config.EnableDetailedLogging || false;
+            view.querySelector('#chkEnableLogToFile').checked = config.EnableLogToFile || false;
+            view.querySelector('#txtLogFileFolderPath').value = config.LogFileFolderPath || '';
             view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = config.ScheduledTaskOnlyProcessMissing !== false;
             view.querySelector('#chkManualSkipExistingMarkers').checked = config.ManualSkipExistingMarkers || false;
 
@@ -173,6 +175,12 @@ define(['loading', 'toast'], function (loading, toast) {
                 seriesManager.loadSeriesList(view);
             });
             
+            // Load rules
+            require(['configurationpage?name=CreditsDetectorConfigurationRulesManager'], (rulesManager) => {
+                rulesManager.loadRules(view, config);
+                rulesManager.bindRulesEvents(view, instance);
+            });
+            
             setupUnitChangeListener(view);
             setupHardwareAccelerationListeners(view);
 
@@ -227,6 +235,8 @@ define(['loading', 'toast'], function (loading, toast) {
 
         instance.config.EnableAutoDetection = view.querySelector('#chkEnableAutoDetection').checked;
         instance.config.EnableDetailedLogging = view.querySelector('#chkEnableDetailedLogging').checked;
+        instance.config.EnableLogToFile = view.querySelector('#chkEnableLogToFile').checked;
+        instance.config.LogFileFolderPath = view.querySelector('#txtLogFileFolderPath').value || '';
         instance.config.ScheduledTaskOnlyProcessMissing = view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked;
         instance.config.ManualSkipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers').checked;
 
@@ -385,13 +395,17 @@ define(['loading', 'toast'], function (loading, toast) {
         });
         instance.config.LibraryIds = selectedLibraryIds;
 
-        ApiClient.updatePluginConfiguration(pluginId, instance.config).then(result => {
-            loading.hide();
-            Dashboard.processPluginConfigurationUpdateResult(result);
-        }).catch(error => {
-            loading.hide();
-            console.error('Error saving configuration:', error);
-            toast({ type: 'error', text: 'Error saving configuration' });
+        require(['configurationpage?name=CreditsDetectorConfigurationRulesManager'], (rulesManager) => {
+            rulesManager.saveRules(instance.config);
+            
+            ApiClient.updatePluginConfiguration(pluginId, instance.config).then(result => {
+                loading.hide();
+                Dashboard.processPluginConfigurationUpdateResult(result);
+            }).catch(error => {
+                loading.hide();
+                console.error('Error saving configuration:', error);
+                toast({ type: 'error', text: 'Error saving configuration' });
+            });
         });
     }
 
@@ -509,6 +523,21 @@ define(['loading', 'toast'], function (loading, toast) {
                 callback: function(path) {
                     if (path) {
                         view.querySelector('#txtBackupFolderPath').value = path;
+                    }
+                    picker.close();
+                }
+            });
+        });
+    }
+
+    function browseLogFolder(view) {
+        require(['directorybrowser'], function(directoryBrowser) {
+            var picker = new directoryBrowser();
+            picker.show({
+                includeFiles: false,
+                callback: function(path) {
+                    if (path) {
+                        view.querySelector('#txtLogFileFolderPath').value = path;
                     }
                     picker.close();
                 }
@@ -901,6 +930,7 @@ define(['loading', 'toast'], function (loading, toast) {
         resetToDefaults: resetToDefaults,
         browseTempFolder: browseTempFolder,
         browseBackupFolder: browseBackupFolder,
+        browseLogFolder: browseLogFolder,
         setupUnitChangeListener: setupUnitChangeListener,
         applyQualityPreset: applyQualityPreset,
         applySpeedPreset: applySpeedPreset,

@@ -1,5 +1,6 @@
 using MediaBrowser.Model.Plugins;
 using System;
+using System.Collections.Generic;
 
 namespace EmbyCredits
 {
@@ -21,6 +22,42 @@ namespace EmbyCredits
     {
         Tesseract,
         PaddleOCR
+    }
+
+    public class DetectionRule
+    {
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+        public string Name { get; set; } = "";
+        public List<string> Tags { get; set; } = new List<string>();
+        public List<string> Studios { get; set; } = new List<string>();
+        
+        public DetectionMode? DetectionMode { get; set; }
+        public OcrEngine? OcrEngine { get; set; }
+        public double? OcrSearchStartValue { get; set; }
+        public double? OcrMinutesFromEnd { get; set; }
+        public double? OcrFrameRate { get; set; }
+        public int? OcrMinimumMatches { get; set; }
+        public int? OcrMaxFramesToProcess { get; set; }
+        public double? OcrMaxAnalysisDuration { get; set; }
+        public double? OcrStopSecondsFromEnd { get; set; }
+        public string? OcrDetectionKeywords { get; set; }
+        public double? OcrEpisodeComparisonTolerance { get; set; }
+        public bool? OcrEnableEpisodeComparison { get; set; }
+        public int? OcrEpisodeComparisonMinimumEpisodes { get; set; }
+        public bool? EnableAnimeDetection { get; set; }
+        public AnimeDetectionMethod? AnimeDetectionMethod { get; set; }
+        public int? BlackFrameMinimumPercentage { get; set; }
+        public int? BlackFrameThreshold { get; set; }
+        public bool? OcrEnableCharacterDensityDetection { get; set; }
+        public int? OcrCharacterDensityThreshold { get; set; }
+        public int? OcrCharacterDensityConsecutiveFrames { get; set; }
+        public bool? OcrCharacterDensityPrimaryMethod { get; set; }
+        public bool? OcrDensityRequireKeyword { get; set; }
+        public double? OcrDensityKeywordWindowSeconds { get; set; }
+        public bool? OcrDensityRequireTemporalConsistency { get; set; }
+        public double? OcrDensityMinimumDurationSeconds { get; set; }
+        public bool? OcrDensityRequireStyleConsistency { get; set; }
+        public double? OcrDensityStyleConsistencyThreshold { get; set; }
     }
 
     public class PluginConfiguration : BasePluginConfiguration
@@ -188,6 +225,8 @@ namespace EmbyCredits
         public string TempFolderPath { get; set; } = "";
 
         public bool EnableDetailedLogging { get; set; } = false;
+        public bool EnableLogToFile { get; set; } = false;
+        public string LogFileFolderPath { get; set; } = "";
 
         public string[] LibraryIds { get; set; } = Array.Empty<string>();
         public bool ScheduledTaskOnlyProcessMissing { get; set; } = true;
@@ -240,5 +279,7 @@ namespace EmbyCredits
         public bool ChromaprintLowerProcessPriority { get; set; } = false;
         public int ChromaprintFfmpegThreads { get; set; } = 0;
         public int ChromaprintDelayBetweenOperationsMs { get; set; } = 0;
+
+        public List<DetectionRule> DetectionRules { get; set; } = new List<DetectionRule>();
     }
 }

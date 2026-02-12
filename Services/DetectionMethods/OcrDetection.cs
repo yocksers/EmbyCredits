@@ -552,6 +552,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 try
                 {
                     process.Start();
+                    Utilities.FFmpegHelper.RegisterProcess(process, $"OCR Memory: {System.IO.Path.GetFileName(videoPath)}");
                     Utilities.CpuThrottler.SetProcessPriority(process, Configuration);
 
                     var timeoutMinutes = Configuration.OcrMaxAnalysisDuration > 0 
@@ -856,6 +857,10 @@ namespace EmbyCredits.Services.DetectionMethods
                     {
                         LogDebug($"Error during process cleanup: {cleanupEx.Message}");
                     }
+                    finally
+                    {
+                        Utilities.FFmpegHelper.UnregisterProcess(process);
+                    }
                 }
             }
         }
@@ -993,6 +998,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 })
                 {
                     process.Start();
+                    Utilities.FFmpegHelper.RegisterProcess(process, $"OCR Disk: {System.IO.Path.GetFileName(videoPath)}");
                     Utilities.CpuThrottler.SetProcessPriority(process, Configuration);
 
                     var timeoutMinutes = Configuration.OcrMaxAnalysisDuration > 0 
@@ -1527,6 +1533,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
                     if (creditsFound)
                     {
+                        Utilities.FFmpegHelper.UnregisterProcess(process);
                         return creditsTimestamp;
                     }
 
@@ -1555,6 +1562,7 @@ namespace EmbyCredits.Services.DetectionMethods
                         {
                             LogError($"FFmpeg error output: {ffmpegError}");
                         }
+                        Utilities.FFmpegHelper.UnregisterProcess(process);
                         return 0;
                     }
 
@@ -1562,6 +1570,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     {
                         LastError = "No frames extracted for OCR analysis";
                         LogWarn("No frames extracted for OCR analysis");
+                        Utilities.FFmpegHelper.UnregisterProcess(process);
                         return 0;
                     }
 
@@ -1586,6 +1595,7 @@ namespace EmbyCredits.Services.DetectionMethods
                             recentTextFrames.Clear();
                             recentTextFrames.TrimExcess();
                             
+                            Utilities.FFmpegHelper.UnregisterProcess(process);
                             return creditsStart;
                         }
                     }
@@ -1600,6 +1610,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     recentTextFrames.Clear();
                     recentTextFrames.TrimExcess();
                     
+                    Utilities.FFmpegHelper.UnregisterProcess(process);
                     return 0;
                 }
             }
@@ -2535,7 +2546,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 return false;
 
             var recentFrames = history
-                .Where(h => h.timestamp >= currentTimestamp - 20.0)
+                .Where(h => h.timestamp >= currentTimestamp - Configuration.OcrStopSecondsFromEnd)
                 .OrderBy(h => h.timestamp)
                 .ToList();
 

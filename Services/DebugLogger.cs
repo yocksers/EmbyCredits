@@ -1,5 +1,6 @@
 using MediaBrowser.Model.Logging;
 using System;
+using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -14,6 +15,8 @@ namespace EmbyCredits.Services
         private const int MaxDebugLogSize = 10 * 1024 * 1024;
         private System.Threading.CancellationTokenSource? _cleanupCts;
         private bool _disposed = false;
+        private StreamWriter? _logFileWriter;
+        private string? _currentLogFilePath;
 
         public DebugLogger(ILogger logger, PluginConfiguration configuration)
         {
@@ -26,11 +29,47 @@ namespace EmbyCredits.Services
         public void StartDebugMode()
         {
             _debugLog = new StringBuilder();
-            _debugLog.AppendLine("=".PadRight(80, '='));
-            _debugLog.AppendLine($"EMBY CREDITS DETECTION - DEBUG LOG");
-            _debugLog.AppendLine($"Started: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-            _debugLog.AppendLine("=".PadRight(80, '='));
-            _debugLog.AppendLine();
+            var header = new StringBuilder();
+            header.AppendLine("=".PadRight(80, '='));
+            header.AppendLine($"EMBY CREDITS DETECTION - DEBUG LOG");
+            header.AppendLine($"Started: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            header.AppendLine("=".PadRight(80, '='));
+            header.AppendLine();
+            
+            _debugLog.Append(header.ToString());
+
+            if (_configuration != null && _configuration.EnableLogToFile && _configuration.EnableDetailedLogging)
+            {
+                try
+                {
+                    var logFolderPath = _configuration.LogFileFolderPath;
+                    if (string.IsNullOrWhiteSpace(logFolderPath))
+                    {
+                        var pluginDataPath = Plugin.Instance?.AppPaths?.PluginConfigurationsPath;
+                        if (!string.IsNullOrEmpty(pluginDataPath))
+                        {
+                            logFolderPath = Path.Combine(pluginDataPath, "EmbyCredits", "Logs");
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(logFolderPath))
+                    {
+                        Directory.CreateDirectory(logFolderPath);
+                        var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+                        _currentLogFilePath = Path.Combine(logFolderPath, $"CreditsDetection_{timestamp}.log");
+                        _logFileWriter = new StreamWriter(_currentLogFilePath, false, Encoding.UTF8) { AutoFlush = true };
+                        _logFileWriter.Write(header.ToString());
+                        _logger.Info($"Debug log file created: {_currentLogFilePath}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Failed to create debug log file: {ex.Message}");
+                    _logFileWriter?.Dispose();
+                    _logFileWriter = null;
+                    _currentLogFilePath = null;
+                }
+            }
 
             if (_configuration != null)
             {
@@ -336,7 +375,9 @@ namespace EmbyCredits.Services
             if (_isDebugMode && _debugLog != null)
             {
                 TruncateIfNeeded();
-                _debugLog.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [INFO] {message}");
+                var logLine = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [INFO] {message}";
+                _debugLog.AppendLine(logLine);
+                _logFileWriter?.WriteLine(logLine);
             }
         }
 
@@ -347,7 +388,9 @@ namespace EmbyCredits.Services
             if (_isDebugMode && _debugLog != null)
             {
                 TruncateIfNeeded();
-                _debugLog.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [DEBUG] {message}");
+                var logLine = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [DEBUG] {message}";
+                _debugLog.AppendLine(logLine);
+                _logFileWriter?.WriteLine(logLine);
             }
         }
 
@@ -357,7 +400,9 @@ namespace EmbyCredits.Services
             if (_isDebugMode && _debugLog != null)
             {
                 TruncateIfNeeded();
-                _debugLog.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [WARN] {message}");
+                var logLine = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [WARN] {message}";
+                _debugLog.AppendLine(logLine);
+                _logFileWriter?.WriteLine(logLine);
             }
         }
 
@@ -371,11 +416,17 @@ namespace EmbyCredits.Services
             if (_isDebugMode && _debugLog != null)
             {
                 TruncateIfNeeded();
-                _debugLog.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ERROR] {message}");
+                var logLine = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ERROR] {message}";
+                _debugLog.AppendLine(logLine);
+                _logFileWriter?.WriteLine(logLine);
                 if (ex != null)
                 {
-                    _debugLog.AppendLine($"Exception: {ex.GetType().Name}: {ex.Message}");
-                    _debugLog.AppendLine($"StackTrace: {ex.StackTrace}");
+                    var exLine1 = $"Exception: {ex.GetType().Name}: {ex.Message}";
+                    var exLine2 = $"StackTrace: {ex.StackTrace}";
+                    _debugLog.AppendLine(exLine1);
+                    _debugLog.AppendLine(exLine2);
+                    _logFileWriter?.WriteLine(exLine1);
+                    _logFileWriter?.WriteLine(exLine2);
                 }
             }
         }
@@ -385,7 +436,9 @@ namespace EmbyCredits.Services
             if (_isDebugMode && _debugLog != null)
             {
                 TruncateIfNeeded();
-                _debugLog.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{level}] {message}");
+                var logLine = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{level}] {message}";
+                _debugLog.AppendLine(logLine);
+                _logFileWriter?.WriteLine(logLine);
             }
         }
 
@@ -398,12 +451,35 @@ namespace EmbyCredits.Services
 
         public void Cleanup()
         {
+            if (_logFileWriter != null)
+            {
+                try
+                {
+                    _logFileWriter.WriteLine();
+                    _logFileWriter.WriteLine("=".PadRight(80, '='));
+                    _logFileWriter.WriteLine($"Log ended: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                    _logFileWriter.WriteLine("=".PadRight(80, '='));
+                    _logFileWriter.Flush();
+                    _logFileWriter.Dispose();
+                    _logFileWriter = null;
+                    if (!string.IsNullOrEmpty(_currentLogFilePath))
+                    {
+                        _logger.Info($"Debug log file closed: {_currentLogFilePath}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Error closing debug log file: {ex.Message}");
+                }
+            }
+            
             if (_debugLog != null)
             {
                 _debugLog.Clear();
                 _debugLog = null;
             }
             _isDebugMode = false;
+            _currentLogFilePath = null;
         }
 
         public void ScheduleDebugLogCleanup()
@@ -471,6 +547,17 @@ namespace EmbyCredits.Services
                 _cleanupCts?.Cancel();
                 _cleanupCts?.Dispose();
                 _cleanupCts = null;
+                
+                if (_logFileWriter != null)
+                {
+                    try
+                    {
+                        _logFileWriter.Flush();
+                        _logFileWriter.Dispose();
+                        _logFileWriter = null;
+                    }
+                    catch { }
+                }
                 
                 Cleanup();
             }

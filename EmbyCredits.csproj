@@ -10,8 +10,8 @@
 
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
-	<AssemblyVersion>2.1.1.0</AssemblyVersion>
-	<FileVersion>2.1.1.0</FileVersion>
+	<AssemblyVersion>2.1.4.0</AssemblyVersion>
+	<FileVersion>2.1.4.0</FileVersion>
 		<RootNamespace>EmbyCredits</RootNamespace>
 		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**;credit\**;test\**</DefaultItemExcludes>
 		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
@@ -70,6 +70,12 @@
 		</EmbeddedResource>
 		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.BackupManager.js">
 			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.BackupManager.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.Rules.html">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.Rules.html</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.RulesManager.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.RulesManager.js</LogicalName>
 		</EmbeddedResource>
 	</ItemGroup>
 

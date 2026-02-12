@@ -1,0 +1,353 @@
+<form class="creditsDetectorForm" novalidate>
+    <style>
+        .rule-card {
+            background: rgba(0,0,0,0.2);
+            padding: 1.5em;
+            border-radius: 8px;
+            margin-bottom: 1.5em;
+            border: 1px solid rgba(82, 181, 75, 0.3);
+        }
+        
+        .rule-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1em;
+            padding-bottom: 0.5em;
+            border-bottom: 1px solid rgba(82, 181, 75, 0.3);
+        }
+        
+        .rule-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #52B54B;
+        }
+        
+        .rule-actions {
+            display: flex;
+            gap: 0.5em;
+        }
+        
+        .tags-input-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5em;
+            padding: 0.5em;
+            background: rgba(0,0,0,0.3);
+            border-radius: 4px;
+            min-height: 40px;
+        }
+        
+        .tag-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3em;
+            background: #52B54B;
+            color: white;
+            padding: 0.3em 0.6em;
+            border-radius: 16px;
+            font-size: 0.9em;
+        }
+        
+        .tag-remove {
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1.2em;
+            line-height: 1;
+        }
+        
+        .tag-input {
+            flex: 1;
+            min-width: 120px;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: inherit;
+            font-size: 0.9em;
+        }
+        
+        .collapsible-section-rules {
+            margin-top: 1em;
+            border: 1px solid rgba(82, 181, 75, 0.2);
+            border-radius: 4px;
+            padding: 1em;
+            background: rgba(0,0,0,0.1);
+        }
+        
+        .collapsible-header-rules {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5em;
+            padding: 0.5em;
+            border-radius: 4px;
+            background: rgba(82, 181, 75, 0.2);
+        }
+        
+        .collapsible-header-rules:hover {
+            background: rgba(82, 181, 75, 0.3);
+        }
+        
+        .collapsible-content-rules {
+            margin-top: 1em;
+            padding-top: 1em;
+            border-top: 1px solid rgba(82, 181, 75, 0.2);
+        }
+    </style>
+
+    <div style="margin-top: 1em;">
+        <h2>Detection Rules</h2>
+    <p>Create custom detection settings for specific tags or studios. When a video matches a rule's tag or studio, those settings will be used instead of the default settings.</p>
+    
+    <div style="display: flex; gap: 1em; margin-bottom: 1.5em;">
+        <button is="emby-button" type="button" class="raised button-submit" id="btnAddRule" style="background-color: #52B54B;">
+            <i class="md-icon">add</i>
+            <span>Add New Rule</span>
+        </button>
+        
+        <button is="emby-button" type="button" class="raised button-submit" id="btnSaveRules" style="background-color: #52B54B;">
+            <i class="md-icon">save</i>
+            <span>Save Rules</span>
+        </button>
+    </div>
+    
+    <div id="rulesContainer"></div>
+    
+    <div style="margin-top: 2em; padding: 1em; background: rgba(82, 181, 75, 0.1); border-radius: 4px; border-left: 4px solid #52B54B;">
+        <h3 style="margin-top: 0;">How Rules Work</h3>
+        <ul>
+            <li>Rules are matched against TV series tags and studios</li>
+            <li>If multiple rules match, the first matching rule is used</li>
+            <li>Only settings specified in a rule will override defaults (unconfigured settings use default values)</li>
+            <li>Rules work for both batch processing and single episode scanning</li>
+            <li>Tags and studios are case-insensitive</li>
+        </ul>
+    </div>
+</div>
+
+<template id="ruleTemplate">
+    <div class="rule-card" data-rule-id="">
+        <div class="rule-header">
+            <div class="rule-title" data-rule-name>New Rule</div>
+            <div class="rule-actions">
+                <button is="emby-button" type="button" class="raised button-cancel rule-delete-btn">
+                    <i class="md-icon">delete</i>
+                    <span>Delete</span>
+                </button>
+            </div>
+        </div>
+        
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused">Rule Name</label>
+            <input is="emby-input" type="text" class="rule-name-input" placeholder="e.g., Anime Shows, HBO Series" />
+        </div>
+        
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused">Tags</label>
+            <div class="fieldDescription" style="margin-bottom: 0.5em; font-size: 0.9em;">Please remember to press Return after having entered text.</div>
+            <div class="tags-input-container tags-container">
+                <input type="text" class="tag-input" placeholder="Type tag name and press Enter..." />
+            </div>
+            <div class="fieldDescription">Add tags that should trigger this rule (e.g., anime, documentary)</div>
+        </div>
+        
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused">Studios</label>
+            <div class="fieldDescription" style="margin-bottom: 0.5em; font-size: 0.9em;">Please remember to press Return after having entered text.</div>
+            <div class="tags-input-container studios-container">
+                <input type="text" class="tag-input" placeholder="Type studio name and press Enter..." />
+            </div>
+            <div class="fieldDescription">Add studios that should trigger this rule (e.g., HBO, Netflix)</div>
+        </div>
+        
+        <div class="collapsible-section-rules">
+            <div class="collapsible-header-rules">
+                <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
+                <span>Detection Settings Override</span>
+            </div>
+            <div class="collapsible-content-rules" style="display: none;">
+                <p style="margin-top: 0; font-style: italic; opacity: 0.8;">Only configure settings you want to override. Leave blank to use default values.</p>
+                
+                <div class="selectContainer">
+                    <label class="selectLabel">Detection Mode</label>
+                    <select class="emby-select rule-detection-mode">
+                        <option value="">Use Default</option>
+                        <option value="OcrOnly">Enable OCR Detection</option>
+                        <option value="HashOnly">Enable Hash Detection</option>
+                        <option value="OcrWithHashFallback">Enable OCR with Hash Fallback</option>
+                        <option value="HashWithOcrFallback">Enable Hash with OCR Fallback</option>
+                    </select>
+                </div>
+                
+                <div class="selectContainer">
+                    <label class="selectLabel">OCR Engine</label>
+                    <select class="emby-select rule-ocr-engine">
+                        <option value="">Use Default</option>
+                        <option value="Tesseract">Tesseract OCR</option>
+                        <option value="PaddleOCR">PaddleOCR</option>
+                    </select>
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">OCR Search Start (minutes from end)</label>
+                    <input is="emby-input" type="number" step="0.5" class="rule-ocr-search-start" placeholder="Default" />
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">OCR Minutes From End</label>
+                    <input is="emby-input" type="number" step="0.5" class="rule-ocr-minutes-from-end" placeholder="Default" />
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">OCR Frame Rate (frames per second)</label>
+                    <input is="emby-input" type="number" step="0.1" class="rule-ocr-frame-rate" placeholder="Default" />
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">OCR Minimum Matches</label>
+                    <input is="emby-input" type="number" class="rule-ocr-minimum-matches" placeholder="Default" />
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">OCR Max Frames To Process</label>
+                    <input is="emby-input" type="number" class="rule-ocr-max-frames" placeholder="Default (0 = unlimited)" />
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">OCR Max Analysis Duration (seconds)</label>
+                    <input is="emby-input" type="number" step="1" class="rule-ocr-max-duration" placeholder="Default" />
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">OCR Stop Seconds From End</label>
+                    <input is="emby-input" type="number" step="1" class="rule-ocr-stop-seconds" placeholder="Default" />
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">OCR Detection Keywords</label>
+                    <input is="emby-input" type="text" class="rule-ocr-keywords" placeholder="Default keywords" />
+                    <div class="fieldDescription">Comma-separated list of keywords to detect in credits</div>
+                </div>
+                
+                <div class="selectContainer">
+                    <label class="selectLabel">Enable Episode Comparison</label>
+                    <select class="emby-select rule-ocr-enable-episode-comparison">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Episode Comparison Tolerance (seconds)</label>
+                    <input is="emby-input" type="number" step="1" class="rule-ocr-comparison-tolerance" placeholder="Default" />
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Episode Comparison Minimum Episodes</label>
+                    <input is="emby-input" type="number" class="rule-ocr-comparison-min-episodes" placeholder="Default" />
+                </div>
+                
+                <div class="selectContainer">
+                    <label class="selectLabel">Enable Anime Detection</label>
+                    <select class="emby-select rule-enable-anime-detection">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+                
+                <div class="selectContainer">
+                    <label class="selectLabel">Anime Detection Method</label>
+                    <select class="emby-select rule-anime-detection-method">
+                        <option value="">Use Default</option>
+                        <option value="BlackFrame">Black Frame</option>
+                        <option value="Ocr">OCR</option>
+                    </select>
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Black Frame Minimum Percentage</label>
+                    <input is="emby-input" type="number" class="rule-black-frame-percentage" placeholder="Default" />
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Black Frame Threshold</label>
+                    <input is="emby-input" type="number" class="rule-black-frame-threshold" placeholder="Default" />
+                </div>
+                
+                <div class="selectContainer">
+                    <label class="selectLabel">Enable Character Density Detection</label>
+                    <select class="emby-select rule-ocr-enable-character-density">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Character Density Threshold</label>
+                    <input is="emby-input" type="number" class="rule-character-density-threshold" placeholder="Default" />
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Character Density Consecutive Frames</label>
+                    <input is="emby-input" type="number" class="rule-character-density-frames" placeholder="Default" />
+                </div>
+                
+                <div class="selectContainer">
+                    <label class="selectLabel">Character Density Primary Method</label>
+                    <select class="emby-select rule-character-density-primary">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+                
+                <div class="selectContainer">
+                    <label class="selectLabel">Density Require Keyword</label>
+                    <select class="emby-select rule-density-require-keyword">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Density Keyword Window (seconds)</label>
+                    <input is="emby-input" type="number" step="1" class="rule-density-keyword-window" placeholder="Default" />
+                </div>
+                
+                <div class="selectContainer">
+                    <label class="selectLabel">Density Require Temporal Consistency</label>
+                    <select class="emby-select rule-density-temporal-consistency">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Density Minimum Duration (seconds)</label>
+                    <input is="emby-input" type="number" step="1" class="rule-density-min-duration" placeholder="Default" />
+                </div>
+                
+                <div class="selectContainer">
+                    <label class="selectLabel">Density Require Style Consistency</label>
+                    <select class="emby-select rule-density-style-consistency">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Density Style Consistency Threshold</label>
+                    <input is="emby-input" type="number" step="0.1" class="rule-density-style-threshold" placeholder="Default" />
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+</form>

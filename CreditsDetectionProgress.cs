@@ -6,7 +6,7 @@ namespace EmbyCredits
 {
     public class CreditsDetectionProgress
     {
-        private const int MaxDictionarySize = 200;
+        private const int MaxDictionarySize = 5000;
         
         public bool IsRunning { get; set; }
         public int TotalItems { get; set; }

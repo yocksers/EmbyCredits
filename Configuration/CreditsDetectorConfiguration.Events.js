@@ -8,6 +8,7 @@ define([], function () {
             'notificationsPage': view.querySelector('#notificationsPage'),
             'ocrEnhancementsPage': view.querySelector('#ocrEnhancementsPage'),
             'actionsPage': view.querySelector('#actionsPage'),
+            'rulesPage': view.querySelector('#rulesPage'),
             'guidePage': view.querySelector('#guidePage'),
             'apiPage': view.querySelector('#apiPage')
         };

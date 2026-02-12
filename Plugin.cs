@@ -150,8 +150,18 @@ namespace EmbyCredits
                 },
                 new PluginPageInfo
                 {
+                    Name = "CreditsDetectorConfigurationRulesManager",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.RulesManager.js"
+                },
+                new PluginPageInfo
+                {
                     Name = "CreditsDetectorConfiguration.Settings",
                     EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Settings.html"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfiguration.Rules",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Rules.html"
                 },
                 new PluginPageInfo
                 {

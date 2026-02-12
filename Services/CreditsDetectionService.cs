@@ -478,6 +478,24 @@ namespace EmbyCredits.Services
                 return;
             }
 
+            // Check if hash detection is enabled via rules or default config
+            if (_configuration != null && _logger != null && episode.Series != null)
+            {
+                var ruleMatchingService = new RuleMatchingService(_logger, _configuration);
+                var effectiveConfig = ruleMatchingService.GetEffectiveConfiguration(episode.Series);
+                
+                bool usesHashDetection = effectiveConfig.DetectionMode == DetectionMode.HashOnly ||
+                                       effectiveConfig.DetectionMode == DetectionMode.HashWithOcrFallback ||
+                                       effectiveConfig.DetectionMode == DetectionMode.OcrWithHashFallback;
+                
+                if (usesHashDetection && !_isBatchMode)
+                {
+                    LogInfo($"Hash detection enabled for '{episode.Series.Name}' - queueing entire season instead of single episode");
+                    QueueSeasonForEpisode(episode, isManualDetection);
+                    return;
+                }
+            }
+
             if (!isManualDetection)
             {
                 if (_configuration != null && _itemRepository != null)
@@ -558,6 +576,54 @@ namespace EmbyCredits.Services
             }
         }
 
+        private static void QueueSeasonForEpisode(Episode episode, bool isManualDetection)
+        {
+            if (_libraryManager == null || episode.Series == null || !episode.ParentIndexNumber.HasValue)
+            {
+                LogWarn($"Cannot queue season for episode - missing required data");
+                QueueEpisode(episode, isManualDetection);
+                return;
+            }
+
+            var series = episode.Series;
+            var seasonNumber = episode.ParentIndexNumber.Value;
+            
+            LogInfo($"Fetching all episodes from {series.Name} Season {seasonNumber} for hash detection");
+            
+            var seriesInternalId = series.InternalId;
+            
+            var allEpisodes = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { "Episode" },
+                IsVirtualItem = false,
+                HasPath = true,
+                AncestorIds = new[] { seriesInternalId }
+            }).OfType<Episode>().ToList();
+
+            var seasonEpisodes = allEpisodes
+                .Where(e => e.ParentIndexNumber == seasonNumber)
+                .OrderBy(e => e.IndexNumber)
+                .ToList();
+
+            if (seasonEpisodes.Count == 0)
+            {
+                LogWarn($"No episodes found in season - falling back to single episode queue");
+                QueueEpisode(episode, isManualDetection);
+                return;
+            }
+
+            LogInfo($"Found {seasonEpisodes.Count} episodes in {series.Name} Season {seasonNumber} - queueing all for hash detection");
+            
+            if (isManualDetection)
+            {
+                QueueSeriesManual(seasonEpisodes, skipExistingMarkers: false);
+            }
+            else
+            {
+                QueueSeries(seasonEpisodes);
+            }
+        }
+
         public static void QueueSeries(List<Episode> episodes)
         {
             ClearCache();
@@ -633,6 +699,12 @@ namespace EmbyCredits.Services
             _cancellationTokenSource?.Cancel();
 
             _detectionCoordinator?.CancelDetection();
+            
+            var killedProcesses = Utilities.FFmpegHelper.KillHungProcesses(0);
+            if (killedProcesses > 0)
+            {
+                LogInfo($"Killed {killedProcesses} running ffmpeg processes during cancellation");
+            }
 
             var clearedCount = 0;
             while (_processingQueue.TryDequeue(out _)) 
@@ -992,7 +1064,15 @@ namespace EmbyCredits.Services
                     
                     LogInfo($"Processing season batch: {seriesName} Season {seasonGroup.Key.SeasonNumber} ({seasonEpisodes.Count} episodes)");
 
-                    await ProcessSeasonBatch(seasonEpisodes, _cancellationTokenSource?.Token ?? CancellationToken.None);
+                    _isBatchMode = true;
+                    try
+                    {
+                        await ProcessSeasonBatch(seasonEpisodes, _cancellationTokenSource?.Token ?? CancellationToken.None);
+                    }
+                    finally
+                    {
+                        _isBatchMode = false;
+                    }
 
                     processedCount += seasonEpisodes.Count;
                     
@@ -1000,6 +1080,12 @@ namespace EmbyCredits.Services
                     {
                         CleanupBatchDetectionCache();
                         CleanupOldProcessedEpisodes();
+                        
+                        var killedCount = Utilities.FFmpegHelper.KillHungProcesses(450);
+                        if (killedCount > 0)
+                        {
+                            LogWarn($"Killed {killedCount} hung ffmpeg processes (older than 450 seconds)");
+                        }
                     }
 
                     await Task.Delay(1000);
@@ -1088,8 +1174,18 @@ namespace EmbyCredits.Services
 
             _logger?.Info($"Starting batch processing for {seriesName} Season {seasonNumber} ({seasonEpisodes.Count} episodes)");
 
+            var ruleMatchingService = _logger != null ? new RuleMatchingService(_logger, _configuration) : null;
+            var effectiveConfig = firstEpisode.Series != null && ruleMatchingService != null
+                ? ruleMatchingService.GetEffectiveConfiguration(firstEpisode.Series) 
+                : _configuration;
+
+            if (effectiveConfig != _configuration)
+            {
+                _logger?.Info($"Using rule-based configuration for series '{seriesName}'");
+            }
+
             bool isAnime = false;
-            if (_configuration.EnableAnimeDetection && !string.IsNullOrEmpty(seriesId))
+            if (effectiveConfig.EnableAnimeDetection && !string.IsNullOrEmpty(seriesId))
             {
                 _logger?.Debug($"Checking if {seriesName} is anime (seriesId: {seriesId})");
                 isAnime = CheckIfAnime(seriesId);
@@ -1104,9 +1200,26 @@ namespace EmbyCredits.Services
             }
 
             // Get chromaprint detection method if available
-            var chromaprintMethod = _episodeProcessor.GetDetectionMethods()
-                .OfType<DetectionMethods.ChromaprintDetection>()
-                .FirstOrDefault();
+            // If using rule-based config, create temporary coordinator with effective config
+            DetectionMethods.ChromaprintDetection? chromaprintMethod = null;
+            DetectionCoordinator? tempCoordinator = null;
+            
+            if (effectiveConfig != _configuration && _logger != null)
+            {
+                _logger.Debug($"Creating temporary DetectionCoordinator with rule-based DetectionMode: {effectiveConfig.DetectionMode}");
+                tempCoordinator = new DetectionCoordinator(_logger, effectiveConfig);
+                chromaprintMethod = tempCoordinator.GetAllDetectionMethods()
+                    .OfType<DetectionMethods.ChromaprintDetection>()
+                    .FirstOrDefault();
+                _logger.Debug($"Chromaprint method from rule-based config - IsEnabled: {chromaprintMethod?.IsEnabled ?? false}");
+            }
+            else if (effectiveConfig == _configuration)
+            {
+                chromaprintMethod = _episodeProcessor.GetDetectionMethods()
+                    .OfType<DetectionMethods.ChromaprintDetection>()
+                    .FirstOrDefault();
+                _logger?.Debug($"Chromaprint method from default config - IsEnabled: {chromaprintMethod?.IsEnabled ?? false}");
+            }
 
             Dictionary<string, double>? batchResults = null;
             
@@ -1152,7 +1265,7 @@ namespace EmbyCredits.Services
                     }
 
                     var (success, creditsStart, failureReason, confidence, methodName, detectionReason) = await _episodeProcessor.ProcessEpisodeWithBatchResult(
-                        episode, _isDryRun, batchCreditsStart, chromaprintMethod);
+                        episode, _isDryRun, batchCreditsStart, chromaprintMethod, tempCoordinator);
 
                     if (success && creditsStart > 0)
                     {
@@ -1162,7 +1275,8 @@ namespace EmbyCredits.Services
 
                             var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
                             var statusMessages = GetAndClearEpisodeStatusMessages(episodeId);
-                            var successDetail = FormatTime(creditsStart);
+                            var duration = episode.RunTimeTicks.HasValue ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond : 0;
+                            var successDetail = $"{FormatTime(creditsStart)} / {FormatTime(duration)}";
                             
                             if (!string.IsNullOrEmpty(methodName))
                             {
@@ -1253,6 +1367,8 @@ namespace EmbyCredits.Services
                 }
             }
 
+            tempCoordinator?.Dispose();
+            
             _logger?.Info($"Batch processing complete for {seriesName} Season {seasonNumber}");
         }
 
@@ -1298,7 +1414,8 @@ namespace EmbyCredits.Services
                             : episode.Name;
                         
                         var statusMessages = GetAndClearEpisodeStatusMessages(episodeId);
-                        var successDetail = FormatTime(creditsStart);
+                        var duration = episode.RunTimeTicks.HasValue ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond : 0;
+                        var successDetail = $"{FormatTime(creditsStart)} / {FormatTime(duration)}";
                         
                         if (!string.IsNullOrEmpty(methodName))
                         {

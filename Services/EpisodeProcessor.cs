@@ -19,11 +19,12 @@ namespace EmbyCredits.Services
     {
         private readonly ILogger _logger;
         private readonly ILibraryManager? _libraryManager;
-        private readonly DetectionCoordinator _detectionCoordinator;
+        private DetectionCoordinator _detectionCoordinator;
         private readonly ChapterMarkerService _chapterMarkerService;
         private readonly DebugLogger _debugLogger;
         private readonly PluginConfiguration _configuration;
         private readonly CpuThrottler _cpuThrottler;
+        private readonly RuleMatchingService _ruleMatchingService;
 
         public EpisodeProcessor(
             ILogger logger,
@@ -40,6 +41,7 @@ namespace EmbyCredits.Services
             _debugLogger = debugLogger;
             _configuration = configuration;
             _cpuThrottler = new CpuThrottler(configuration);
+            _ruleMatchingService = new RuleMatchingService(logger, configuration);
         }
 
         public async Task<(bool success, double creditsStart, string failureReason, double confidence, string methodName, string detectionReason)> ProcessEpisode(
@@ -141,6 +143,14 @@ namespace EmbyCredits.Services
                 var seriesId = series?.Id.ToString();
                 var seasonNumber = episode.ParentIndexNumber;
                 var episodeNumber = episode.IndexNumber;
+                var effectiveConfig = _ruleMatchingService.GetEffectiveConfiguration(episode);
+                
+                if (effectiveConfig != _configuration)
+                {
+                    _debugLogger.LogInfo("Using rule-based configuration for this episode");
+                    _detectionCoordinator?.Dispose();
+                    _detectionCoordinator = new DetectionCoordinator(_logger, effectiveConfig);
+                }
                 
                 var result = !string.IsNullOrEmpty(seriesId) 
                     ? await _detectionCoordinator.DetectCreditsWithContext(normalizedPath, duration, episodeId, seriesId, seasonNumber, episodeNumber)
@@ -215,7 +225,8 @@ namespace EmbyCredits.Services
             Episode episode,
             bool isDryRun,
             double? batchDetectedTime,
-            DetectionMethods.ChromaprintDetection? chromaprintMethod = null)
+            DetectionMethods.ChromaprintDetection? chromaprintMethod = null,
+            DetectionCoordinator? overrideCoordinator = null)
         {
             var episodeId = episode.Id.ToString();
             var originalPriority = Thread.CurrentThread.Priority;
@@ -264,7 +275,7 @@ namespace EmbyCredits.Services
                     }
 
                     // Get actual confidence from chromaprint batch processing
-                    double confidence = chromaprintMethod?.GetBatchConfidence(episode.Id.ToString()) ?? 0.95;
+                    double confidence = chromaprintMethod?.GetBatchConfidence(episode.Id.ToString()) ?? Plugin.Instance?.Configuration.ChromaprintMinConfidence ?? 0.85;
                     return (true, creditsStart, string.Empty, confidence, "Chromaprint Audio Fingerprint Detection", "Batch comparison");
                 }
                 else
@@ -291,7 +302,8 @@ namespace EmbyCredits.Services
                     }
 
                     // Try detection methods in priority order
-                    var detectionResult = await _detectionCoordinator.DetectCreditsWithContext(
+                    var coordinatorToUse = overrideCoordinator ?? _detectionCoordinator;
+                    var detectionResult = await coordinatorToUse.DetectCreditsWithContext(
                         normalizedPath,
                         duration,
                         episode.Id.ToString(),

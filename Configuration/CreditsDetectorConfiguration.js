@@ -7,8 +7,9 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
     'configurationpage?name=CreditsDetectorConfigurationProcessingActions',
     'configurationpage?name=CreditsDetectorConfigurationProgressMonitor',
     'configurationpage?name=CreditsDetectorConfigurationMarkersManager',
-    'configurationpage?name=CreditsDetectorConfigurationBackupManager'
-], function (BaseView, loading, toast, embyInput, embyButton, embyCheckbox, loader, events, utils, dataManager, seriesManager, processingActions, progressMonitor, markersManager, backupManager) {
+    'configurationpage?name=CreditsDetectorConfigurationBackupManager',
+    'configurationpage?name=CreditsDetectorConfigurationRulesManager'
+], function (BaseView, loading, toast, embyInput, embyButton, embyCheckbox, loader, events, utils, dataManager, seriesManager, processingActions, progressMonitor, markersManager, backupManager, rulesManager) {
     'use strict';
 
     return class extends BaseView {
@@ -47,6 +48,13 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             if (btnBrowseBackupFolder) {
                 btnBrowseBackupFolder.addEventListener('click', () => {
                     dataManager.browseBackupFolder(view);
+                });
+            }
+
+            const btnBrowseLogFolder = view.querySelector('#btnBrowseLogFolder');
+            if (btnBrowseLogFolder) {
+                btnBrowseLogFolder.addEventListener('click', () => {
+                    dataManager.browseLogFolder(view);
                 });
             }
 

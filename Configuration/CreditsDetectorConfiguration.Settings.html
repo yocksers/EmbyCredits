@@ -87,12 +87,39 @@
             </button>
         </div>
 
-        <div class="checkboxContainer" style="margin-top: 1.5em;">
-            <label>
-                <input is="emby-checkbox" type="checkbox" id="chkEnableDetailedLogging" data-config-key="EnableDetailedLogging" />
-                <span>Enable Detailed Logging</span>
-            </label>
-            <div class="fieldDescription">Log detailed detection information to server logs (errors are always logged)</div>
+        <div class="collapsible-section" style="margin-top: 1.5em;">
+            <h3 class="collapsible-header" style="cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
+                <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
+                <span>Logging</span>
+            </h3>
+            <div class="collapsible-content" style="display: none; margin-top: 1em;">
+                <div class="checkboxContainer">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkEnableDetailedLogging" data-config-key="EnableDetailedLogging" />
+                        <span>Enable Detailed Logging</span>
+                    </label>
+                    <div class="fieldDescription">Log detailed detection information to server logs (errors are always logged)</div>
+                </div>
+
+                <div class="checkboxContainer" style="margin-top: 1em;">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkEnableLogToFile" data-config-key="EnableLogToFile" />
+                        <span>Save Debug Logs to File</span>
+                    </label>
+                    <div class="fieldDescription">When enabled, saves detailed debug logs to a separate file for each detection run. A new log file with a timestamp will be created each time a detection queue is started.</div>
+                </div>
+
+                <div class="inputContainer" style="margin-top: 1em;">
+                    <label class="inputLabel inputLabelUnfocused" for="txtLogFileFolderPath">Log File Folder Path</label>
+                    <div style="display: flex; gap: 0.5em;">
+                        <input is="emby-input" type="text" id="txtLogFileFolderPath" data-config-key="LogFileFolderPath" style="flex: 1;" />
+                        <button is="emby-button" type="button" class="raised button-submit" id="btnBrowseLogFolder" title="Browse for folder">
+                            <i class="md-icon">folder_open</i>
+                        </button>
+                    </div>
+                    <div class="fieldDescription">Folder where debug log files will be saved. If empty, logs will be saved to the default plugin data folder (DataPath/plugins/EmbyCredits/Logs/).</div>
+                </div>
+            </div>
         </div>
 
         <div class="collapsible-section" style="margin-top: 1.5em;">
