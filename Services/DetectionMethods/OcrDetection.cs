@@ -28,6 +28,7 @@ namespace EmbyCredits.Services.DetectionMethods
         public override int Priority => Configuration.OcrDetectionPriority;
         public override bool IsEnabled => Configuration.DetectionMode == DetectionMode.OcrOnly || 
                                           Configuration.DetectionMode == DetectionMode.OcrWithHashFallback ||
+                                          Configuration.DetectionMode == DetectionMode.HashWithOcrFallback ||
                                           (_isForAnime && Configuration.AnimeDetectionMethod == AnimeDetectionMethod.Ocr);
 
         private List<double> _ocrTextConfidences = new List<double>();
@@ -402,20 +403,10 @@ namespace EmbyCredits.Services.DetectionMethods
             List<(double timestamp, string text)> recentTextFrames,
             int maxFramesToProcess)
         {
-            if (frameIndex == 0)
-            {
-                LogInfo($"Processing first frame at {FormatTime(timestamp)}");
-            }
-
             var estimatedTotal = Math.Min(maxFramesToProcess, (int)(analysisDuration * fps));
             var ocrProgress = estimatedTotal > 0 ? (double)(frameIndex + 1) / estimatedTotal : 0;
             var overallProgress = 15 + (ocrProgress * 80);
             UpdateProgress(overallProgress, $"OCR: {frameIndex + 1} frames ({ocrProgress:P0})");
-
-            if (frameIndex > 0 && frameIndex % 50 == 0)
-            {
-                LogDebug($"OCR progress: {frameIndex} frames processed");
-            }
 
             if (!string.IsNullOrWhiteSpace(ocrText))
             {
@@ -427,10 +418,6 @@ namespace EmbyCredits.Services.DetectionMethods
 
                 var charCount = CountMeaningfulCharacters(ocrText);
                 characterDensityHistory.Add((timestamp, charCount));
-
-                var textPreview = ocrText.Length > 100 ? ocrText.Substring(0, 100) + "..." : ocrText;
-                var textOneLine = textPreview.Replace("\n", " ").Replace("\r", "");
-                LogDebug($"Frame at {FormatTime(timestamp)}: OCR detected {charCount} chars: \"{textOneLine}\"");
 
                 var matchedKeywords = Configuration.OcrEnableFuzzyMatching 
                     ? FindKeywordMatchesFuzzy(ocrText, keywords, Configuration.OcrFuzzyMatchMaxDistance)
@@ -449,32 +436,18 @@ namespace EmbyCredits.Services.DetectionMethods
                         recentTextFrames.TakeLast(Configuration.OcrScrollingMinFrames).ToList(),
                         Configuration.OcrScrollingMinFrames,
                         Configuration.OcrScrollingOverlapThreshold);
-                    
-                    if (scrollingDetected)
-                    {
-                        LogDebug($"Frame at {FormatTime(timestamp)}: ✓ Scrolling credits pattern detected");
-                    }
                 }
 
                 var structureDetected = false;
                 if (Configuration.OcrEnableCreditStructureDetection)
                 {
                     structureDetected = DetectCreditStructure(ocrText, Configuration.OcrMinimumStructureLines);
-                    if (structureDetected)
-                    {
-                        LogDebug($"Frame at {FormatTime(timestamp)}: ✓ Credit structure pattern detected");
-                    }
                 }
 
                 bool frameIndicatesCredits = false;
                 if (Configuration.OcrCharacterDensityPrimaryMethod)
                 {
                     frameIndicatesCredits = densityDetected || matchedKeywords.Count > 0 || scrollingDetected || structureDetected;
-                    if (densityDetected)
-                    {
-                        var keywordBonus = matchedKeywords.Count > 0 ? $" + {matchedKeywords.Count} keyword(s): {string.Join(", ", matchedKeywords)}" : "";
-                        LogDebug($"Frame at {FormatTime(timestamp)}: ✓ MATCH - High text density ({charCount} chars){keywordBonus}");
-                    }
                 }
                 else
                 {
@@ -495,11 +468,6 @@ namespace EmbyCredits.Services.DetectionMethods
                     if (structureDetected) matchScore += 1;
                     
                     detectionScores.Add((timestamp, matchScore, matchedText));
-
-                    if (matchedKeywords.Count > 0 && !densityDetected)
-                    {
-                        LogDebug($"Frame at {FormatTime(timestamp)}: ✓ MATCH - Found {matchedKeywords.Count} keyword(s): {string.Join(", ", matchedKeywords)}");
-                    }
                 }
             }
             else
@@ -531,8 +499,6 @@ namespace EmbyCredits.Services.DetectionMethods
             
             var extractArgs = $"{preInputArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} {threadArgs}-t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"{filterChain}\" {outputFormat}";
 
-            LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps (JPG Q{Configuration.OcrJpegQuality}) (Direct Memory Pipeline)");
-            LogDebug($"FFmpeg command: {FFmpegHelper.GetFfmpegPath()} {extractArgs}");
             UpdateProgress(10, "Starting direct memory frame extraction");
 
             using (var process = new Process
@@ -677,7 +643,6 @@ namespace EmbyCredits.Services.DetectionMethods
 
                             if (frameData.Length < 1024)
                             {
-                                LogDebug($"Skipping frame {frameIndex} - too small ({frameData.Length} bytes)");
                                 frameIndex++;
                                 continue;
                             }
@@ -708,7 +673,11 @@ namespace EmbyCredits.Services.DetectionMethods
                         buffer.TrimExcess();
                     }
                     buffer = null;
-                    frameQueue.Clear();
+                    if (frameQueue != null)
+                    {
+                        frameQueue.Clear();
+                        frameQueue.TrimExcess();
+                    }
                     frameQueue = null;
                     
                     if (!process.HasExited)
@@ -734,16 +703,30 @@ namespace EmbyCredits.Services.DetectionMethods
                     if (buffer != null)
                     {
                         buffer.Clear();
+                        buffer.TrimExcess();
                         buffer = null;
                     }
                     if (frameQueue != null)
                     {
                         frameQueue.Clear();
+                        frameQueue.TrimExcess();
                         frameQueue = null;
                     }
-                    detectionScores?.Clear();
-                    characterDensityHistory?.Clear();
-                    recentTextFrames?.Clear();
+                    if (detectionScores != null)
+                    {
+                        detectionScores.Clear();
+                        detectionScores.TrimExcess();
+                    }
+                    if (characterDensityHistory != null)
+                    {
+                        characterDensityHistory.Clear();
+                        characterDensityHistory.TrimExcess();
+                    }
+                    if (recentTextFrames != null)
+                    {
+                        recentTextFrames.Clear();
+                        recentTextFrames.TrimExcess();
+                    }
                     
                     return 0;
                 }
@@ -1126,12 +1109,6 @@ namespace EmbyCredits.Services.DetectionMethods
                                 continue;
                             }
 
-                            if (waitingForFirstFrame)
-                            {
-                                LogDebug($"First frame(s) received after {totalWaitIterations * 50}ms, beginning OCR processing");
-                                waitingForFirstFrame = false;
-                            }
-
                             noNewFramesCount = 0;
 
                             if (Configuration.OcrEnableParallelProcessing && currentFrames.Count > 1)
@@ -1139,8 +1116,6 @@ namespace EmbyCredits.Services.DetectionMethods
                                 var batchSize = Math.Min(Configuration.OcrParallelBatchSize, currentFrames.Count);
                                 var frameBatch = currentFrames.Take(batchSize).ToList();
                                 var frameBatchWithTimestamps = frameBatch.Select((f, i) => (f, startTime + ((frameIndex + i) / fps))).ToList();
-
-                                LogDebug($"Processing {frameBatch.Count} frames in parallel");
 
                                 var batchResults = await OcrOptimizations.ProcessFramesBatch(
                                     frameBatchWithTimestamps,
@@ -1155,21 +1130,10 @@ namespace EmbyCredits.Services.DetectionMethods
                                         _ocrTextConfidences.Add(ocrConfidence);
                                     }
                                     
-                                    if (!loggedFirstFrame)
-                                    {
-                                        LogInfo($"Processing first frame: {framePath}");
-                                        loggedFirstFrame = true;
-                                    }
-
                                     var estimatedTotal = Math.Min(maxFramesToProcess, (int)(analysisDuration * fps));
                                     var ocrProgress = estimatedTotal > 0 ? (double)(frameIndex + 1) / estimatedTotal : 0;
                                     var overallProgress = 15 + (ocrProgress * 80);
                                     UpdateProgress(overallProgress, $"OCR: {frameIndex + 1} frames ({ocrProgress:P0})");
-
-                                    if (frameIndex > 0 && frameIndex % 50 == 0)
-                                    {
-                                        LogDebug($"OCR progress: {frameIndex} frames processed");
-                                    }
 
                                     if (!string.IsNullOrWhiteSpace(ocrText))
                                     {
@@ -1666,8 +1630,6 @@ namespace EmbyCredits.Services.DetectionMethods
             {
                 var endpoint = Configuration.OcrEndpoint.TrimEnd('/') + "/tesseract";
                 
-                LogDebug($"Sending {frameData.Length} bytes to OCR endpoint {endpoint} as jpg");
-                
                 using (var content = new MultipartFormDataContent())
                 using (var imageContent = new ByteArrayContent(frameData))
                 {
@@ -1719,7 +1681,6 @@ namespace EmbyCredits.Services.DetectionMethods
                                 {
                                     var ocrText = ocrResult.Data.Stdout.Trim();
                                     var (parsedText, confidence) = ParseOcrResponse(jsonResponse);
-                                    LogDebug($"OCR extracted text length: {ocrText.Length}, confidence: {confidence:F2}");
                                     return (ocrText, confidence);
                                 }
                                 else
@@ -1762,8 +1723,6 @@ namespace EmbyCredits.Services.DetectionMethods
             {
                 var endpoint = Configuration.OcrEndpoint.TrimEnd('/') + "/ocr/file";
                 
-                LogDebug($"Sending {frameData.Length} bytes to PaddleOCR endpoint {endpoint} as jpg");
-                
                 using (var content = new MultipartFormDataContent())
                 using (var imageContent = new ByteArrayContent(frameData))
                 {
@@ -1790,7 +1749,6 @@ namespace EmbyCredits.Services.DetectionMethods
                                     var ocrText = ocrResult.Data.Stdout.Trim();
                                     var sanitized = SanitizeOcrText(ocrText);
                                     var confidence = CalculateSyntheticConfidence(sanitized);
-                                    LogDebug($"PaddleOCR extracted text length: {ocrText.Length}, confidence: {confidence:F2}");
                                     return (sanitized, confidence);
                                 }
                                 else

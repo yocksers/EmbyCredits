@@ -1664,5 +1664,436 @@ namespace EmbyCredits.Services
                 return new { Success = false, Message = ex.Message };
             }
         }
+
+        public object Post(StartDetectionRequest request)
+        {
+            try
+            {
+                var config = Plugin.Instance?.Configuration;
+                if (config == null)
+                {
+                    return new { Success = false, Message = "Plugin configuration not available" };
+                }
+
+                PluginConfiguration? effectiveConfig = null;
+                if (request.SettingsOverride != null)
+                {
+                    effectiveConfig = CloneConfigurationWithOverrides(config, request.SettingsOverride);
+                }
+                else
+                {
+                    effectiveConfig = config;
+                }
+
+                if (request.DryRun)
+                {
+                    var dryRunRequest = new DryRunSeriesRequest
+                    {
+                        SeriesId = request.SeriesId ?? string.Empty,
+                        EpisodeId = request.EpisodeId ?? string.Empty,
+                        LibraryId = request.LibraryId ?? string.Empty,
+                        SeasonNumber = request.SeasonNumber,
+                        SkipExistingMarkers = request.SkipExistingMarkers
+                    };
+
+                    if (request.EnableDebugLogging)
+                    {
+                        var debugRequest = new DryRunSeriesDebugRequest
+                        {
+                            SeriesId = dryRunRequest.SeriesId,
+                            EpisodeId = dryRunRequest.EpisodeId,
+                            LibraryId = dryRunRequest.LibraryId,
+                            SeasonNumber = dryRunRequest.SeasonNumber,
+                            SkipExistingMarkers = dryRunRequest.SkipExistingMarkers
+                        };
+                        return Post(debugRequest);
+                    }
+
+                    return Post(dryRunRequest);
+                }
+
+                if (!string.IsNullOrEmpty(request.EpisodeId))
+                {
+                    var episodeRequest = new ProcessEpisodeRequest
+                    {
+                        ItemId = request.EpisodeId,
+                        SkipExistingMarkers = request.SkipExistingMarkers
+                    };
+                    return Post(episodeRequest);
+                }
+                else if (!string.IsNullOrEmpty(request.SeriesId) && request.SeasonNumber.HasValue)
+                {
+                    var seasonRequest = new ProcessSeasonRequest
+                    {
+                        SeriesId = request.SeriesId,
+                        SeasonNumber = request.SeasonNumber.Value,
+                        SkipExistingMarkers = request.SkipExistingMarkers
+                    };
+                    return Post(seasonRequest);
+                }
+                else if (!string.IsNullOrEmpty(request.SeriesId))
+                {
+                    var seriesRequest = new ProcessSeriesRequest
+                    {
+                        SeriesId = request.SeriesId,
+                        SkipExistingMarkers = request.SkipExistingMarkers
+                    };
+                    return Post(seriesRequest);
+                }
+                else if (!string.IsNullOrEmpty(request.LibraryId))
+                {
+                    var libraryRequest = new ProcessLibraryRequest
+                    {
+                        LibraryId = request.LibraryId,
+                        SkipExistingMarkers = request.SkipExistingMarkers
+                    };
+                    return Post(libraryRequest);
+                }
+
+                return new { Success = false, Message = "Please specify EpisodeId, SeriesId, or LibraryId" };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error starting detection", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        private PluginConfiguration CloneConfigurationWithOverrides(PluginConfiguration config, DetectionSettingsOverride overrides)
+        {
+            var clone = new PluginConfiguration();
+            var configType = typeof(PluginConfiguration);
+            
+            foreach (var prop in configType.GetProperties())
+            {
+                if (prop.CanRead && prop.CanWrite)
+                {
+                    var value = prop.GetValue(config);
+                    prop.SetValue(clone, value);
+                }
+            }
+
+            if (overrides.DetectionMode != null && Enum.TryParse<DetectionMode>(overrides.DetectionMode, true, out var detectionMode))
+                clone.DetectionMode = detectionMode;
+            if (overrides.OcrEngine != null && Enum.TryParse<OcrEngine>(overrides.OcrEngine, true, out var ocrEngine))
+                clone.OcrEngine = ocrEngine;
+            if (overrides.OcrEndpoint != null) clone.OcrEndpoint = overrides.OcrEndpoint;
+            if (overrides.OcrLanguages != null) clone.OcrLanguages = overrides.OcrLanguages;
+            if (overrides.OcrDetectionKeywords != null) clone.OcrDetectionKeywords = overrides.OcrDetectionKeywords;
+            if (overrides.OcrSearchStartValue.HasValue) clone.OcrSearchStartValue = overrides.OcrSearchStartValue.Value;
+            if (overrides.OcrSearchStartUnit != null) clone.OcrSearchStartUnit = overrides.OcrSearchStartUnit;
+            if (overrides.OcrMinutesFromEnd.HasValue) clone.OcrMinutesFromEnd = overrides.OcrMinutesFromEnd.Value;
+            if (overrides.OcrFrameRate.HasValue) clone.OcrFrameRate = overrides.OcrFrameRate.Value;
+            if (overrides.OcrMinimumMatches.HasValue) clone.OcrMinimumMatches = overrides.OcrMinimumMatches.Value;
+            if (overrides.OcrMaxFramesToProcess.HasValue) clone.OcrMaxFramesToProcess = overrides.OcrMaxFramesToProcess.Value;
+            if (overrides.OcrMaxAnalysisDuration.HasValue) clone.OcrMaxAnalysisDuration = overrides.OcrMaxAnalysisDuration.Value;
+            if (overrides.OcrStopSecondsFromEnd.HasValue) clone.OcrStopSecondsFromEnd = overrides.OcrStopSecondsFromEnd.Value;
+            if (overrides.OcrPageSegmentationMode.HasValue) clone.OcrPageSegmentationMode = overrides.OcrPageSegmentationMode.Value;
+            if (overrides.OcrEngineMode.HasValue) clone.OcrEngineMode = overrides.OcrEngineMode.Value;
+            if (overrides.OcrJpegQuality.HasValue) clone.OcrJpegQuality = overrides.OcrJpegQuality.Value;
+            if (overrides.OcrMaxResolutionHeight.HasValue) clone.OcrMaxResolutionHeight = overrides.OcrMaxResolutionHeight.Value;
+            if (overrides.OcrDelayBetweenFramesMs.HasValue) clone.OcrDelayBetweenFramesMs = overrides.OcrDelayBetweenFramesMs.Value;
+            if (overrides.OcrEnableParallelProcessing.HasValue) clone.OcrEnableParallelProcessing = overrides.OcrEnableParallelProcessing.Value;
+            if (overrides.OcrParallelBatchSize.HasValue) clone.OcrParallelBatchSize = overrides.OcrParallelBatchSize.Value;
+            if (overrides.OcrDelayBetweenBatchesMs.HasValue) clone.OcrDelayBetweenBatchesMs = overrides.OcrDelayBetweenBatchesMs.Value;
+            if (overrides.OcrEnableSmartFrameSkipping.HasValue) clone.OcrEnableSmartFrameSkipping = overrides.OcrEnableSmartFrameSkipping.Value;
+            if (overrides.OcrConsecutiveMatchesForEarlyStop.HasValue) clone.OcrConsecutiveMatchesForEarlyStop = overrides.OcrConsecutiveMatchesForEarlyStop.Value;
+            if (overrides.OcrMinimumConfidence.HasValue) clone.OcrMinimumConfidence = overrides.OcrMinimumConfidence.Value;
+            if (overrides.OcrEnableEpisodeComparison.HasValue) clone.OcrEnableEpisodeComparison = overrides.OcrEnableEpisodeComparison.Value;
+            if (overrides.OcrEpisodeComparisonTolerance.HasValue) clone.OcrEpisodeComparisonTolerance = overrides.OcrEpisodeComparisonTolerance.Value;
+            if (overrides.OcrEpisodeComparisonMinimumEpisodes.HasValue) clone.OcrEpisodeComparisonMinimumEpisodes = overrides.OcrEpisodeComparisonMinimumEpisodes.Value;
+            if (overrides.OcrEnableCharacterDensityDetection.HasValue) clone.OcrEnableCharacterDensityDetection = overrides.OcrEnableCharacterDensityDetection.Value;
+            if (overrides.OcrCharacterDensityThreshold.HasValue) clone.OcrCharacterDensityThreshold = overrides.OcrCharacterDensityThreshold.Value;
+            if (overrides.OcrCharacterDensityConsecutiveFrames.HasValue) clone.OcrCharacterDensityConsecutiveFrames = overrides.OcrCharacterDensityConsecutiveFrames.Value;
+            if (overrides.OcrCharacterDensityPrimaryMethod.HasValue) clone.OcrCharacterDensityPrimaryMethod = overrides.OcrCharacterDensityPrimaryMethod.Value;
+            if (overrides.OcrDensityRequireKeyword.HasValue) clone.OcrDensityRequireKeyword = overrides.OcrDensityRequireKeyword.Value;
+            if (overrides.OcrDensityKeywordWindowSeconds.HasValue) clone.OcrDensityKeywordWindowSeconds = overrides.OcrDensityKeywordWindowSeconds.Value;
+            if (overrides.OcrDensityRequireTemporalConsistency.HasValue) clone.OcrDensityRequireTemporalConsistency = overrides.OcrDensityRequireTemporalConsistency.Value;
+            if (overrides.OcrDensityMinimumDurationSeconds.HasValue) clone.OcrDensityMinimumDurationSeconds = overrides.OcrDensityMinimumDurationSeconds.Value;
+            if (overrides.OcrDensityRequireStyleConsistency.HasValue) clone.OcrDensityRequireStyleConsistency = overrides.OcrDensityRequireStyleConsistency.Value;
+            if (overrides.OcrDensityStyleConsistencyThreshold.HasValue) clone.OcrDensityStyleConsistencyThreshold = overrides.OcrDensityStyleConsistencyThreshold.Value;
+            if (overrides.OcrEnableHardwareAcceleration.HasValue) clone.OcrEnableHardwareAcceleration = overrides.OcrEnableHardwareAcceleration.Value;
+            if (overrides.OcrHardwareAccelerationType != null) clone.OcrHardwareAccelerationType = overrides.OcrHardwareAccelerationType;
+            if (overrides.OcrHardwareDevice != null) clone.OcrHardwareDevice = overrides.OcrHardwareDevice;
+            if (overrides.OcrUseHardwareOutputFormat.HasValue) clone.OcrUseHardwareOutputFormat = overrides.OcrUseHardwareOutputFormat.Value;
+            if (overrides.OcrUseHardwareFilters.HasValue) clone.OcrUseHardwareFilters = overrides.OcrUseHardwareFilters.Value;
+            if (overrides.OcrUseDirectMemoryPipeline.HasValue) clone.OcrUseDirectMemoryPipeline = overrides.OcrUseDirectMemoryPipeline.Value;
+            if (overrides.EnableAnimeDetection.HasValue) clone.EnableAnimeDetection = overrides.EnableAnimeDetection.Value;
+            if (overrides.AnimeDetectionMethod != null && Enum.TryParse<AnimeDetectionMethod>(overrides.AnimeDetectionMethod, true, out var animeMethod))
+                clone.AnimeDetectionMethod = animeMethod;
+            if (overrides.BlackFrameMinimumPercentage.HasValue) clone.BlackFrameMinimumPercentage = overrides.BlackFrameMinimumPercentage.Value;
+            if (overrides.BlackFrameThreshold.HasValue) clone.BlackFrameThreshold = overrides.BlackFrameThreshold.Value;
+            if (overrides.ChromaprintFingerprintSimilarityThreshold.HasValue) clone.ChromaprintFingerprintSimilarityThreshold = overrides.ChromaprintFingerprintSimilarityThreshold.Value;
+            if (overrides.ChromaprintEnableEpisodeComparison.HasValue) clone.ChromaprintEnableEpisodeComparison = overrides.ChromaprintEnableEpisodeComparison.Value;
+            if (overrides.ChromaprintEpisodeComparisonTolerance.HasValue) clone.ChromaprintEpisodeComparisonTolerance = overrides.ChromaprintEpisodeComparisonTolerance.Value;
+            if (overrides.ChromaprintEpisodeComparisonMinimumEpisodes.HasValue) clone.ChromaprintEpisodeComparisonMinimumEpisodes = overrides.ChromaprintEpisodeComparisonMinimumEpisodes.Value;
+            if (overrides.ChromaprintStopSecondsFromEnd.HasValue) clone.ChromaprintStopSecondsFromEnd = overrides.ChromaprintStopSecondsFromEnd.Value;
+            if (overrides.CpuUsageLimit.HasValue) clone.CpuUsageLimit = overrides.CpuUsageLimit.Value;
+            if (overrides.CpuThrottleDelayMs.HasValue) clone.CpuThrottleDelayMs = overrides.CpuThrottleDelayMs.Value;
+            if (overrides.LowerThreadPriority.HasValue) clone.LowerThreadPriority = overrides.LowerThreadPriority.Value;
+            if (overrides.LowerProcessPriority.HasValue) clone.LowerProcessPriority = overrides.LowerProcessPriority.Value;
+            if (overrides.EnableVideoValidation.HasValue) clone.EnableVideoValidation = overrides.EnableVideoValidation.Value;
+            if (overrides.VideoValidationTimeoutSeconds.HasValue) clone.VideoValidationTimeoutSeconds = overrides.VideoValidationTimeoutSeconds.Value;
+
+            return clone;
+        }
+
+        public object Get(GetDetectionMethodsRequest request)
+        {
+            try
+            {
+                var config = Plugin.Instance?.Configuration;
+                if (config == null)
+                {
+                    return new { Success = false, Message = "Plugin configuration not available" };
+                }
+
+                var methods = new List<object>();
+
+                methods.Add(new
+                {
+                    Method = "OCR",
+                    Enabled = config.DetectionMode == DetectionMode.OcrOnly || 
+                              config.DetectionMode == DetectionMode.OcrWithHashFallback || 
+                              config.DetectionMode == DetectionMode.HashWithOcrFallback,
+                    Primary = config.DetectionMode == DetectionMode.OcrOnly || 
+                              config.DetectionMode == DetectionMode.OcrWithHashFallback,
+                    Engine = config.OcrEngine.ToString(),
+                    Endpoint = config.OcrEndpoint,
+                    Languages = config.OcrLanguages,
+                    Keywords = config.OcrDetectionKeywords,
+                    Settings = new
+                    {
+                        config.OcrSearchStartValue,
+                        config.OcrSearchStartUnit,
+                        config.OcrMinutesFromEnd,
+                        config.OcrFrameRate,
+                        config.OcrMinimumMatches,
+                        config.OcrMaxFramesToProcess,
+                        config.OcrMaxAnalysisDuration,
+                        config.OcrStopSecondsFromEnd,
+                        config.OcrEnableEpisodeComparison,
+                        config.OcrEpisodeComparisonTolerance,
+                        config.OcrEpisodeComparisonMinimumEpisodes,
+                        config.OcrEnableCharacterDensityDetection,
+                        config.OcrCharacterDensityThreshold,
+                        config.OcrCharacterDensityPrimaryMethod
+                    }
+                });
+
+                methods.Add(new
+                {
+                    Method = "Chromaprint",
+                    Enabled = config.DetectionMode == DetectionMode.HashOnly || 
+                              config.DetectionMode == DetectionMode.OcrWithHashFallback || 
+                              config.DetectionMode == DetectionMode.HashWithOcrFallback,
+                    Primary = config.DetectionMode == DetectionMode.HashOnly || 
+                              config.DetectionMode == DetectionMode.HashWithOcrFallback,
+                    Settings = new
+                    {
+                        config.ChromaprintFingerprintSimilarityThreshold,
+                        config.ChromaprintEnableEpisodeComparison,
+                        config.ChromaprintEpisodeComparisonTolerance,
+                        config.ChromaprintEpisodeComparisonMinimumEpisodes,
+                        config.ChromaprintStopSecondsFromEnd
+                    }
+                });
+
+                if (config.EnableAnimeDetection)
+                {
+                    methods.Add(new
+                    {
+                        Method = "AnimeBlackFrame",
+                        Enabled = config.EnableAnimeDetection && config.AnimeDetectionMethod == AnimeDetectionMethod.BlackFrame,
+                        Primary = config.AnimeDetectionMethod == AnimeDetectionMethod.BlackFrame,
+                        Settings = new
+                        {
+                            config.BlackFrameMinimumPercentage,
+                            config.BlackFrameThreshold
+                        }
+                    });
+                }
+
+                return new
+                {
+                    Success = true,
+                    DetectionMode = config.DetectionMode.ToString(),
+                    Methods = methods
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting detection methods", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Get(GetDetectionResultsRequest request)
+        {
+            try
+            {
+                List<Episode> episodes = new List<Episode>();
+
+                if (!string.IsNullOrEmpty(request.EpisodeId))
+                {
+                    var episode = _libraryManager.GetItemById(request.EpisodeId) as Episode;
+                    if (episode != null)
+                    {
+                        episodes.Add(episode);
+                    }
+                }
+                else if (!string.IsNullOrEmpty(request.SeriesId))
+                {
+                    var series = ItemLookupHelper.ResolveSeries(_libraryManager, request.SeriesId, _logger);
+                    if (series != null)
+                    {
+                        var allEpisodes = ItemLookupHelper.GetSeriesEpisodes(_libraryManager, series.InternalId, _logger);
+                        
+                        if (request.SeasonNumber.HasValue)
+                        {
+                            episodes = allEpisodes.Where(e => e.ParentIndexNumber == request.SeasonNumber.Value).ToList();
+                        }
+                        else
+                        {
+                            episodes = allEpisodes;
+                        }
+                    }
+                }
+                else if (request.IncludeAllEpisodes)
+                {
+                    episodes = _libraryManager.GetItemList(new InternalItemsQuery
+                    {
+                        IncludeItemTypes = new[] { "Episode" },
+                        IsVirtualItem = false,
+                        HasPath = true
+                    }).OfType<Episode>().ToList();
+                }
+
+                var markers = CreditsDetectionService.GetSeriesMarkers(episodes);
+                var results = new List<object>();
+
+                foreach (var marker in markers)
+                {
+                    var markerType = marker.GetType();
+                    var episodeIdProp = markerType.GetProperty("EpisodeId");
+                    var episodeNameProp = markerType.GetProperty("EpisodeName");
+                    var seriesNameProp = markerType.GetProperty("SeriesName");
+                    var seasonNumberProp = markerType.GetProperty("SeasonNumber");
+                    var episodeNumberProp = markerType.GetProperty("EpisodeNumber");
+                    var hasCreditsMarkerProp = markerType.GetProperty("HasCreditsMarker");
+                    var creditsStartSecondsProp = markerType.GetProperty("CreditsStartSeconds");
+                    var creditsStartFormattedProp = markerType.GetProperty("CreditsStartFormatted");
+                    var durationProp = markerType.GetProperty("Duration");
+
+                    if (episodeIdProp != null)
+                    {
+                        var episodeId = episodeIdProp.GetValue(marker)?.ToString();
+                        var hasCreditsMarker = hasCreditsMarkerProp?.GetValue(marker) as bool? ?? false;
+
+                        results.Add(new
+                        {
+                            EpisodeId = episodeId,
+                            SeriesName = seriesNameProp?.GetValue(marker)?.ToString(),
+                            SeasonNumber = seasonNumberProp?.GetValue(marker),
+                            EpisodeNumber = episodeNumberProp?.GetValue(marker),
+                            EpisodeName = episodeNameProp?.GetValue(marker)?.ToString(),
+                            HasCreditsMarker = hasCreditsMarker,
+                            CreditsStartSeconds = creditsStartSecondsProp?.GetValue(marker),
+                            CreditsStartFormatted = creditsStartFormattedProp?.GetValue(marker)?.ToString(),
+                            Duration = durationProp?.GetValue(marker)?.ToString()
+                        });
+                    }
+                }
+
+                return new
+                {
+                    Success = true,
+                    TotalEpisodes = results.Count,
+                    EpisodesWithMarkers = results.Count(r => (bool)(r.GetType().GetProperty("HasCreditsMarker")?.GetValue(r) ?? false)),
+                    Results = results
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting detection results", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Get(GetDetectionHistoryRequest request)
+        {
+            try
+            {
+                return new
+                {
+                    Success = true,
+                    Message = "Detection history is tracked via chapter markers. Use GetDetectionResults or GetSeriesMarkers to view current markers.",
+                    History = new List<object>()
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting detection history", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Get(GetEpisodeDetectionResultRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.EpisodeId))
+                {
+                    return new { Success = false, Message = "EpisodeId is required" };
+                }
+
+                var episode = _libraryManager.GetItemById(request.EpisodeId) as Episode;
+                if (episode == null)
+                {
+                    return new { Success = false, Message = "Episode not found" };
+                }
+
+                var markers = CreditsDetectionService.GetSeriesMarkers(new List<Episode> { episode });
+                if (markers == null || markers.Count == 0)
+                {
+                    return new
+                    {
+                        Success = true,
+                        EpisodeId = request.EpisodeId,
+                        EpisodeName = episode.Name,
+                        SeriesName = episode.Series?.Name,
+                        SeasonNumber = episode.ParentIndexNumber,
+                        EpisodeNumber = episode.IndexNumber,
+                        HasCreditsMarker = false,
+                        Duration = episode.RunTimeTicks.HasValue ? TimeSpan.FromTicks(episode.RunTimeTicks.Value).ToString(@"hh\:mm\:ss") : null
+                    };
+                }
+
+                var marker = markers[0];
+                var markerType = marker.GetType();
+                var hasCreditsMarkerProp = markerType.GetProperty("HasCreditsMarker");
+                var creditsStartSecondsProp = markerType.GetProperty("CreditsStartSeconds");
+                var creditsStartFormattedProp = markerType.GetProperty("CreditsStartFormatted");
+
+                return new
+                {
+                    Success = true,
+                    EpisodeId = request.EpisodeId,
+                    EpisodeName = episode.Name,
+                    SeriesName = episode.Series?.Name,
+                    SeasonNumber = episode.ParentIndexNumber,
+                    EpisodeNumber = episode.IndexNumber,
+                    HasCreditsMarker = hasCreditsMarkerProp?.GetValue(marker) as bool? ?? false,
+                    CreditsStartSeconds = creditsStartSecondsProp?.GetValue(marker),
+                    CreditsStartFormatted = creditsStartFormattedProp?.GetValue(marker)?.ToString(),
+                    Duration = episode.RunTimeTicks.HasValue ? TimeSpan.FromTicks(episode.RunTimeTicks.Value).ToString(@"hh\:mm\:ss") : null
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting episode detection result", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
     }
 }

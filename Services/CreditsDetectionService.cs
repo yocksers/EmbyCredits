@@ -1223,22 +1223,33 @@ namespace EmbyCredits.Services
 
             Dictionary<string, double>? batchResults = null;
             
-            if (!isAnime && chromaprintMethod != null && chromaprintMethod.IsEnabled && !string.IsNullOrEmpty(seriesId))
+            // Only use batch chromaprint when it's the PRIMARY method (not fallback)
+            if (!isAnime && 
+                effectiveConfig != null &&
+                chromaprintMethod != null && 
+                chromaprintMethod.IsEnabled && 
+                !string.IsNullOrEmpty(seriesId) &&
+                (effectiveConfig.DetectionMode == DetectionMode.HashOnly || 
+                 effectiveConfig.DetectionMode == DetectionMode.HashWithOcrFallback))
             {
-                // Process all episodes together using batch detection (non-anime only)
+                // Process all episodes together using batch detection (non-anime only, Hash as primary method)
                 var episodeData = seasonEpisodes.Select(ep => (
                     EpisodeId: ep.Id.ToString(),
                     VideoPath: ep.Path,
                     Duration: ep.RunTimeTicks.HasValue ? ep.RunTimeTicks.Value / 10000000.0 : 0
                 )).ToList();
 
-                _logger?.Info($"Using batch chromaprint detection for {episodeData.Count} episodes");
+                _logger?.Info($"Using batch chromaprint detection for {episodeData.Count} episodes (DetectionMode: {effectiveConfig.DetectionMode})");
                 batchResults = await chromaprintMethod.DetectCreditsForSeason(episodeData, seriesId, seasonNumber, cancellationToken);
                 _logger?.Info($"Batch detection found credits for {batchResults.Count} episodes");
             }
             else if (isAnime)
             {
                 _logger?.Info($"Anime detected - skipping chromaprint batch processing, will use individual episode detection with BlackFrameDetection");
+            }
+            else if (effectiveConfig != null && (effectiveConfig.DetectionMode == DetectionMode.OcrWithHashFallback || effectiveConfig.DetectionMode == DetectionMode.OcrOnly))
+            {
+                _logger?.Info($"OCR as primary method (DetectionMode: {effectiveConfig.DetectionMode}) - processing episodes individually to try OCR first");
             }
 
             // Process each episode with the batch results

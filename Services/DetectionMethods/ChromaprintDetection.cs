@@ -23,7 +23,8 @@ namespace EmbyCredits.Services.DetectionMethods
         
         public override int Priority => Configuration.ChromaprintDetectionPriority;
         public override bool IsEnabled => Configuration.DetectionMode == DetectionMode.HashOnly || 
-                                          Configuration.DetectionMode == DetectionMode.HashWithOcrFallback;
+                                          Configuration.DetectionMode == DetectionMode.HashWithOcrFallback ||
+                                          Configuration.DetectionMode == DetectionMode.OcrWithHashFallback;
 
         private static readonly ConcurrentDictionary<string, List<double>> _seriesCreditsTimestamps = new ConcurrentDictionary<string, List<double>>();
         private static readonly ConcurrentDictionary<string, DateTime> _cacheLastAccess = new ConcurrentDictionary<string, DateTime>();

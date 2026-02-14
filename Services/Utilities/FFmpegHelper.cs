@@ -98,25 +98,6 @@ namespace EmbyCredits.Services.Utilities
             }
         }
 
-        public static int GetActiveProcessCount()
-        {
-            var count = 0;
-            foreach (var kvp in _activeProcesses)
-            {
-                try
-                {
-                    if (!kvp.Value.process.HasExited)
-                    {
-                        count++;
-                    }
-                }
-                catch
-                {
-                }
-            }
-            return count;
-        }
-
         public static string NormalizeFilePath(string path)
         {
             if (string.IsNullOrEmpty(path))

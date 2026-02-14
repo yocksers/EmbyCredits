@@ -32,5 +32,10 @@ namespace EmbyCredits.Api
         public const string GetSeasonValidation = "/CreditsDetector/GetSeasonValidation";
         public const string GetThumbnail = "/CreditsDetector/Thumbnail/{ThumbnailId}";
         public const string GetMemoryUsage = "/CreditsDetector/GetMemoryUsage";
+        public const string StartDetection = "/CreditsDetector/StartDetection";
+        public const string GetDetectionMethods = "/CreditsDetector/GetDetectionMethods";
+        public const string GetDetectionResults = "/CreditsDetector/GetDetectionResults";
+        public const string GetDetectionHistory = "/CreditsDetector/GetDetectionHistory";
+        public const string GetEpisodeDetectionResult = "/CreditsDetector/GetEpisodeDetectionResult";
     }
 }

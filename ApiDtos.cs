@@ -183,4 +183,105 @@ namespace EmbyCredits.Api
     public class GetMemoryUsageRequest : IReturn<object>
     {
     }
+
+    [Route(ApiRoutes.StartDetection, "POST", Summary = "Starts credits detection with custom settings.")]
+    public class StartDetectionRequest : IReturn<object>
+    {
+        public string? EpisodeId { get; set; }
+        public string? SeriesId { get; set; }
+        public int? SeasonNumber { get; set; }
+        public string? LibraryId { get; set; }
+        public bool SkipExistingMarkers { get; set; } = false;
+        public bool DryRun { get; set; } = false;
+        public bool EnableDebugLogging { get; set; } = false;
+        public DetectionSettingsOverride? SettingsOverride { get; set; }
+    }
+
+    public class DetectionSettingsOverride
+    {
+        public string? DetectionMode { get; set; }
+        public string? OcrEngine { get; set; }
+        public string? OcrEndpoint { get; set; }
+        public string? OcrLanguages { get; set; }
+        public string? OcrDetectionKeywords { get; set; }
+        public double? OcrSearchStartValue { get; set; }
+        public string? OcrSearchStartUnit { get; set; }
+        public double? OcrMinutesFromEnd { get; set; }
+        public double? OcrFrameRate { get; set; }
+        public int? OcrMinimumMatches { get; set; }
+        public int? OcrMaxFramesToProcess { get; set; }
+        public double? OcrMaxAnalysisDuration { get; set; }
+        public double? OcrStopSecondsFromEnd { get; set; }
+        public int? OcrPageSegmentationMode { get; set; }
+        public int? OcrEngineMode { get; set; }
+        public int? OcrJpegQuality { get; set; }
+        public int? OcrMaxResolutionHeight { get; set; }
+        public int? OcrDelayBetweenFramesMs { get; set; }
+        public bool? OcrEnableParallelProcessing { get; set; }
+        public int? OcrParallelBatchSize { get; set; }
+        public int? OcrDelayBetweenBatchesMs { get; set; }
+        public bool? OcrEnableSmartFrameSkipping { get; set; }
+        public int? OcrConsecutiveMatchesForEarlyStop { get; set; }
+        public double? OcrMinimumConfidence { get; set; }
+        public bool? OcrEnableEpisodeComparison { get; set; }
+        public double? OcrEpisodeComparisonTolerance { get; set; }
+        public int? OcrEpisodeComparisonMinimumEpisodes { get; set; }
+        public bool? OcrEnableCharacterDensityDetection { get; set; }
+        public int? OcrCharacterDensityThreshold { get; set; }
+        public int? OcrCharacterDensityConsecutiveFrames { get; set; }
+        public bool? OcrCharacterDensityPrimaryMethod { get; set; }
+        public bool? OcrDensityRequireKeyword { get; set; }
+        public double? OcrDensityKeywordWindowSeconds { get; set; }
+        public bool? OcrDensityRequireTemporalConsistency { get; set; }
+        public double? OcrDensityMinimumDurationSeconds { get; set; }
+        public bool? OcrDensityRequireStyleConsistency { get; set; }
+        public double? OcrDensityStyleConsistencyThreshold { get; set; }
+        public bool? OcrEnableHardwareAcceleration { get; set; }
+        public string? OcrHardwareAccelerationType { get; set; }
+        public string? OcrHardwareDevice { get; set; }
+        public bool? OcrUseHardwareOutputFormat { get; set; }
+        public bool? OcrUseHardwareFilters { get; set; }
+        public bool? OcrUseDirectMemoryPipeline { get; set; }
+        public bool? EnableAnimeDetection { get; set; }
+        public string? AnimeDetectionMethod { get; set; }
+        public int? BlackFrameMinimumPercentage { get; set; }
+        public int? BlackFrameThreshold { get; set; }
+        public double? ChromaprintFingerprintSimilarityThreshold { get; set; }
+        public bool? ChromaprintEnableEpisodeComparison { get; set; }
+        public double? ChromaprintEpisodeComparisonTolerance { get; set; }
+        public int? ChromaprintEpisodeComparisonMinimumEpisodes { get; set; }
+        public double? ChromaprintStopSecondsFromEnd { get; set; }
+        public int? CpuUsageLimit { get; set; }
+        public int? CpuThrottleDelayMs { get; set; }
+        public bool? LowerThreadPriority { get; set; }
+        public bool? LowerProcessPriority { get; set; }
+        public bool? EnableVideoValidation { get; set; }
+        public int? VideoValidationTimeoutSeconds { get; set; }
+    }
+
+    [Route(ApiRoutes.GetDetectionMethods, "GET", Summary = "Gets available detection methods and their configurations.")]
+    public class GetDetectionMethodsRequest : IReturn<object> { }
+
+    [Route(ApiRoutes.GetDetectionResults, "GET", Summary = "Gets detection results for episodes.")]
+    public class GetDetectionResultsRequest : IReturn<object>
+    {
+        public string? SeriesId { get; set; }
+        public int? SeasonNumber { get; set; }
+        public string? EpisodeId { get; set; }
+        public bool IncludeAllEpisodes { get; set; } = false;
+    }
+
+    [Route(ApiRoutes.GetDetectionHistory, "GET", Summary = "Gets detection history for a series or episode.")]
+    public class GetDetectionHistoryRequest : IReturn<object>
+    {
+        public string? SeriesId { get; set; }
+        public string? EpisodeId { get; set; }
+        public int Limit { get; set; } = 50;
+    }
+
+    [Route(ApiRoutes.GetEpisodeDetectionResult, "GET", Summary = "Gets detailed detection result for a specific episode.")]
+    public class GetEpisodeDetectionResultRequest : IReturn<object>
+    {
+        public string EpisodeId { get; set; } = string.Empty;
+    }
 }

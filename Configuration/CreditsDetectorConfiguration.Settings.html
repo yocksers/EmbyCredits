@@ -88,6 +88,28 @@
         </div>
 
         <div class="collapsible-section" style="margin-top: 1.5em;">
+            <h3 class="collapsible-header" style="cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #3498db; color: white; padding: 0.6em 1em; border-radius: 16px;">
+                <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
+                <span>Video Validation</span>
+            </h3>
+            <div class="collapsible-content" style="display: none; margin-top: 1em;">
+                <div class="checkboxContainer">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkEnableVideoValidation" data-config-key="EnableVideoValidation" />
+                        <span>Enable Video Validation</span>
+                    </label>
+                    <div class="fieldDescription">Check video file integrity using ffprobe before starting detection. This prevents wasting time on corrupted or broken video files.</div>
+                </div>
+
+                <div class="inputContainer" style="margin-top: 1em;">
+                    <label class="inputLabel inputLabelUnfocused" for="numVideoValidationTimeoutSeconds">Validation Timeout (seconds)</label>
+                    <input is="emby-input" type="number" id="numVideoValidationTimeoutSeconds" data-config-key="VideoValidationTimeoutSeconds" min="1" max="60" step="1" />
+                    <div class="fieldDescription">Maximum time to wait for video validation to complete (default: 10 seconds)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="collapsible-section" style="margin-top: 1.5em;">
             <h3 class="collapsible-header" style="cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
                 <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
                 <span>Logging</span>

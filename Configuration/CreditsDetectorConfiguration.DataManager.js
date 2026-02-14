@@ -168,6 +168,10 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtBlackFrameMinimumPercentage').value = config.BlackFrameMinimumPercentage !== undefined ? config.BlackFrameMinimumPercentage : 85;
             view.querySelector('#txtBlackFrameThreshold').value = config.BlackFrameThreshold !== undefined ? config.BlackFrameThreshold : 28;
 
+            // Video Validation settings
+            view.querySelector('#chkEnableVideoValidation').checked = config.EnableVideoValidation || false;
+            view.querySelector('#numVideoValidationTimeoutSeconds').value = config.VideoValidationTimeoutSeconds !== undefined ? config.VideoValidationTimeoutSeconds : 10;
+
             // Load libraries and series/episode dropdowns
             require(['configurationpage?name=CreditsDetectorConfigurationSeriesManager'], (seriesManager) => {
                 seriesManager.loadLibraries(view, config);
@@ -385,6 +389,10 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.AnimeDetectionMethod = view.querySelector('#selectAnimeDetectionMethod').value || 'BlackFrame';
         instance.config.BlackFrameMinimumPercentage = Number.parseInt(view.querySelector('#txtBlackFrameMinimumPercentage').value, 10) || 85;
         instance.config.BlackFrameThreshold = Number.parseInt(view.querySelector('#txtBlackFrameThreshold').value, 10) || 28;
+
+        // Video Validation settings
+        instance.config.EnableVideoValidation = view.querySelector('#chkEnableVideoValidation').checked;
+        instance.config.VideoValidationTimeoutSeconds = Number.parseInt(view.querySelector('#numVideoValidationTimeoutSeconds').value, 10) || 10;
 
         const checkboxes = view.querySelectorAll('.chkLibrary');
         const selectedLibraryIds = [];
@@ -691,6 +699,9 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#txtBlackFrameMinimumPercentage', 85);
         setIfExists('#txtBlackFrameThreshold', 28);
 
+        setIfExists('#chkEnableVideoValidation', false, true);
+        setIfExists('#numVideoValidationTimeoutSeconds', 10);
+
         setIfExists('#txtTempFolderPath', preservedTempFolderPath);
         setIfExists('#txtOcrEndpoint', preservedOcrEndpoint);
 
@@ -785,6 +796,9 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#selectAnimeDetectionMethod', 'BlackFrame');
         setIfExists('#txtBlackFrameMinimumPercentage', 85);
         setIfExists('#txtBlackFrameThreshold', 28);
+
+        setIfExists('#chkEnableVideoValidation', false, true);
+        setIfExists('#numVideoValidationTimeoutSeconds', 10);
 
         setIfExists('#txtTempFolderPath', preservedTempFolderPath);
         setIfExists('#txtOcrEndpoint', preservedOcrEndpoint);
@@ -917,6 +931,9 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#selectAnimeDetectionMethod', 'BlackFrame');
         setIfExists('#txtBlackFrameMinimumPercentage', 85);
         setIfExists('#txtBlackFrameThreshold', 28);
+
+        setIfExists('#chkEnableVideoValidation', false, true);
+        setIfExists('#numVideoValidationTimeoutSeconds', 10);
 
         setIfExists('#txtTempFolderPath', preservedTempFolderPath);
         setIfExists('#txtBackupFolderPath', preservedBackupFolderPath);

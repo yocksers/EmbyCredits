@@ -280,6 +280,9 @@ namespace EmbyCredits
         public int ChromaprintFfmpegThreads { get; set; } = 0;
         public int ChromaprintDelayBetweenOperationsMs { get; set; } = 0;
 
+        public bool EnableVideoValidation { get; set; } = false;
+        public int VideoValidationTimeoutSeconds { get; set; } = 10;
+
         public List<DetectionRule> DetectionRules { get; set; } = new List<DetectionRule>();
     }
 }

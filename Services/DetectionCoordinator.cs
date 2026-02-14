@@ -39,18 +39,38 @@ namespace EmbyCredits.Services
                 _logger.Debug($"[DetectionCoordinator] Initializing detection methods");
             }
             
-            var chromaprintMethod = new ChromaprintDetection(_logger, _configuration);
-            _detectionMethods.Add(chromaprintMethod);
-            if (_configuration.EnableDetailedLogging)
+            if (_configuration.DetectionMode == DetectionMode.OcrOnly || 
+                _configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
             {
-                _logger.Debug($"[DetectionCoordinator] Added ChromaprintDetection. IsEnabled: {chromaprintMethod.IsEnabled}");
+                var ocrMethod = new OcrDetection(_logger, _configuration);
+                _detectionMethods.Add(ocrMethod);
+                if (_configuration.EnableDetailedLogging)
+                {
+                    _logger.Debug($"[DetectionCoordinator] Added OcrDetection. IsEnabled: {ocrMethod.IsEnabled}");
+                }
+                
+                var chromaprintMethod = new ChromaprintDetection(_logger, _configuration);
+                _detectionMethods.Add(chromaprintMethod);
+                if (_configuration.EnableDetailedLogging)
+                {
+                    _logger.Debug($"[DetectionCoordinator] Added ChromaprintDetection. IsEnabled: {chromaprintMethod.IsEnabled}");
+                }
             }
-            
-            var ocrMethod = new OcrDetection(_logger, _configuration);
-            _detectionMethods.Add(ocrMethod);
-            if (_configuration.EnableDetailedLogging)
+            else
             {
-                _logger.Debug($"[DetectionCoordinator] Added OcrDetection. IsEnabled: {ocrMethod.IsEnabled}");
+                var chromaprintMethod = new ChromaprintDetection(_logger, _configuration);
+                _detectionMethods.Add(chromaprintMethod);
+                if (_configuration.EnableDetailedLogging)
+                {
+                    _logger.Debug($"[DetectionCoordinator] Added ChromaprintDetection. IsEnabled: {chromaprintMethod.IsEnabled}");
+                }
+                
+                var ocrMethod = new OcrDetection(_logger, _configuration);
+                _detectionMethods.Add(ocrMethod);
+                if (_configuration.EnableDetailedLogging)
+                {
+                    _logger.Debug($"[DetectionCoordinator] Added OcrDetection. IsEnabled: {ocrMethod.IsEnabled}");
+                }
             }
         }
 
@@ -70,23 +90,7 @@ namespace EmbyCredits.Services
                     _logger.Debug($"[DetectionCoordinator] Added BlackFrameDetection for anime. IsEnabled: {blackFrameMethod.IsEnabled}");
                 }
             }
-
-            if (_configuration.DetectionMode == DetectionMode.HashOnly || 
-                _configuration.DetectionMode == DetectionMode.OcrWithHashFallback ||
-                _configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
-            {
-                var chromaprintMethod = new ChromaprintDetection(_logger, _configuration);
-                _detectionMethods.Add(chromaprintMethod);
-                if (_configuration.EnableDetailedLogging)
-                {
-                    _logger.Debug($"[DetectionCoordinator] Added ChromaprintDetection for anime. IsEnabled: {chromaprintMethod.IsEnabled}");
-                }
-            }
-            
-            if (_configuration.AnimeDetectionMethod == AnimeDetectionMethod.Ocr ||
-                _configuration.DetectionMode == DetectionMode.OcrOnly || 
-                _configuration.DetectionMode == DetectionMode.OcrWithHashFallback ||
-                _configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
+            else if (_configuration.AnimeDetectionMethod == AnimeDetectionMethod.Ocr)
             {
                 var ocrMethod = new OcrDetection(_logger, _configuration, isForAnime: true);
                 _detectionMethods.Add(ocrMethod);
@@ -393,9 +397,7 @@ namespace EmbyCredits.Services
                         }
                     }
                 }
-                
-                if (_configuration.DetectionMode == DetectionMode.HashOnly || 
-                    _configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
+                else if (_configuration.DetectionMode == DetectionMode.HashOnly)
                 {
                     if (_configuration.EnableAnimeDetection)
                     {

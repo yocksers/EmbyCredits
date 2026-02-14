@@ -25,6 +25,7 @@ namespace EmbyCredits.Services
         private readonly PluginConfiguration _configuration;
         private readonly CpuThrottler _cpuThrottler;
         private readonly RuleMatchingService _ruleMatchingService;
+        private readonly VideoValidator _videoValidator;
 
         public EpisodeProcessor(
             ILogger logger,
@@ -42,6 +43,7 @@ namespace EmbyCredits.Services
             _configuration = configuration;
             _cpuThrottler = new CpuThrottler(configuration);
             _ruleMatchingService = new RuleMatchingService(logger, configuration);
+            _videoValidator = new VideoValidator(logger, configuration);
         }
 
         public async Task<(bool success, double creditsStart, string failureReason, double confidence, string methodName, string detectionReason)> ProcessEpisode(
@@ -73,22 +75,10 @@ namespace EmbyCredits.Services
             try
             {
                 _debugLogger.LogInfo($"Processing episode: {episode.Name} (S{episode.ParentIndexNumber}E{episode.IndexNumber})");
-                _debugLogger.LogDebug($"Episode path: {episode.Path}");
-                _debugLogger.LogDebug($"Episode ID: {episodeId}");
 
                 var normalizedPath = Utilities.FFmpegHelper.NormalizeFilePath(episode.Path);
-                if (!string.IsNullOrEmpty(normalizedPath) && normalizedPath != episode.Path)
-                {
-                    _debugLogger.LogDebug($"Normalized path: {normalizedPath}");
-                }
 
                 if (string.IsNullOrEmpty(normalizedPath))
-                {
-                    _debugLogger.LogWarn($"Path normalization failed for: {episode.Path}");
-                    return (false, 0, "Path normalization failed", 0, string.Empty, string.Empty);
-                }
-
-                if (!normalizedPath.StartsWith("smb://"))
                 {
                     bool fileExists = false;
                     bool checkFailed = false;
@@ -96,36 +86,25 @@ namespace EmbyCredits.Services
                     {
                         fileExists = File.Exists(normalizedPath);
                     }
-                    catch (Exception ex)
+                    catch
                     {
-                        _debugLogger.LogDebug($"File.Exists check threw exception: {ex.Message}");
                         checkFailed = true;
                     }
 
                     if (!checkFailed && !fileExists)
                     {
                         _debugLogger.LogWarn($"Episode file not found: {episode.Path}");
-                        if (!string.IsNullOrEmpty(normalizedPath) && normalizedPath != episode.Path)
-                        {
-                            _debugLogger.LogDebug($"Also tried normalized path: {normalizedPath}");
-                        }
                         return (false, 0, "File not found", 0, string.Empty, string.Empty);
                     }
-                }
-                else
-                {
-                    _debugLogger.LogDebug($"SMB path detected - will be handled by Emby's MediaEncoder");
                 }
 
                 double duration = 0;
                 if (episode.RunTimeTicks.HasValue && episode.RunTimeTicks.Value > 0)
                 {
                     duration = episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond;
-                    _debugLogger.LogDebug($"Using duration from Emby metadata: {duration} seconds");
                 }
                 else
                 {
-                    _debugLogger.LogDebug("Episode duration not available from Emby, trying ffprobe");
                     duration = await GetVideoDuration(normalizedPath);
                 }
 
@@ -135,7 +114,16 @@ namespace EmbyCredits.Services
                     return (false, 0, "Could not determine video duration", 0, string.Empty, string.Empty);
                 }
 
-                _debugLogger.LogInfo($"Video duration: {FormatTime(duration)}");
+                if (_configuration.EnableVideoValidation)
+                {
+                    var validationResult = await _videoValidator.ValidateVideo(normalizedPath, CancellationToken.None);
+                    
+                    if (!validationResult.isValid)
+                    {
+                        _debugLogger.LogWarn($"Video validation failed for {episode.Name}: {validationResult.errorMessage}");
+                        return (false, 0, $"Video validation failed: {validationResult.errorMessage}", 0, string.Empty, string.Empty);
+                    }
+                }
 
                 _debugLogger.LogInfo("Running credits detection");
                 
@@ -160,7 +148,6 @@ namespace EmbyCredits.Services
                 double confidence = result.confidence;
                 string methodName = result.methodName;
                 string detectionReason = result.detectionReason;
-                _debugLogger.LogDebug($"Detection result: timestamp={creditsStart}, confidence={confidence:F2}, method={methodName}, reason={detectionReason}");
 
                 if (creditsStart > 0)
                 {
@@ -172,7 +159,6 @@ namespace EmbyCredits.Services
 
                     if (!isDryRun)
                     {
-                        _debugLogger.LogDebug($"Saving chapter marker at {FormatTime(creditsStart)}");
                         _chapterMarkerService.SaveCreditsMarker(episode, creditsStart);
                     }
                     _debugLogger.LogInfo($"✓ [{(isDryRun ? "DRY RUN" : "SAVED")}] Credits detected at {FormatTime(creditsStart)} for {episode.Name} (confidence: {confidence:F2})");
@@ -182,11 +168,6 @@ namespace EmbyCredits.Services
                 else
                 {
                     _debugLogger.LogWarn($"✗ No clear credits detected for {episode.Name}");
-                    if (!string.IsNullOrEmpty(failureReason))
-                    {
-                        _debugLogger.LogDebug($"Failure reason: {failureReason}");
-                    }
-
                     return (false, 0, failureReason, 0, string.Empty, string.Empty);
                 }
             }
@@ -299,6 +280,20 @@ namespace EmbyCredits.Services
                     {
                         _debugLogger.LogWarn($"No valid duration for episode {episode.Name}");
                         return (false, 0, "No valid duration", 0, string.Empty, string.Empty);
+                    }
+
+                    if (_configuration.EnableVideoValidation)
+                    {
+                        _debugLogger.LogDebug("Validating video file integrity");
+                        var validationResult = await _videoValidator.ValidateVideo(normalizedPath, CancellationToken.None);
+                        
+                        if (!validationResult.isValid)
+                        {
+                            _debugLogger.LogWarn($"Video validation failed for {episode.Name}: {validationResult.errorMessage}");
+                            return (false, 0, $"Video validation failed: {validationResult.errorMessage}", 0, string.Empty, string.Empty);
+                        }
+                        
+                        _debugLogger.LogDebug("Video validation passed");
                     }
 
                     // Try detection methods in priority order
