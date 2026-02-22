@@ -519,8 +519,8 @@ namespace EmbyCredits.Services
                             var episodeKey = series != null
                                 ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
                                 : episode.Name;
-                            Plugin.Progress.SuccessDetails[episodeKey] = "(already exists)";
-                            Plugin.Progress.SuccessfulItems++;
+                            Plugin.Progress.SkipReasons[episodeKey] = "Already has credits marker";
+                            Plugin.Progress.SkippedItems++;
                         }
                         
                         return;
@@ -533,6 +533,41 @@ namespace EmbyCredits.Services
                 {
                     _processedEpisodes.TryRemove(episodeId, out _);
                     LogDebug($"Manual detection: Cleared {episode.Name} from processed episodes cache");
+                }
+            }
+
+            // Check for previously failed episodes (both automatic and manual detection)
+            if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes)
+            {
+                var hasFailed = episode.ProviderIds?.TryGetValue("EmbyCredits.Fail", out var failValue) == true && failValue == "true";
+                
+                // For manual detection, only skip if IgnoreFailureMarkers is FALSE
+                // For automatic detection, always skip
+                bool shouldSkip = hasFailed && (!isManualDetection || !_configuration.IgnoreFailureMarkers);
+                
+                if (shouldSkip)
+                {
+                    var skipReason = isManualDetection 
+                        ? "previously failed detection - enable 'Allow retry of failed episodes' in Settings to override"
+                        : "previously failed detection (SkipPreviouslyFailedEpisodes is enabled)";
+                    
+                    LogInfo($"Skipping episode {episode.Name} - {skipReason}");
+                    
+                    if (Plugin.Instance != null)
+                    {
+                        var series = episode.Series;
+                        var episodeKey = series != null
+                            ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
+                            : episode.Name;
+                        Plugin.Progress.SkipReasons[episodeKey] = "Previously failed detection";
+                        Plugin.Progress.SkippedItems++;
+                    }
+                    
+                    return;
+                }
+                else if (hasFailed && isManualDetection && _configuration.IgnoreFailureMarkers)
+                {
+                    LogInfo($"Retrying previously failed episode {episode.Name} (IgnoreFailureMarkers is enabled)");
                 }
             }
 
@@ -809,9 +844,20 @@ namespace EmbyCredits.Services
                 }
             }
 
+            var originalTotalCount = episodes.Count;
+            var episodesToQueue = episodes.ToList();
+            var skippedEpisodes = new List<string>();
+            
+            if (Plugin.Instance != null)
+            {
+                Plugin.Progress.SkipReasons.Clear();
+                Plugin.Progress.SkippedItems = 0;
+            }
+
+            // Filter episodes with existing markers if requested
             if (skipExistingMarkers && _itemRepository != null)
             {
-                var episodesToQueue = episodes.Where(episode =>
+                episodesToQueue = episodesToQueue.Where(episode =>
                 {
                     var chapters = _itemRepository.GetChapters(episode);
                     var hasCreditsMarker = chapters.Any(c => 
@@ -822,35 +868,105 @@ namespace EmbyCredits.Services
 
                     if (hasCreditsMarker)
                     {
-                        LogInfo($"Skipping episode {episode.Name} - already has credits marker (manual skip enabled)");
+                        var series = episode.Series;
+                        var episodeKey = series != null
+                            ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
+                            : episode.Name;
+                        skippedEpisodes.Add($"{episodeKey} (has marker)");
                         
                         if (Plugin.Instance != null)
                         {
-                            var series = episode.Series;
-                            var episodeKey = series != null
-                                ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
-                                : episode.Name;
-                            Plugin.Progress.SuccessDetails[episodeKey] = "(already exists)";
-                            Plugin.Progress.SuccessfulItems++;
+                            Plugin.Progress.SkipReasons[episodeKey] = "Already has credits marker";
+                            Plugin.Progress.SkippedItems++;
                         }
                         
                         return false;
                     }
                     return true;
                 }).ToList();
-
-                if (episodesToQueue.Count == 0)
-                {
-                    LogInfo("No episodes to process - all have existing credit markers");
-                    return;
-                }
-
-                QueueSeries(episodesToQueue);
             }
-            else
-            {
 
-                QueueSeries(episodes);
+            // Filter episodes with failure markers based on configuration
+            if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && !_configuration.IgnoreFailureMarkers)
+            {
+                var filteredByFailure = new List<Episode>();
+                
+                foreach (var episode in episodesToQueue)
+                {
+                    var hasFailed = episode.ProviderIds?.TryGetValue("EmbyCredits.Fail", out var failValue) == true && failValue == "true";
+                    
+                    if (hasFailed)
+                    {
+                        var series = episode.Series;
+                        var episodeKey = series != null
+                            ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
+                            : episode.Name;
+                        skippedEpisodes.Add($"{episodeKey} (previously failed)");
+                        
+                        if (Plugin.Instance != null)
+                        {
+                            Plugin.Progress.SkipReasons[episodeKey] = "Previously failed detection";
+                            Plugin.Progress.SkippedItems++;
+                        }
+                    }
+                    else
+                    {
+                        filteredByFailure.Add(episode);
+                    }
+                }
+                
+                episodesToQueue = filteredByFailure;
+            }
+            else if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && _configuration.IgnoreFailureMarkers)
+            {
+                // Count how many failed episodes we're retrying
+                var retryCount = episodesToQueue.Count(e => 
+                    e.ProviderIds?.TryGetValue("EmbyCredits.Fail", out var failValue) == true && failValue == "true");
+                
+                if (retryCount > 0)
+                {
+                    LogInfo($"Retrying {retryCount} previously failed episodes (IgnoreFailureMarkers is enabled)");
+                }
+            }
+
+            // Log summary of skipped episodes
+            if (skippedEpisodes.Count > 0)
+            {
+                LogInfo($"Skipped {skippedEpisodes.Count} episode(s):");
+                foreach (var skipped in skippedEpisodes)
+                {
+                    LogInfo($"  - {skipped}");
+                }
+            }
+
+            if (episodesToQueue.Count == 0)
+            {
+                LogInfo("No episodes to process - all filtered out by skip settings");
+                return;
+            }
+
+            // Save skip information before QueueSeries resets it
+            Dictionary<string, string>? skipReasonsCopy = null;
+            int skippedItemsCount = 0;
+            if (Plugin.Instance != null && Plugin.Progress.SkipReasons.Count > 0)
+            {
+                skipReasonsCopy = new Dictionary<string, string>(Plugin.Progress.SkipReasons);
+                skippedItemsCount = Plugin.Progress.SkippedItems;
+            }
+
+            QueueSeries(episodesToQueue);
+            
+            // Restore skip information after Reset
+            if (Plugin.Instance != null && skipReasonsCopy != null)
+            {
+                foreach (var kvp in skipReasonsCopy)
+                {
+                    Plugin.Progress.SkipReasons[kvp.Key] = kvp.Value;
+                }
+                Plugin.Progress.SkippedItems = skippedItemsCount;
+                
+                // Set TotalItems to original count (including skipped episodes)
+                Plugin.Progress.TotalItems = originalTotalCount;
             }
         }
 
@@ -1287,6 +1403,8 @@ namespace EmbyCredits.Services
                             var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
                             var statusMessages = GetAndClearEpisodeStatusMessages(episodeId);
                             var duration = episode.RunTimeTicks.HasValue ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond : 0;
+                            var offsetSeconds = _configuration?.TimestampOffsetSeconds ?? 0;
+                            var finalTimestamp = creditsStart + offsetSeconds;
                             var successDetail = $"{FormatTime(creditsStart)} / {FormatTime(duration)}";
                             
                             if (!string.IsNullOrEmpty(methodName))
@@ -1297,6 +1415,11 @@ namespace EmbyCredits.Services
                             if (!string.IsNullOrEmpty(detectionReason))
                             {
                                 successDetail += $" - {detectionReason}";
+                            }
+                            
+                            if (offsetSeconds != 0)
+                            {
+                                successDetail += $" (offset: {offsetSeconds:+0;-0}s, final: {FormatTime(finalTimestamp)})";
                             }
                             
                             if (statusMessages.Count > 0)
@@ -1426,6 +1549,8 @@ namespace EmbyCredits.Services
                         
                         var statusMessages = GetAndClearEpisodeStatusMessages(episodeId);
                         var duration = episode.RunTimeTicks.HasValue ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond : 0;
+                        var offsetSeconds = _configuration?.TimestampOffsetSeconds ?? 0;
+                        var finalTimestamp = creditsStart + offsetSeconds;
                         var successDetail = $"{FormatTime(creditsStart)} / {FormatTime(duration)}";
                         
                         if (!string.IsNullOrEmpty(methodName))
@@ -1436,6 +1561,11 @@ namespace EmbyCredits.Services
                         if (!string.IsNullOrEmpty(detectionReason))
                         {
                             successDetail += $" - {detectionReason}";
+                        }
+                        
+                        if (offsetSeconds != 0)
+                        {
+                            successDetail += $" (offset: {offsetSeconds:+0;-0}s, final: {FormatTime(finalTimestamp)})";
                         }
                         
                         if (statusMessages.Count > 0)

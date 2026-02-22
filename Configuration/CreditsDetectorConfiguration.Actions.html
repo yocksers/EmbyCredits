@@ -35,6 +35,20 @@
         <div class="fieldDescription" style="margin-left: 2em;">When enabled, episodes that already have credit chapter markers will be skipped during manual detection to speed up processing</div>
     </div>
 
+    <div class="checkboxContainer checkboxContainer-withDescription" style="margin-top: 1em;">
+        <label class="emby-checkbox-label">
+            <input is="emby-checkbox" type="checkbox" id="chkIgnoreFailureMarkers" data-config-key="IgnoreFailureMarkers" />
+            <span>Retry episodes with failure markers</span>
+        </label>
+        <div class="fieldDescription" style="margin-left: 2em;">When enabled, episodes marked as previously failed will be retried in this detection run. Useful after updating detection settings or methods to reprocess episodes that failed before.</div>
+    </div>
+
+    <div style="margin-left: 2em; margin-top: 0.75em;">
+        <button is="emby-button" type="button" class="raised button-submit" id="btnSaveDetectionSettings">
+            <span>Save Detection Settings</span>
+        </button>
+    </div>
+
     <div style="margin-top: 1.5em;">
         <button is="emby-button" type="button" class="raised button-submit" id="btnProcessSeries">
             <span>Process Selection</span>
@@ -74,7 +88,7 @@
         </div>
         <div style="display: flex; justify-content: space-between; font-size: 0.9em; opacity: 0.8; margin-bottom: 0.5em;">
             <span>Episodes: <span id="progressCount">0/0</span></span>
-            <span>Success: <span id="successCount">0</span> | Failed: <span id="failedCount">0</span></span>
+            <span>Success: <span id="successCount">0</span> | Failed: <span id="failedCount">0</span> | Skipped: <span id="skippedCount">0</span></span>
             <span>ETA: <span id="etaText">-</span></span>
         </div>
         <div style="text-align: center;">
@@ -85,6 +99,10 @@
         </div>
     </div>
 
+    <div id="skipDetails" style="margin-top: 1.5em; display: none;">
+        <h3 style="color: #9c9c9c; margin-bottom: 0.5em;">Skipped Episodes</h3>
+        <div id="skipList" style="background: rgba(128,128,128,0.1); border-radius: 4px; padding: 1em; max-height: 300px; overflow-y: auto; border: 1px solid rgba(128,128,128,0.2);"></div>
+    </div>
     <div id="failureDetails" style="margin-top: 1.5em; display: none;">
         <h3 style="color: #E5A54A; margin-bottom: 0.5em;">Failed Episodes</h3>
         <div id="failureList" style="background: rgba(128,128,128,0.1); border-radius: 4px; padding: 1em; max-height: 300px; overflow-y: auto; border: 1px solid rgba(128,128,128,0.2);"></div>

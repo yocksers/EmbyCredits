@@ -72,6 +72,13 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 });
             }
 
+            const btnSaveDetectionSettings = view.querySelector('#btnSaveDetectionSettings');
+            if (btnSaveDetectionSettings) {
+                btnSaveDetectionSettings.addEventListener('click', () => {
+                    dataManager.saveDetectionSettings(view);
+                });
+            }
+
             const btnQueueAllSeries = view.querySelector('#btnQueueAllSeries');
             if (btnQueueAllSeries) {
                 btnQueueAllSeries.addEventListener('click', () => {

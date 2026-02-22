@@ -37,5 +37,8 @@ namespace EmbyCredits.Api
         public const string GetDetectionResults = "/CreditsDetector/GetDetectionResults";
         public const string GetDetectionHistory = "/CreditsDetector/GetDetectionHistory";
         public const string GetEpisodeDetectionResult = "/CreditsDetector/GetEpisodeDetectionResult";
+        public const string GetFailedEpisodes = "/CreditsDetector/GetFailedEpisodes";
+        public const string ClearFailureMarkers = "/CreditsDetector/ClearFailureMarkers";
+        public const string ClearAllFailureMarkers = "/CreditsDetector/ClearAllFailureMarkers";
     }
 }

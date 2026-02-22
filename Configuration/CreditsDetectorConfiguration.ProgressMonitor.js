@@ -17,6 +17,21 @@
         // Flag to prevent multiple completion handlers
         instance.hasCompleted = false;
         
+        // Clear previous results from UI
+        const skipDetails = view.querySelector('#skipDetails');
+        const skipList = view.querySelector('#skipList');
+        const failureDetails = view.querySelector('#failureDetails');
+        const failureList = view.querySelector('#failureList');
+        const successDetails = view.querySelector('#successDetails');
+        const successList = view.querySelector('#successList');
+        
+        if (skipDetails) skipDetails.style.display = 'none';
+        if (skipList) skipList.innerHTML = '';
+        if (failureDetails) failureDetails.style.display = 'none';
+        if (failureList) failureList.innerHTML = '';
+        if (successDetails) successDetails.style.display = 'none';
+        if (successList) successList.innerHTML = '';
+        
         const btnCancel = view.querySelector('#btnCancelProcessing');
         if (btnCancel) btnCancel.style.display = 'inline-block';
         
@@ -39,10 +54,10 @@
                     }, 10000);
                     
                     const message = progress.CurrentItem === 'Cancelled' 
-                        ? `Processing cancelled. ${progress.SuccessfulItems} succeeded, ${progress.FailedItems} failed.`
+                        ? `Processing cancelled. ${progress.SuccessfulItems} succeeded, ${progress.FailedItems} failed${progress.SkippedItems > 0 ? `, ${progress.SkippedItems} skipped` : ''}.`
                         : progress.CurrentItem === 'Dry Run Complete'
-                        ? `Dry run complete! ${progress.SuccessfulItems} detected, ${progress.FailedItems} failed. No markers were saved.`
-                        : `Processing complete! ${progress.SuccessfulItems} succeeded, ${progress.FailedItems} failed.`;
+                        ? `Dry run complete! ${progress.SuccessfulItems} detected, ${progress.FailedItems} failed${progress.SkippedItems > 0 ? `, ${progress.SkippedItems} skipped` : ''}. No markers were saved.`
+                        : `Processing complete! ${progress.SuccessfulItems} succeeded, ${progress.FailedItems} failed${progress.SkippedItems > 0 ? `, ${progress.SkippedItems} skipped` : ''}.`;
                     toast(message);
                     
                     if (isDebugMode) {
@@ -99,6 +114,7 @@
         const progressCount = view.querySelector('#progressCount');
         const successCount = view.querySelector('#successCount');
         const failedCount = view.querySelector('#failedCount');
+        const skippedCount = view.querySelector('#skippedCount');
         const etaText = view.querySelector('#etaText');
         
         if (!progressBar || !percentText) return;
@@ -112,6 +128,7 @@
         if (progressCount) progressCount.textContent = `${progress.ProcessedItems}/${progress.TotalItems}`;
         if (successCount) successCount.textContent = progress.SuccessfulItems || 0;
         if (failedCount) failedCount.textContent = progress.FailedItems || 0;
+        if (skippedCount) skippedCount.textContent = progress.SkippedItems || 0;
         
         if (etaText) {
             if (progress.IsRunning && progress.ProcessedItems > 0 && progress.EstimatedTimeRemainingSeconds != null && progress.EstimatedTimeRemainingSeconds > 0) {
@@ -136,10 +153,25 @@
     }
     
     function updateResults(view, progress, isDryRun = false) {
+        const skipDetails = view.querySelector('#skipDetails');
+        const skipList = view.querySelector('#skipList');
         const failureDetails = view.querySelector('#failureDetails');
         const failureList = view.querySelector('#failureList');
         const successDetails = view.querySelector('#successDetails');
         const successList = view.querySelector('#successList');
+        
+        if (progress.SkipReasons && Object.keys(progress.SkipReasons).length > 0) {
+            skipDetails.style.display = 'block';
+            skipList.innerHTML = '';
+            Object.entries(progress.SkipReasons).forEach(([episode, reason]) => {
+                const item = document.createElement('div');
+                item.style.cssText = 'padding: 0.5em; margin-bottom: 0.5em;';
+                item.innerHTML = `<strong>${episode}</strong><br/><span style="font-size: 0.9em; opacity: 0.8;">${reason}</span>`;
+                skipList.appendChild(item);
+            });
+        } else {
+            skipDetails.style.display = 'none';
+        }
         
         if (progress.FailureReasons && Object.keys(progress.FailureReasons).length > 0) {
             failureDetails.style.display = 'block';

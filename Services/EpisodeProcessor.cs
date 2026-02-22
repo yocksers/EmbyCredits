@@ -151,23 +151,57 @@ namespace EmbyCredits.Services
 
                 if (creditsStart > 0)
                 {
-                    if (creditsStart >= duration)
+                    double finalTimestamp = creditsStart + _configuration.TimestampOffsetSeconds;
+                    
+                    if (finalTimestamp < 0)
                     {
-                        _debugLogger.LogWarn($"✗ Detected timestamp ({FormatTime(creditsStart)}) exceeds video duration ({FormatTime(duration)}) for {episode.Name}");
-                        return (false, 0, $"Detected timestamp exceeds duration: {creditsStart:F1}s >= {duration:F1}s", 0, string.Empty, string.Empty);
+                        _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) is negative for {episode.Name}");
+                        return (false, 0, $"Final timestamp with offset is negative: {finalTimestamp:F1}s", 0, string.Empty, string.Empty);
+                    }
+                    
+                    if (finalTimestamp >= duration)
+                    {
+                        _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) exceeds video duration ({FormatTime(duration)}) for {episode.Name}");
+                        return (false, 0, $"Final timestamp with offset exceeds duration: {finalTimestamp:F1}s >= {duration:F1}s", 0, string.Empty, string.Empty);
                     }
 
                     if (!isDryRun)
                     {
-                        _chapterMarkerService.SaveCreditsMarker(episode, creditsStart);
+                        _chapterMarkerService.SaveCreditsMarker(episode, finalTimestamp);
                     }
-                    _debugLogger.LogInfo($"✓ [{(isDryRun ? "DRY RUN" : "SAVED")}] Credits detected at {FormatTime(creditsStart)} for {episode.Name} (confidence: {confidence:F2})");
+                    
+                    if (episode.ProviderIds != null && episode.ProviderIds.ContainsKey("EmbyCredits.Fail"))
+                    {
+                        episode.ProviderIds.Remove("EmbyCredits.Fail");
+                        _libraryManager?.UpdateItem(episode, episode.Parent, ItemUpdateType.MetadataEdit, null!);
+                    }
+                    
+                    if (_configuration.TimestampOffsetSeconds != 0)
+                    {
+                        _debugLogger.LogInfo($"✓ [{(isDryRun ? "DRY RUN" : "SAVED")}] Credits detected at {FormatTime(creditsStart)}, saved at {FormatTime(finalTimestamp)} (offset: {_configuration.TimestampOffsetSeconds:+0;-0}s) for {episode.Name} (confidence: {confidence:F2})");
+                    }
+                    else
+                    {
+                        _debugLogger.LogInfo($"✓ [{(isDryRun ? "DRY RUN" : "SAVED")}] Credits detected at {FormatTime(creditsStart)} for {episode.Name} (confidence: {confidence:F2})");
+                    }
 
                     return (true, creditsStart, string.Empty, confidence, methodName, detectionReason);
                 }
                 else
                 {
                     _debugLogger.LogWarn($"✗ No clear credits detected for {episode.Name}");
+                    
+                    if (_configuration.SkipPreviouslyFailedEpisodes)
+                    {
+                        if (episode.ProviderIds == null)
+                        {
+                            episode.ProviderIds = new MediaBrowser.Model.Entities.ProviderIdDictionary();
+                        }
+                        episode.ProviderIds["EmbyCredits.Fail"] = "true";
+                        _debugLogger.LogInfo($"Marked episode {episode.Name} as failed for future skipping");
+                        _libraryManager?.UpdateItem(episode, episode.Parent, ItemUpdateType.MetadataEdit, null!);
+                    }
+                    
                     return (false, 0, failureReason, 0, string.Empty, string.Empty);
                 }
             }
@@ -236,6 +270,7 @@ namespace EmbyCredits.Services
                 if (batchDetectedTime.HasValue && batchDetectedTime.Value > 0)
                 {
                     double creditsStart = batchDetectedTime.Value;
+                    double finalTimestamp = creditsStart + _configuration.TimestampOffsetSeconds;
                     
                     if (!isDryRun)
                     {
@@ -246,13 +281,45 @@ namespace EmbyCredits.Services
                             duration = episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond;
                         }
 
-                        _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(creditsStart)}");
-                        _chapterMarkerService.SaveCreditsMarker(episode, creditsStart);
+                        if (finalTimestamp < 0)
+                        {
+                            _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) is negative for {episode.Name}");
+                            return (false, 0, $"Final timestamp with offset is negative: {finalTimestamp:F1}s", 0, string.Empty, string.Empty);
+                        }
+                        
+                        if (finalTimestamp >= duration)
+                        {
+                            _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) exceeds video duration ({FormatTime(duration)}) for {episode.Name}");
+                            return (false, 0, $"Final timestamp with offset exceeds duration: {finalTimestamp:F1}s >= {duration:F1}s", 0, string.Empty, string.Empty);
+                        }
+
+                        if (_configuration.TimestampOffsetSeconds != 0)
+                        {
+                            _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(finalTimestamp)} (detected: {FormatTime(creditsStart)}, offset: {_configuration.TimestampOffsetSeconds:+0;-0}s)");
+                        }
+                        else
+                        {
+                            _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(finalTimestamp)}");
+                        }
+                        _chapterMarkerService.SaveCreditsMarker(episode, finalTimestamp);
                         _debugLogger.LogInfo($"Successfully added chapter marker");
                     }
                     else
                     {
-                        _debugLogger.LogInfo($"Dry run - would add chapter marker at {FormatTime(creditsStart)}");
+                        if (_configuration.TimestampOffsetSeconds != 0)
+                        {
+                            _debugLogger.LogInfo($"Dry run - would add chapter marker at {FormatTime(finalTimestamp)} (detected: {FormatTime(creditsStart)}, offset: {_configuration.TimestampOffsetSeconds:+0;-0}s)");
+                        }
+                        else
+                        {
+                            _debugLogger.LogInfo($"Dry run - would add chapter marker at {FormatTime(creditsStart)}");
+                        }
+                    }
+                    
+                    if (episode.ProviderIds != null && episode.ProviderIds.ContainsKey("EmbyCredits.Fail"))
+                    {
+                        episode.ProviderIds.Remove("EmbyCredits.Fail");
+                        _libraryManager?.UpdateItem(episode, episode.Parent, ItemUpdateType.MetadataEdit, null!);
                     }
 
                     // Get actual confidence from chromaprint batch processing
@@ -308,15 +375,50 @@ namespace EmbyCredits.Services
 
                     if (detectionResult.timestamp > 0)
                     {
+                        double creditsStart = detectionResult.timestamp;
+                        double finalTimestamp = creditsStart + _configuration.TimestampOffsetSeconds;
+                        
+                        if (finalTimestamp < 0)
+                        {
+                            _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) is negative for {episode.Name}");
+                            return (false, 0, $"Final timestamp with offset is negative: {finalTimestamp:F1}s", 0, string.Empty, string.Empty);
+                        }
+                        
+                        if (finalTimestamp >= duration)
+                        {
+                            _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) exceeds video duration ({FormatTime(duration)}) for {episode.Name}");
+                            return (false, 0, $"Final timestamp with offset exceeds duration: {finalTimestamp:F1}s >= {duration:F1}s", 0, string.Empty, string.Empty);
+                        }
+                        
                         if (!isDryRun)
                         {
-                            _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(detectionResult.timestamp)}");
-                            _chapterMarkerService.SaveCreditsMarker(episode, detectionResult.timestamp);
+                            if (_configuration.TimestampOffsetSeconds != 0)
+                            {
+                                _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(finalTimestamp)} (detected: {FormatTime(creditsStart)}, offset: {_configuration.TimestampOffsetSeconds:+0;-0}s)");
+                            }
+                            else
+                            {
+                                _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(creditsStart)}");
+                            }
+                            _chapterMarkerService.SaveCreditsMarker(episode, finalTimestamp);
                             _debugLogger.LogInfo($"Successfully added chapter marker");
                         }
                         else
                         {
-                            _debugLogger.LogInfo($"Dry run - would add chapter marker at {FormatTime(detectionResult.timestamp)}");
+                            if (_configuration.TimestampOffsetSeconds != 0)
+                            {
+                                _debugLogger.LogInfo($"Dry run - would add chapter marker at {FormatTime(finalTimestamp)} (detected: {FormatTime(creditsStart)}, offset: {_configuration.TimestampOffsetSeconds:+0;-0}s)");
+                            }
+                            else
+                            {
+                                _debugLogger.LogInfo($"Dry run - would add chapter marker at {FormatTime(creditsStart)}");
+                            }
+                        }
+                        
+                        if (episode.ProviderIds != null && episode.ProviderIds.ContainsKey("EmbyCredits.Fail"))
+                        {
+                            episode.ProviderIds.Remove("EmbyCredits.Fail");
+                            _libraryManager?.UpdateItem(episode, episode.Parent, ItemUpdateType.MetadataEdit, null!);
                         }
 
                         return (true, detectionResult.timestamp, string.Empty, detectionResult.confidence, detectionResult.methodName, detectionResult.detectionReason);
@@ -324,6 +426,18 @@ namespace EmbyCredits.Services
                     else
                     {
                         _debugLogger.LogWarn($"Failed to detect credits for {episode.Name}: {detectionResult.failureReason}");
+                        
+                        if (_configuration.SkipPreviouslyFailedEpisodes)
+                        {
+                            if (episode.ProviderIds == null)
+                            {
+                                episode.ProviderIds = new MediaBrowser.Model.Entities.ProviderIdDictionary();
+                            }
+                            episode.ProviderIds["EmbyCredits.Fail"] = "true";
+                            _debugLogger.LogInfo($"Marked episode {episode.Name} as failed for future skipping");
+                            _libraryManager?.UpdateItem(episode, episode.Parent, ItemUpdateType.MetadataEdit, null!);
+                        }
+                        
                         return (false, 0, detectionResult.failureReason, 0, string.Empty, string.Empty);
                     }
                 }

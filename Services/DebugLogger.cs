@@ -38,7 +38,7 @@ namespace EmbyCredits.Services
             
             _debugLog.Append(header.ToString());
 
-            if (_configuration != null && _configuration.EnableLogToFile && _configuration.EnableDetailedLogging)
+            if (_configuration != null && _configuration.EnableLogToFile)
             {
                 try
                 {

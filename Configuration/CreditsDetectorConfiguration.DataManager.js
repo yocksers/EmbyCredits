@@ -13,11 +13,14 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#selectDetectionMode').value = detectionMode;
             
             view.querySelector('#chkEnableAutoDetection').checked = config.EnableAutoDetection || false;
+            view.querySelector('#txtTimestampOffsetSeconds').value = config.TimestampOffsetSeconds || 0;
             view.querySelector('#chkEnableDetailedLogging').checked = config.EnableDetailedLogging || false;
             view.querySelector('#chkEnableLogToFile').checked = config.EnableLogToFile || false;
             view.querySelector('#txtLogFileFolderPath').value = config.LogFileFolderPath || '';
             view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = config.ScheduledTaskOnlyProcessMissing !== false;
             view.querySelector('#chkManualSkipExistingMarkers').checked = config.ManualSkipExistingMarkers || false;
+            view.querySelector('#chkSkipPreviouslyFailedEpisodes').checked = config.SkipPreviouslyFailedEpisodes !== false;
+            view.querySelector('#chkIgnoreFailureMarkers').checked = config.IgnoreFailureMarkers || false;
 
             view.querySelector('#chkPreventConcurrentPluginProcessing').checked = config.PreventConcurrentPluginProcessing !== false;
             view.querySelector('#chkLowerThreadPriority').checked = config.LowerThreadPriority || false;
@@ -238,11 +241,14 @@ define(['loading', 'toast'], function (loading, toast) {
         loading.show();
 
         instance.config.EnableAutoDetection = view.querySelector('#chkEnableAutoDetection').checked;
+        instance.config.TimestampOffsetSeconds = Number.parseFloat(view.querySelector('#txtTimestampOffsetSeconds').value) || 0;
         instance.config.EnableDetailedLogging = view.querySelector('#chkEnableDetailedLogging').checked;
         instance.config.EnableLogToFile = view.querySelector('#chkEnableLogToFile').checked;
         instance.config.LogFileFolderPath = view.querySelector('#txtLogFileFolderPath').value || '';
         instance.config.ScheduledTaskOnlyProcessMissing = view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked;
         instance.config.ManualSkipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers').checked;
+        instance.config.SkipPreviouslyFailedEpisodes = view.querySelector('#chkSkipPreviouslyFailedEpisodes').checked;
+        instance.config.IgnoreFailureMarkers = view.querySelector('#chkIgnoreFailureMarkers').checked;
 
         instance.config.PreventConcurrentPluginProcessing = view.querySelector('#chkPreventConcurrentPluginProcessing').checked;
         instance.config.LowerThreadPriority = view.querySelector('#chkLowerThreadPriority').checked;
@@ -423,6 +429,9 @@ define(['loading', 'toast'], function (loading, toast) {
         view.querySelector('#chkEnableAutoDetection').checked = false;
         view.querySelector('#chkEnableDetailedLogging').checked = false;
         view.querySelector('#chkScheduledTaskOnlyProcessMissing').checked = true;
+        view.querySelector('#chkManualSkipExistingMarkers').checked = false;
+        view.querySelector('#chkSkipPreviouslyFailedEpisodes').checked = true;
+        view.querySelector('#chkIgnoreFailureMarkers').checked = false;
 
         view.querySelector('#chkLowerThreadPriority').checked = false;
         view.querySelector('#chkLowerProcessPriority').checked = false;
@@ -831,6 +840,9 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkEnableAutoDetection', false, true);
         setIfExists('#chkEnableDetailedLogging', false, true);
         setIfExists('#chkScheduledTaskOnlyProcessMissing', true, true);
+        setIfExists('#chkManualSkipExistingMarkers', false, true);
+        setIfExists('#chkSkipPreviouslyFailedEpisodes', true, true);
+        setIfExists('#chkIgnoreFailureMarkers', false, true);
         setIfExists('#chkPreventConcurrentPluginProcessing', true, true);
         setIfExists('#chkLowerThreadPriority', false, true);
         setIfExists('#chkLowerProcessPriority', false, true);
@@ -941,6 +953,28 @@ define(['loading', 'toast'], function (loading, toast) {
         toast('All settings reset to defaults (folder paths preserved)');
     }
 
+    function saveDetectionSettings(view) {
+        loading.show();
+
+        ApiClient.getPluginConfiguration('b1a65a73-a620-432a-9f5b-285038031c26').then(config => {
+            config.ManualSkipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers').checked;
+            config.IgnoreFailureMarkers = view.querySelector('#chkIgnoreFailureMarkers').checked;
+
+            ApiClient.updatePluginConfiguration('b1a65a73-a620-432a-9f5b-285038031c26', config).then(() => {
+                loading.hide();
+                toast('Detection settings saved successfully');
+            }).catch(error => {
+                loading.hide();
+                console.error('Error saving settings:', error);
+                toast({ type: 'error', text: 'Failed to save settings' });
+            });
+        }).catch(error => {
+            loading.hide();
+            console.error('Error loading config:', error);
+            toast({ type: 'error', text: 'Failed to load configuration' });
+        });
+    }
+
     return {
         loadData: loadData,
         saveData: saveData,
@@ -951,6 +985,7 @@ define(['loading', 'toast'], function (loading, toast) {
         setupUnitChangeListener: setupUnitChangeListener,
         applyQualityPreset: applyQualityPreset,
         applySpeedPreset: applySpeedPreset,
-        resetAllExceptFolders: resetAllExceptFolders
+        resetAllExceptFolders: resetAllExceptFolders,
+        saveDetectionSettings: saveDetectionSettings
     };
 });

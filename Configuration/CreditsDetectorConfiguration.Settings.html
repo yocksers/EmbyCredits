@@ -26,6 +26,12 @@
         </div>
 
         <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="txtTimestampOffsetSeconds">Timestamp Offset (seconds)</label>
+            <input is="emby-input" type="number" id="txtTimestampOffsetSeconds" data-config-key="TimestampOffsetSeconds" step="1" />
+            <div class="fieldDescription"><strong>Default: 0.</strong> Adjust detected timestamps by this amount. Positive values move the timestamp forward (e.g., +1 changes 25:00 to 25:01), negative values move it backward (e.g., -1 changes 25:00 to 24:59).</div>
+        </div>
+
+        <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtTempFolderPath">Custom Temp Folder Path</label>
             <div style="display: flex; gap: 0.5em;">
                 <input is="emby-input" type="text" id="txtTempFolderPath" data-config-key="TempFolderPath" style="flex: 1;" />
@@ -164,6 +170,14 @@
                         <span>Smart Processing (Only Process Missing Credits)</span>
                     </label>
                     <div class="fieldDescription">When enabled, the scheduled task will skip episodes that already have credits, only processing new episodes or those without credits. This significantly reduces processing time.</div>
+                </div>
+
+                <div class="checkboxContainer" style="margin-top: 1em;">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkSkipPreviouslyFailedEpisodes" data-config-key="SkipPreviouslyFailedEpisodes" />
+                        <span>Mark Failed Episodes for Future Skipping</span>
+                    </label>
+                    <div class="fieldDescription">When enabled, episodes where detection fails will be tagged with hidden metadata and automatically skipped in future detection runs. This prevents wasting time re-processing episodes that won't detect credits. The tag is removed if detection later succeeds.</div>
                 </div>
             </div>
         </div>

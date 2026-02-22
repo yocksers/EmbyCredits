@@ -63,6 +63,8 @@ namespace EmbyCredits
     public class PluginConfiguration : BasePluginConfiguration
     {
         public bool EnableAutoDetection { get; set; } = false;
+        
+        public double TimestampOffsetSeconds { get; set; } = 0.0;
 
         public bool EnableVideoPatternDetection { get; set; } = true;
         public bool EnableBlackScreenDetection { get; set; } = true;
@@ -234,6 +236,9 @@ namespace EmbyCredits
         public bool BackupImportOverwriteExisting { get; set; } = false;
 
         public bool ManualSkipExistingMarkers { get; set; } = false;
+
+        public bool SkipPreviouslyFailedEpisodes { get; set; } = true;
+        public bool IgnoreFailureMarkers { get; set; } = false;
 
         public bool EnableScheduledTaskNotifications { get; set; } = false;
         public bool EnableAutoDetectionNotifications { get; set; } = false;

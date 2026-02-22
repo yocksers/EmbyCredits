@@ -517,6 +517,7 @@ namespace EmbyCredits.Services
                     ProcessedItems = progress.ProcessedItems,
                     SuccessfulItems = progress.SuccessfulItems,
                     FailedItems = progress.FailedItems,
+                    SkippedItems = progress.SkippedItems,
                     CurrentItem = progress.CurrentItem,
                     CurrentItemProgress = progress.CurrentItemProgress,
                     PercentComplete = progress.PercentComplete,
@@ -524,6 +525,7 @@ namespace EmbyCredits.Services
                     StartTime = progress.StartTime,
                     EndTime = progress.EndTime,
                     FailureReasons = progress.FailureReasons,
+                    SkipReasons = progress.SkipReasons,
                     SuccessDetails = progress.SuccessDetails,
                     ConfidenceScores = progress.ConfidenceScores,
                     ThumbnailPaths = progress.ThumbnailPaths,
@@ -915,10 +917,8 @@ namespace EmbyCredits.Services
                             else
                             {
                                 content.Add(imageContent, "file", "logo.jpg");
-                                using (var optionsContent = new System.Net.Http.StringContent("{\"languages\":[\"eng\"]}"))
-                                {
-                                    content.Add(optionsContent, "options");
-                                }
+                                var optionsContent = new System.Net.Http.StringContent("{\"languages\":[\"eng\"]}");
+                                content.Add(optionsContent, "options");
                                 ocrEndpoint = endpoint.TrimEnd('/') + "/tesseract";
                             }
 
@@ -2092,6 +2092,149 @@ namespace EmbyCredits.Services
             catch (Exception ex)
             {
                 _logger?.ErrorException("Error getting episode detection result", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Get(GetFailedEpisodesRequest request)
+        {
+            try
+            {
+                var query = new InternalItemsQuery
+                {
+                    IncludeItemTypes = new[] { "Episode" },
+                    IsVirtualItem = false,
+                    HasPath = true
+                };
+
+                if (!string.IsNullOrEmpty(request.LibraryId))
+                {
+                    if (long.TryParse(request.LibraryId, out var libraryIdLong))
+                    {
+                        query.AncestorIds = new[] { libraryIdLong };
+                    }
+                }
+
+                var allEpisodes = _libraryManager.GetItemList(query).OfType<Episode>().ToList();
+                
+                if (!string.IsNullOrEmpty(request.SeriesId))
+                {
+                    allEpisodes = allEpisodes.Where(e => e.Series?.Id.ToString() == request.SeriesId).ToList();
+                }
+
+                var failedEpisodes = allEpisodes
+                    .Where(e => e.ProviderIds?.TryGetValue("EmbyCredits.Fail", out var failValue) == true && failValue == "true")
+                    .Select(e => new
+                    {
+                        EpisodeId = e.Id.ToString(),
+                        EpisodeName = e.Name,
+                        SeriesName = e.Series?.Name,
+                        SeriesId = e.Series?.Id.ToString(),
+                        SeasonNumber = e.ParentIndexNumber,
+                        EpisodeNumber = e.IndexNumber,
+                        Path = e.Path
+                    })
+                    .OrderBy(e => e.SeriesName)
+                    .ThenBy(e => e.SeasonNumber)
+                    .ThenBy(e => e.EpisodeNumber)
+                    .ToList();
+
+                return new
+                {
+                    Success = true,
+                    FailedEpisodes = failedEpisodes,
+                    Count = failedEpisodes.Count
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting failed episodes", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Post(ClearFailureMarkersRequest request)
+        {
+            try
+            {
+                if (request.EpisodeIds == null || request.EpisodeIds.Count == 0)
+                {
+                    return new { Success = false, Message = "No episode IDs provided" };
+                }
+
+                int clearedCount = 0;
+                foreach (var episodeId in request.EpisodeIds)
+                {
+                    var episode = _libraryManager.GetItemById(episodeId) as Episode;
+                    if (episode != null && episode.ProviderIds != null && episode.ProviderIds.ContainsKey("EmbyCredits.Fail"))
+                    {
+                        episode.ProviderIds.Remove("EmbyCredits.Fail");
+                        _libraryManager.UpdateItem(episode, episode.Parent, ItemUpdateType.MetadataEdit, null!);
+                        clearedCount++;
+                    }
+                }
+
+                return new
+                {
+                    Success = true,
+                    Message = $"Cleared failure markers for {clearedCount} episode(s)",
+                    ClearedCount = clearedCount
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error clearing failure markers", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Post(ClearAllFailureMarkersRequest request)
+        {
+            try
+            {
+                var query = new InternalItemsQuery
+                {
+                    IncludeItemTypes = new[] { "Episode" },
+                    IsVirtualItem = false,
+                    HasPath = true
+                };
+
+                if (!string.IsNullOrEmpty(request.LibraryId))
+                {
+                    if (long.TryParse(request.LibraryId, out var libraryIdLong))
+                    {
+                        query.AncestorIds = new[] { libraryIdLong };
+                    }
+                }
+
+                var allEpisodes = _libraryManager.GetItemList(query).OfType<Episode>().ToList();
+                
+                if (!string.IsNullOrEmpty(request.SeriesId))
+                {
+                    allEpisodes = allEpisodes.Where(e => e.Series?.Id.ToString() == request.SeriesId).ToList();
+                }
+
+                int clearedCount = 0;
+                foreach (var episode in allEpisodes)
+                {
+                    if (episode.ProviderIds != null && episode.ProviderIds.ContainsKey("EmbyCredits.Fail"))
+                    {
+                        episode.ProviderIds.Remove("EmbyCredits.Fail");
+                        _libraryManager.UpdateItem(episode, episode.Parent, ItemUpdateType.MetadataEdit, null!);
+                        clearedCount++;
+                    }
+                }
+
+                return new
+                {
+                    Success = true,
+                    Message = $"Cleared failure markers for {clearedCount} episode(s)",
+                    ClearedCount = clearedCount
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error clearing all failure markers", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }

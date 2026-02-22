@@ -284,4 +284,24 @@ namespace EmbyCredits.Api
     {
         public string EpisodeId { get; set; } = string.Empty;
     }
+
+    [Route(ApiRoutes.GetFailedEpisodes, "GET", Summary = "Gets all episodes marked as failed.")]
+    public class GetFailedEpisodesRequest : IReturn<object>
+    {
+        public string? LibraryId { get; set; }
+        public string? SeriesId { get; set; }
+    }
+
+    [Route(ApiRoutes.ClearFailureMarkers, "POST", Summary = "Clears failure markers for specific episodes.")]
+    public class ClearFailureMarkersRequest : IReturn<object>
+    {
+        public List<string> EpisodeIds { get; set; } = new List<string>();
+    }
+
+    [Route(ApiRoutes.ClearAllFailureMarkers, "POST", Summary = "Clears all failure markers.")]
+    public class ClearAllFailureMarkersRequest : IReturn<object>
+    {
+        public string? LibraryId { get; set; }
+        public string? SeriesId { get; set; }
+    }
 }

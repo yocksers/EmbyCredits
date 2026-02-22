@@ -13,6 +13,7 @@ namespace EmbyCredits
         public int ProcessedItems { get; set; }
         public int SuccessfulItems { get; set; }
         public int FailedItems { get; set; }
+        public int SkippedItems { get; set; }
         public string CurrentItem { get; set; } = string.Empty;
         public int CurrentItemProgress { get; set; }
         public DateTime? StartTime { get; set; }
@@ -20,6 +21,7 @@ namespace EmbyCredits
         
         private Dictionary<string, string> _failureReasons = new Dictionary<string, string>();
         private Dictionary<string, string> _successDetails = new Dictionary<string, string>();
+        private Dictionary<string, string> _skipReasons = new Dictionary<string, string>();
         private Dictionary<string, double> _confidenceScores = new Dictionary<string, double>();
         private Dictionary<string, string> _thumbnailPaths = new Dictionary<string, string>();
         private Dictionary<string, string> _episodeIds = new Dictionary<string, string>();
@@ -34,6 +36,12 @@ namespace EmbyCredits
         { 
             get => _successDetails;
             set => _successDetails = value;
+        }
+        
+        public Dictionary<string, string> SkipReasons 
+        { 
+            get => _skipReasons;
+            set => _skipReasons = value;
         }
         
         public Dictionary<string, double> ConfidenceScores 
@@ -61,6 +69,7 @@ namespace EmbyCredits
             ProcessedItems = 0;
             SuccessfulItems = 0;
             FailedItems = 0;
+            SkippedItems = 0;
             CurrentItem = string.Empty;
             CurrentItemProgress = 0;
             StartTime = null;
@@ -110,6 +119,8 @@ namespace EmbyCredits
             _failureReasons.TrimExcess();
             _successDetails.Clear();
             _successDetails.TrimExcess();
+            _skipReasons.Clear();
+            _skipReasons.TrimExcess();
             _confidenceScores.Clear();
             _confidenceScores.TrimExcess();
             _thumbnailPaths.Clear();
@@ -132,6 +143,13 @@ namespace EmbyCredits
                 var toRemove = _successDetails.Keys.Take(_successDetails.Count - MaxDictionarySize).ToList();
                 foreach (var key in toRemove)
                     _successDetails.Remove(key);
+            }
+            
+            if (_skipReasons.Count > MaxDictionarySize)
+            {
+                var toRemove = _skipReasons.Keys.Take(_skipReasons.Count - MaxDictionarySize).ToList();
+                foreach (var key in toRemove)
+                    _skipReasons.Remove(key);
             }
             
             if (_confidenceScores.Count > MaxDictionarySize)
