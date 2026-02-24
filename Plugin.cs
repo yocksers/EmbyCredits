@@ -80,10 +80,126 @@ namespace EmbyCredits
 
         public override void SaveConfiguration()
         {
+            ValidateConfiguration();
+            
             base.SaveConfiguration();
             Services.Utilities.FFmpegHelper.SetCustomTempPath(Configuration.TempFolderPath);
             CreditsDetectionService.UpdateConfiguration(Configuration);
             _logger.Info("Credits Detector configuration updated");
+        }
+
+        private void ValidateConfiguration()
+        {
+            if (!string.IsNullOrWhiteSpace(Configuration.OcrEndpoint))
+            {
+                if (!IsValidOcrEndpoint(Configuration.OcrEndpoint))
+                {
+                    _logger.Warn($"Invalid OCR endpoint: {Configuration.OcrEndpoint}. Resetting to default.");
+                    Configuration.OcrEndpoint = "http://localhost:8884";
+                }
+            }
+
+            Configuration.TempFolderPath = ValidatePath(Configuration.TempFolderPath, "TempFolderPath");
+            Configuration.LogFileFolderPath = ValidatePath(Configuration.LogFileFolderPath, "LogFileFolderPath");
+            Configuration.BackupFolderPath = ValidatePath(Configuration.BackupFolderPath, "BackupFolderPath");
+
+            if (Configuration.OcrMaxAnalysisDuration < 0 || Configuration.OcrMaxAnalysisDuration > 7200)
+            {
+                _logger.Warn($"OcrMaxAnalysisDuration out of range: {Configuration.OcrMaxAnalysisDuration}. Setting to 600.");
+                Configuration.OcrMaxAnalysisDuration = 600;
+            }
+
+            if (Configuration.OcrMaxFramesToProcess < 0 || Configuration.OcrMaxFramesToProcess > 10000)
+            {
+                _logger.Warn($"OcrMaxFramesToProcess out of range: {Configuration.OcrMaxFramesToProcess}. Setting to 0 (unlimited).");
+                Configuration.OcrMaxFramesToProcess = 0;
+            }
+        }
+
+        private bool IsValidOcrEndpoint(string endpoint)
+        {
+            if (string.IsNullOrWhiteSpace(endpoint))
+                return false;
+
+            try
+            {
+                var uri = new Uri(endpoint);
+                
+                if (uri.Scheme != "http" && uri.Scheme != "https")
+                    return false;
+
+                var host = uri.Host.ToLowerInvariant();
+                if (host == "localhost" || host == "127.0.0.1" || host == "::1")
+                    return true;
+
+                if (System.Net.IPAddress.TryParse(host, out var ipAddress))
+                {
+                    var bytes = ipAddress.GetAddressBytes();
+                    if (bytes.Length == 4)
+                    {
+                        if (bytes[0] == 10) return true;
+                        if (bytes[0] == 192 && bytes[1] == 168) return true;
+                        if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true;
+                    }
+                }
+
+                _logger.Warn($"OCR endpoint is a public/non-local address: {endpoint}. Ensure this is intentional.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Invalid OCR endpoint URI: {endpoint} - {ex.Message}");
+                return false;
+            }
+        }
+
+        private string ValidatePath(string path, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return string.Empty;
+
+            try
+            {
+                // Resolve to absolute path and check for traversal
+                var fullPath = Path.GetFullPath(path);
+                
+                if (fullPath.Contains("..") || 
+                    path.Contains("..") ||
+                    fullPath.IndexOf("..", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    _logger.Warn($"{fieldName} contains path traversal sequence. Clearing value.");
+                    return string.Empty;
+                }
+
+                var normalizedPath = fullPath.ToLowerInvariant().Replace('/', '\\');
+                var forbiddenPaths = new[] 
+                { 
+                    "\\windows\\", 
+                    "\\program files\\", 
+                    "\\system32\\",
+                    "/etc/",
+                    "/bin/",
+                    "/sbin/",
+                    "/usr/bin/",
+                    "/usr/sbin/"
+                };
+
+                foreach (var forbidden in forbiddenPaths)
+                {
+                    if (normalizedPath.Contains(forbidden))
+                    {
+                        _logger.Warn($"{fieldName} points to system directory. Clearing value.");
+                        return string.Empty;
+                    }
+                }
+
+                return fullPath;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Invalid path for {fieldName}: {path} - {ex.Message}");
+                return string.Empty;
+            }
         }
 
         public IEnumerable<PluginPageInfo> GetPages()

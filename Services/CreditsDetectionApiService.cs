@@ -105,6 +105,11 @@ namespace EmbyCredits.Services
                     return new { Success = false, Message = "SeriesId is required" };
                 }
 
+                if (request.SeasonNumber < 0 || request.SeasonNumber > 999)
+                {
+                    return new { Success = false, Message = "Invalid season number. Must be between 0 and 999." };
+                }
+
                 var series = ItemLookupHelper.ResolveSeries(_libraryManager, request.SeriesId, _logger);
                 if (series == null)
                 {
@@ -259,6 +264,16 @@ namespace EmbyCredits.Services
                 if (string.IsNullOrEmpty(request.SeriesId))
                 {
                     return new { Success = false, Message = "SeriesId is required" };
+                }
+
+                if (request.SeasonNumber < 0 || request.SeasonNumber > 999)
+                {
+                    return new { Success = false, Message = "Invalid season number. Must be between 0 and 999." };
+                }
+
+                if (Math.Abs(request.CreditsStartSeconds) > 86400)
+                {
+                    return new { Success = false, Message = "Invalid timestamp. Must be within 24 hours." };
                 }
 
                 if (request.CreditsStartSeconds < 0)
@@ -858,6 +873,11 @@ namespace EmbyCredits.Services
                     return new { Success = false, Message = "OCR endpoint URL is required" };
                 }
 
+                if (!IsValidOcrEndpointUrl(request.OcrEndpoint))
+                {
+                    return new { Success = false, Message = "Invalid OCR endpoint URL. Only localhost and local network addresses are allowed." };
+                }
+
                 var endpoint = request.OcrEndpoint.TrimEnd('/');
 
                 using (var httpClient = new System.Net.Http.HttpClient())
@@ -1300,6 +1320,11 @@ namespace EmbyCredits.Services
                     return new { Success = false, Message = "EpisodeId is required" };
                 }
 
+                if (Math.Abs(request.CreditsStartSeconds) > 86400)
+                {
+                    return new { Success = false, Message = "Invalid timestamp. Must be within 24 hours." };
+                }
+
                 if (!request.IsRelativeFromEnd && request.CreditsStartSeconds < 0)
                 {
                     return new { Success = false, Message = "Credits start time must be positive" };
@@ -1603,9 +1628,9 @@ namespace EmbyCredits.Services
                     return new { Success = false, Message = "EpisodeId is required" };
                 }
 
-                if (request.TimestampSeconds <= 0)
+                if (request.TimestampSeconds <= 0 || request.TimestampSeconds > 86400)
                 {
-                    return new { Success = false, Message = "Valid timestamp is required" };
+                    return new { Success = false, Message = "Timestamp must be between 0 and 86400 seconds (24 hours)" };
                 }
 
                 var episode = _libraryManager.GetItemById(request.EpisodeId) as Episode;
@@ -2237,6 +2262,56 @@ namespace EmbyCredits.Services
                 _logger?.ErrorException("Error clearing all failure markers", ex);
                 return new { Success = false, Message = ex.Message };
             }
+        }
+
+        private bool IsValidOcrEndpointUrl(string endpoint)
+        {
+            if (string.IsNullOrWhiteSpace(endpoint))
+                return false;
+
+            try
+            {
+                var uri = new Uri(endpoint);
+                
+                if (uri.Scheme != "http" && uri.Scheme != "https")
+                    return false;
+
+                var host = uri.Host.ToLowerInvariant();
+                if (host == "localhost" || host == "127.0.0.1" || host == "::1")
+                    return true;
+
+                if (System.Net.IPAddress.TryParse(host, out var ipAddress))
+                {
+                    var bytes = ipAddress.GetAddressBytes();
+                    if (bytes.Length == 4)
+                    {
+                        if (bytes[0] == 10) return true;
+                        if (bytes[0] == 192 && bytes[1] == 168) return true;
+                        if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true;
+                    }
+                }
+
+                _logger?.Warn($"Rejected OCR endpoint test for public address: {endpoint}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error($"Invalid OCR endpoint URI: {endpoint} - {ex.Message}");
+                return false;
+            }
+        }
+
+        private string SanitizeErrorMessage(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+                return "An error occurred";
+
+            var sanitized = System.Text.RegularExpressions.Regex.Replace(
+                message, 
+                @"[A-Za-z]:\\[^\\s]+|/[/a-zA-Z0-9_.-]+", 
+                "[path]");
+            
+            return sanitized;
         }
     }
 }

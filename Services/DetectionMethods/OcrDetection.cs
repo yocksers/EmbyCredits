@@ -2092,6 +2092,42 @@ namespace EmbyCredits.Services.DetectionMethods
             return args.Count > 0 ? string.Join(" ", args) + " " : "";
         }
 
+        private bool IsValidOcrEndpoint(string endpoint)
+        {
+            if (string.IsNullOrWhiteSpace(endpoint))
+                return false;
+
+            try
+            {
+                var uri = new Uri(endpoint);
+                
+                if (uri.Scheme != "http" && uri.Scheme != "https")
+                    return false;
+
+                var host = uri.Host.ToLowerInvariant();
+                if (host == "localhost" || host == "127.0.0.1" || host == "::1")
+                    return true;
+
+                if (System.Net.IPAddress.TryParse(host, out var ipAddress))
+                {
+                    var bytes = ipAddress.GetAddressBytes();
+                    if (bytes.Length == 4)
+                    {
+                        if (bytes[0] == 10) return true;
+                        if (bytes[0] == 192 && bytes[1] == 168) return true;
+                        if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true;
+                    }
+                }
+
+                LogWarn($"OCR endpoint is public/remote: {endpoint}. Ensure this is intentional.");
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private async Task<bool> TestOcrEndpoint(CancellationToken cancellationToken = default)
         {
             try

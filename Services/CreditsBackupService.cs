@@ -257,6 +257,15 @@ namespace EmbyCredits.Services
 
             try
             {
+                const int MaxJsonSizeBytes = 50 * 1024 * 1024;
+                if (jsonData.Length > MaxJsonSizeBytes)
+                {
+                    result.Success = false;
+                    result.Message = $"Import file too large. Maximum size is {MaxJsonSizeBytes / (1024 * 1024)} MB.";
+                    _logger.Warn($"Import rejected: JSON data exceeds maximum size ({jsonData.Length} bytes)");
+                    return Task.FromResult(result);
+                }
+
                 _logger.Info("Starting credits markers import");
 
                 var backup = JsonSerializer.Deserialize<CreditsBackup>(jsonData);
