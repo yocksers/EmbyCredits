@@ -105,9 +105,6 @@ namespace EmbyCredits
 
         public DetectionMode DetectionMode { get; set; } = DetectionMode.OcrOnly;
         
-        [Obsolete("Use DetectionMode instead")]
-        public bool EnableOcrDetection { get; set; } = true;
-        
         public OcrEngine OcrEngine { get; set; } = OcrEngine.Tesseract;
         
         public string OcrEndpoint { get; set; } = "http://localhost:8884";
@@ -259,8 +256,6 @@ namespace EmbyCredits
         public int BlackFrameMinimumPercentage { get; set; } = 85;
         public int BlackFrameThreshold { get; set; } = 28;
 
-        [Obsolete("Use DetectionMode instead")]
-        public bool EnableChromaprintDetection { get; set; } = false;
         public int ChromaprintDetectionPriority { get; set; } = 1;
         public bool ChromaprintUseAudioFingerprinting { get; set; } = false;
         public int ChromaprintFingerprintDuration { get; set; } = 360;

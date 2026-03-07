@@ -58,24 +58,6 @@ namespace EmbyCredits
         
         private void MigrateLegacyDetectionSettings()
         {
-            // Only migrate if DetectionMode is at default (OcrOnly) and legacy settings exist
-#pragma warning disable CS0618 // Type or member is obsolete
-            if (Configuration.DetectionMode == DetectionMode.OcrOnly)
-            {
-                if (Configuration.EnableChromaprintDetection && !Configuration.EnableOcrDetection)
-                {
-                    Configuration.DetectionMode = DetectionMode.HashOnly;
-                    _logger.Info("Migrated legacy settings: EnableChromaprintDetection=true -> DetectionMode.HashOnly");
-                }
-                else if (!Configuration.EnableOcrDetection && !Configuration.EnableChromaprintDetection)
-                {
-                    // If both were disabled, default to OCR
-                    Configuration.DetectionMode = DetectionMode.OcrOnly;
-                    _logger.Info("Migrated legacy settings: Both disabled -> DetectionMode.OcrOnly");
-                }
-                // If EnableOcrDetection is true (default), keep DetectionMode.OcrOnly
-            }
-#pragma warning restore CS0618
         }
 
         public override void SaveConfiguration()

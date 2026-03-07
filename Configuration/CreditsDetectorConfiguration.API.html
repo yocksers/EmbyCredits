@@ -5,11 +5,11 @@
     <div style="margin-top: 2em;">
         <h3 style="color: #00a4dc; border-bottom: 2px solid #00a4dc; padding-bottom: 0.3em;">Detection Control</h3>
         
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #00a4dc;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #00a4dc;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/StartDetection</h4>
             <p><strong>Unified endpoint for starting credits detection with custom settings</strong></p>
             <p><strong>Request Body:</strong></p>
-            <pre style="background: #fff; padding: 1em; overflow-x: auto;">{
+            <pre style="background: rgba(128,128,128,0.05); padding: 1em; overflow-x: auto;">{
     "EpisodeId": "string (optional)",
     "SeriesId": "string (optional)",
     "SeasonNumber": number (optional),
@@ -51,42 +51,42 @@
             <p><strong>Settings Override:</strong> All settings are optional. If omitted, plugin defaults are used.</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/ProcessEpisode</h4>
             <p>Process a specific episode by ItemId</p>
             <p><strong>Request Body:</strong> <code>{ "ItemId": "string", "SkipExistingMarkers": boolean }</code></p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/ProcessSeries</h4>
             <p>Process all episodes in a specific TV series</p>
             <p><strong>Request Body:</strong> <code>{ "SeriesId": "string", "SkipExistingMarkers": boolean }</code></p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/ProcessSeason</h4>
             <p>Process all episodes in a specific season</p>
             <p><strong>Request Body:</strong> <code>{ "SeriesId": "string", "SeasonNumber": number, "SkipExistingMarkers": boolean }</code></p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/ProcessLibrary</h4>
             <p>Process all TV shows in a library</p>
             <p><strong>Request Body:</strong> <code>{ "LibraryId": "string", "SkipExistingMarkers": boolean }</code></p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/TriggerDetection</h4>
             <p>Process all episodes in the library (queued sequentially)</p>
             <p><strong>Request Body:</strong> <code>{ "Limit": number }</code></p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #e74c3c;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #e74c3c;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/CancelDetection</h4>
             <p>Cancels the currently running detection process</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #e74c3c;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #e74c3c;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/ClearQueue</h4>
             <p>Clears the processing queue</p>
         </div>
@@ -95,7 +95,7 @@
     <div style="margin-top: 2em;">
         <h3 style="color: #00a4dc; border-bottom: 2px solid #00a4dc; padding-bottom: 0.3em;">Detection Results & Status</h3>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #00a4dc;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #00a4dc;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/GetDetectionResults</h4>
             <p><strong>Get detection results for episodes with filtering options</strong></p>
             <p><strong>Query Parameters:</strong></p>
@@ -106,7 +106,7 @@
                 <li><code>IncludeAllEpisodes</code> (boolean) - Get results for all episodes in library</li>
             </ul>
             <p><strong>Response:</strong></p>
-            <pre style="background: #fff; padding: 1em; overflow-x: auto;">{
+            <pre style="background: rgba(128,128,128,0.05); padding: 1em; overflow-x: auto;">{
     "Success": true,
     "TotalEpisodes": 24,
     "EpisodesWithMarkers": 18,
@@ -126,32 +126,32 @@
 }</pre>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #00a4dc;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #00a4dc;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/GetEpisodeDetectionResult</h4>
             <p>Get detailed detection result for a specific episode</p>
             <p><strong>Query Parameters:</strong> <code>EpisodeId</code> (string, required)</p>
             <p><strong>Response:</strong> Single episode result with full details</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/GetProgress</h4>
             <p>Get current progress of credits detection operation</p>
             <p><strong>Response:</strong> Progress percentage, current episode, queue size</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/GetSeriesMarkers</h4>
             <p>Get chapter markers for all episodes in a TV series</p>
             <p><strong>Query Parameters:</strong> <code>SeriesId</code> (string, required)</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/GetSeasonValidation</h4>
             <p>Get validation data for all episodes in a season</p>
             <p><strong>Query Parameters:</strong> <code>SeriesId</code> (string, required), <code>SeasonNumber</code> (number, required)</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/GetDetectionHistory</h4>
             <p>Get detection history for a series or episode</p>
             <p><strong>Query Parameters:</strong> <code>SeriesId</code> or <code>EpisodeId</code>, <code>Limit</code> (number, default 50)</p>
@@ -161,11 +161,11 @@
     <div style="margin-top: 2em;">
         <h3 style="color: #00a4dc; border-bottom: 2px solid #00a4dc; padding-bottom: 0.3em;">Detection Methods & Configuration</h3>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #00a4dc;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #00a4dc;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/GetDetectionMethods</h4>
             <p><strong>Get available detection methods and their current configurations</strong></p>
             <p><strong>Response:</strong></p>
-            <pre style="background: #fff; padding: 1em; overflow-x: auto;">{
+            <pre style="background: rgba(128,128,128,0.05); padding: 1em; overflow-x: auto;">{
     "Success": true,
     "DetectionMode": "OcrOnly",
     "Methods": [
@@ -193,7 +193,7 @@
             <p>Use this endpoint to discover available detection methods and their current settings before starting detection.</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/TestOcrConnection</h4>
             <p>Test the OCR server connection</p>
             <p><strong>Request Body:</strong> <code>{ "OcrEndpoint": "string", "OcrEngine": "Tesseract|PaddleOCR" }</code></p>
@@ -203,11 +203,11 @@
     <div style="margin-top: 2em;">
         <h3 style="color: #00a4dc; border-bottom: 2px solid #00a4dc; padding-bottom: 0.3em;">Dry Run & Testing</h3>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #f39c12;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #f39c12;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/DryRunSeries</h4>
             <p>Detect credits without saving markers (preview mode)</p>
             <p><strong>Request Body:</strong></p>
-            <pre style="background: #fff; padding: 1em; overflow-x: auto;">{
+            <pre style="background: rgba(128,128,128,0.05); padding: 1em; overflow-x: auto;">{
     "SeriesId": "string (optional)",
     "EpisodeId": "string (optional)",
     "LibraryId": "string (optional)",
@@ -216,13 +216,13 @@
 }</pre>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #f39c12;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #f39c12;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/DryRunSeriesDebug</h4>
             <p>Dry run with debug logging - captures detailed detection log</p>
             <p><strong>Request Body:</strong> Same as DryRunSeries</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #f39c12;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #f39c12;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/GetDebugLog</h4>
             <p>Download the debug log from the last debug dry run</p>
             <p><strong>Response:</strong> Text file stream</p>
@@ -232,28 +232,28 @@
     <div style="margin-top: 2em;">
         <h3 style="color: #00a4dc; border-bottom: 2px solid #00a4dc; padding-bottom: 0.3em;">Marker Management</h3>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #9b59b6;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #9b59b6;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/UpdateCreditsMarker</h4>
             <p>Update the credits marker timestamp for an episode</p>
             <p><strong>Request Body:</strong></p>
-            <pre style="background: #fff; padding: 1em; overflow-x: auto;">{
+            <pre style="background: rgba(128,128,128,0.05); padding: 1em; overflow-x: auto;">{
     "EpisodeId": "string",
     "CreditsStartSeconds": number,
     "IsRelativeFromEnd": boolean
 }</pre>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #9b59b6;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #9b59b6;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/ApplyToSeason</h4>
             <p>Copy one episode's credits timestamp to all episodes in the season without markers</p>
             <p><strong>Request Body:</strong> <code>{ "EpisodeId": "string", "SeriesId": "string", "SeasonNumber": number }</code></p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #9b59b6;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #9b59b6;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/BatchUpdateSeasonMissingMarkers</h4>
             <p>Batch update credits timestamps for all episodes missing markers in a season</p>
             <p><strong>Request Body:</strong></p>
-            <pre style="background: #fff; padding: 1em; overflow-x: auto;">{
+            <pre style="background: rgba(128,128,128,0.05); padding: 1em; overflow-x: auto;">{
     "SeriesId": "string",
     "SeasonNumber": number,
     "CreditsStartSeconds": number,
@@ -261,13 +261,13 @@
 }</pre>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #9b59b6;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #9b59b6;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/AddTimestampFromDryRun</h4>
             <p>Manually add a timestamp from a dry run detection</p>
             <p><strong>Request Body:</strong> <code>{ "EpisodeId": "string", "TimestampSeconds": number }</code></p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/ProcessSeasonMissingMarkers</h4>
             <p>Process only episodes missing credits markers in a specific season</p>
             <p><strong>Request Body:</strong> <code>{ "SeriesId": "string", "SeasonNumber": number }</code></p>
@@ -277,37 +277,37 @@
     <div style="margin-top: 2em;">
         <h3 style="color: #00a4dc; border-bottom: 2px solid #00a4dc; padding-bottom: 0.3em;">Backup & Import/Export</h3>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #16a085;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #16a085;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/ExportCreditsBackup</h4>
             <p>Export credits markers to JSON for download</p>
             <p><strong>Request Body:</strong> <code>{ "LibraryIds": ["string"], "SeriesIds": ["string"] }</code></p>
             <p><strong>Response:</strong> JSON file stream</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #16a085;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #16a085;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/ImportCreditsBackup</h4>
             <p>Import credits markers from JSON backup</p>
             <p><strong>Request Body:</strong> <code>{ "JsonData": "string", "OverwriteExisting": boolean }</code></p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #16a085;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #16a085;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/ExportSeriesCredits</h4>
             <p>Export credits markers for a single TV series</p>
             <p><strong>Query Parameters:</strong> <code>SeriesId</code> (string, required)</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #16a085;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #16a085;">
             <h4 style="margin-top: 0;">POST /CreditsDetector/ImportSeriesCredits</h4>
             <p>Import credits markers for a single TV series</p>
             <p><strong>Request Body:</strong> <code>{ "SeriesId": "string", "JsonData": "string", "OverwriteExisting": boolean }</code></p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/GetBackupExportProgress</h4>
             <p>Get progress of backup export operation</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/GetBackupImportProgress</h4>
             <p>Get progress of backup import operation</p>
         </div>
@@ -316,30 +316,30 @@
     <div style="margin-top: 2em;">
         <h3 style="color: #00a4dc; border-bottom: 2px solid #00a4dc; padding-bottom: 0.3em;">Library & Resources</h3>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/GetAllSeries</h4>
             <p>Get a list of all TV series in the library</p>
             <p><strong>Query Parameters:</strong> <code>LibraryId</code> (string, optional)</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/GetMemoryUsage</h4>
             <p>Get current plugin memory usage statistics</p>
             <p><strong>Response:</strong> Working set, private memory, GC memory in bytes and MB</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/Images/{ImageName}</h4>
             <p>Get a plugin image resource</p>
         </div>
 
-        <div style="margin: 1.5em 0; padding: 1em; background: #f5f5f5; border-left: 4px solid #52b54b;">
+        <div style="margin: 1.5em 0; padding: 1em; background: rgba(128,128,128,0.08); border-left: 4px solid #52b54b;">
             <h4 style="margin-top: 0;">GET /CreditsDetector/Thumbnail/{ThumbnailId}</h4>
             <p>Get a detection thumbnail image</p>
         </div>
     </div>
 
-    <div style="margin-top: 2em; padding: 1em; background: #e8f4f8; border-radius: 4px;">
+    <div style="margin-top: 2em; padding: 1em; background: rgba(0,164,220,0.08); border-radius: 4px;">
         <h3 style="margin-top: 0; color: #00a4dc;">Settings Override Reference</h3>
         <p>The <code>SettingsOverride</code> object in <code>StartDetection</code> supports the following parameters:</p>
         <div style="columns: 2; column-gap: 2em;">
@@ -447,7 +447,7 @@
         </div>
     </div>
 
-    <div style="margin-top: 2em; padding: 1em; background: #fff3cd; border-left: 4px solid #ffc107;">
+    <div style="margin-top: 2em; padding: 1em; background: rgba(255,193,7,0.1); border-left: 4px solid #ffc107;">
         <h3 style="margin-top: 0;">API Usage Tips</h3>
         <ul>
             <li>Use <strong>GetDetectionMethods</strong> to discover current configuration before making requests</li>

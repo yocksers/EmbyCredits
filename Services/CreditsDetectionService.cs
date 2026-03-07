@@ -30,7 +30,7 @@ namespace EmbyCredits.Services
         private static IFfmpegManager? _ffmpegManager;
         private static bool _isRunning;
         private static ConcurrentDictionary<string, DateTime> _processedEpisodes = new ConcurrentDictionary<string, DateTime>();
-        private static ConcurrentQueue<Episode> _processingQueue = new ConcurrentQueue<Episode>();
+        private static EpisodeQueue _processingQueue = new EpisodeQueue(MaxQueueSize);
         private static SemaphoreSlim _processingSemaphore = new SemaphoreSlim(1, 1);
         private static bool _isProcessing = false;
         private static bool _cancellationRequested = false;
@@ -580,7 +580,11 @@ namespace EmbyCredits.Services
                     return;
                 }
 
-                _processingQueue.Enqueue(episode);
+                if (!_processingQueue.TryEnqueue(episode))
+                {
+                    LogWarn($"Failed to enqueue episode: {episode.Name}");
+                    return;
+                }
                 LogInfo($"Queued episode: {episode.Name} (Queue size: {_processingQueue.Count})");
 
                 if (!_isProcessing && Plugin.Instance != null)
@@ -667,7 +671,7 @@ namespace EmbyCredits.Services
             _batchDetectionCache.Clear();
             System.Threading.Interlocked.Exchange(ref _batchDetectionCache, new ConcurrentDictionary<string, List<(string method, double timestamp)>>());
 
-            while (_processingQueue.TryDequeue(out _)) { }
+            _processingQueue.Clear();
             _cancellationRequested = false;
             _isProcessing = false;
 
@@ -708,8 +712,10 @@ namespace EmbyCredits.Services
                 {
                     _processedEpisodes.TryRemove(episodeId, out _);
                 }
-                _processingQueue.Enqueue(episode);
-                queuedCount++;
+                if (_processingQueue.TryEnqueue(episode))
+                {
+                    queuedCount++;
+                }
             }
 
             LogInfo($"Queued {queuedCount} episodes for processing (forced reprocess). Queue size: {_processingQueue.Count}");
@@ -741,11 +747,8 @@ namespace EmbyCredits.Services
                 LogInfo($"Killed {killedProcesses} running ffmpeg processes during cancellation");
             }
 
-            var clearedCount = 0;
-            while (_processingQueue.TryDequeue(out _)) 
-            { 
-                clearedCount++;
-            }
+            var clearedCount = _processingQueue.Count;
+            _processingQueue.Clear();
 
             _processedEpisodes.Clear();
             System.Threading.Interlocked.Exchange(ref _processedEpisodes, new ConcurrentDictionary<string, DateTime>());
@@ -765,11 +768,8 @@ namespace EmbyCredits.Services
         {
             LogInfo("Clearing processing queue");
 
-            var clearedCount = 0;
-            while (_processingQueue.TryDequeue(out _)) 
-            { 
-                clearedCount++;
-            }
+            var clearedCount = _processingQueue.Count;
+            _processingQueue.Clear();
 
             _isProcessing = false;
             _cancellationRequested = false;
@@ -1135,7 +1135,10 @@ namespace EmbyCredits.Services
                 var allEpisodes = new List<Episode>();
                 while (_processingQueue.TryDequeue(out var episode))
                 {
-                    allEpisodes.Add(episode);
+                    if (episode != null)
+                    {
+                        allEpisodes.Add(episode);
+                    }
                 }
 
                 LogInfo($"Collected {allEpisodes.Count} episodes from queue");
@@ -1220,7 +1223,7 @@ namespace EmbyCredits.Services
                             ScheduleDebugLogCleanup();
                         }
                     }
-                    else if (_processingQueue.IsEmpty)
+                    else if (_processingQueue.Count == 0)
                     {
                         Plugin.Progress.IsRunning = false;
                         Plugin.Progress.EndTime = DateTime.Now;
@@ -1380,7 +1383,8 @@ namespace EmbyCredits.Services
                 {
                     if (Plugin.Instance != null)
                     {
-                        Plugin.Progress.CurrentItem = $"{seriesName} - S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2} - {episode.Name}";
+                        var episodeDisplayName = $"{seriesName} - S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2} - {episode.Name}";
+                        Plugin.Progress.StartProcessingItem(episodeDisplayName, "Detecting");
                     }
 
                     _logger?.Debug($"Processing episode {episode.Name}");
@@ -1398,7 +1402,7 @@ namespace EmbyCredits.Services
                     {
                         if (Plugin.Instance != null)
                         {
-                            Plugin.Progress.SuccessfulItems++;
+                            Plugin.Progress.CompleteProcessingItem(true);
 
                             var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
                             var statusMessages = GetAndClearEpisodeStatusMessages(episodeId);
@@ -1460,7 +1464,7 @@ namespace EmbyCredits.Services
                     {
                         if (Plugin.Instance != null)
                         {
-                            Plugin.Progress.FailedItems++;
+                            Plugin.Progress.CompleteProcessingItem(false);
 
                             var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
                             Plugin.Progress.FailureReasons[episodeKey] = failureReason;
@@ -1475,7 +1479,7 @@ namespace EmbyCredits.Services
                     _logger?.ErrorException($"Error processing episode {episode.Name}", ex);
                     if (Plugin.Instance != null)
                     {
-                        Plugin.Progress.FailedItems++;
+                        Plugin.Progress.CompleteProcessingItem(false);
                         var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
                         Plugin.Progress.FailureReasons[episodeKey] = ex.Message;
                     }
@@ -1484,8 +1488,6 @@ namespace EmbyCredits.Services
                 // Update progress tracking
                 if (Plugin.Instance != null)
                 {
-                    Plugin.Progress.ProcessedItems++;
-                    Plugin.Progress.CurrentItemProgress = 100;
                     Plugin.Progress.CheckAndLimitDictionarySize();
 
                     if (Plugin.Progress.ProcessedItems >= Plugin.Progress.TotalItems)
@@ -1519,28 +1521,18 @@ namespace EmbyCredits.Services
             {
                 if (Plugin.Instance != null)
                 {
-                    Plugin.Progress.CurrentItem = $"{episode.Series?.Name} - S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2} - {episode.Name}";
-                    Plugin.Progress.CurrentItemProgress = 0;
-                }
-
-                if (Plugin.Instance != null)
-                {
-                    Plugin.Progress.CurrentItemProgress = 10;
+                    var episodeDisplayName = $"{episode.Series?.Name} - S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2} - {episode.Name}";
+                    Plugin.Progress.StartProcessingItem(episodeDisplayName, "Detecting");
                 }
 
                 var (success, creditsStart, failureReason, confidence, methodName, detectionReason) = await _episodeProcessor.ProcessEpisode(
                     episode, _isDryRun, _isBatchMode, _batchDetectionCache);
 
-                if (Plugin.Instance != null)
-                {
-                    Plugin.Progress.CurrentItemProgress = 95;
-                }
-
                 if (success && creditsStart > 0)
                 {
                     if (Plugin.Instance != null)
                     {
-                        Plugin.Progress.SuccessfulItems++;
+                        Plugin.Progress.CompleteProcessingItem(true);
 
                         var series = episode.Series;
                         var episodeKey = series != null
@@ -1603,7 +1595,7 @@ namespace EmbyCredits.Services
                 {
                     if (Plugin.Instance != null)
                     {
-                        Plugin.Progress.FailedItems++;
+                        Plugin.Progress.CompleteProcessingItem(false);
 
                         var series = episode.Series;
                         var episodeKey = series != null
@@ -1622,8 +1614,6 @@ namespace EmbyCredits.Services
 
                 if (Plugin.Instance != null)
                 {
-                    Plugin.Progress.ProcessedItems++;
-                    Plugin.Progress.CurrentItemProgress = 100;
                     Plugin.Progress.CheckAndLimitDictionarySize();
 
                     if (Plugin.Progress.ProcessedItems >= Plugin.Progress.TotalItems)
@@ -1647,8 +1637,7 @@ namespace EmbyCredits.Services
 
                 if (Plugin.Instance != null)
                 {
-                    Plugin.Progress.FailedItems++;
-                    Plugin.Progress.ProcessedItems++;
+                    Plugin.Progress.CompleteProcessingItem(false);
                 }
             }
         }

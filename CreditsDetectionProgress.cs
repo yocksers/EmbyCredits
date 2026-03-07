@@ -18,6 +18,11 @@ namespace EmbyCredits
         public int CurrentItemProgress { get; set; }
         public DateTime? StartTime { get; set; }
         public DateTime? EndTime { get; set; }
+        public string CurrentMethod { get; set; } = string.Empty;
+        public double AverageProcessingTimeSeconds { get; set; }
+        
+        private readonly List<double> _processingTimes = new List<double>();
+        private DateTime? _currentItemStartTime;
         
         private Dictionary<string, string> _failureReasons = new Dictionary<string, string>();
         private Dictionary<string, string> _successDetails = new Dictionary<string, string>();
@@ -74,8 +79,46 @@ namespace EmbyCredits
             CurrentItemProgress = 0;
             StartTime = null;
             EndTime = null;
+            CurrentMethod = string.Empty;
+            AverageProcessingTimeSeconds = 0;
+            _processingTimes.Clear();
+            _currentItemStartTime = null;
             DeleteOldThumbnails();
             CleanupDictionaries();
+        }
+        
+        public void StartProcessingItem(string itemName, string methodName)
+        {
+            CurrentItem = itemName;
+            CurrentMethod = methodName;
+            _currentItemStartTime = DateTime.UtcNow;
+        }
+        
+        public void CompleteProcessingItem(bool success)
+        {
+            if (_currentItemStartTime.HasValue)
+            {
+                var elapsed = (DateTime.UtcNow - _currentItemStartTime.Value).TotalSeconds;
+                _processingTimes.Add(elapsed);
+                
+                if (_processingTimes.Count > 100)
+                {
+                    _processingTimes.RemoveAt(0);
+                }
+                
+                AverageProcessingTimeSeconds = _processingTimes.Average();
+                _currentItemStartTime = null;
+            }
+            
+            if (success)
+            {
+                SuccessfulItems++;
+            }
+            else
+            {
+                FailedItems++;
+            }
+            ProcessedItems++;
         }
         
         private void DeleteOldThumbnails()

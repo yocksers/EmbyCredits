@@ -690,7 +690,7 @@ define(['loading', 'toast'], function (loading, toast) {
         }
         
         let html = `<h2 style="margin-top: 0; color: #52B54B;">${data.SeriesName} - Season ${data.SeasonNumber} Validation</h2>`;
-        html += `<p style="color: #b8b8b8; margin-bottom: 1.5em;">Side-by-side comparison of all episodes for quick validation${averageFromEndText}</p>`;
+        html += `<p style="opacity: 0.7; margin-bottom: 1.5em;">Side-by-side comparison of all episodes for quick validation${averageFromEndText}</p>`;
         html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1em;">`;
         
         data.Episodes.forEach(ep => {
@@ -699,13 +699,13 @@ define(['loading', 'toast'], function (loading, toast) {
             const statusColor = hasMarker ? '#52B54B' : '#E53935';
             const borderColor = hasMarker ? 'rgba(82, 181, 75, 0.5)' : 'rgba(229, 57, 53, 0.3)';
             
-            html += `<div style="background: #242424; border: 2px solid ${borderColor}; border-radius: 6px; padding: 1em;">`;
+            html += `<div style="background: rgba(128,128,128,0.1); border: 2px solid ${borderColor}; border-radius: 6px; padding: 1em;">`;
             html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5em;">`;
-            html += `<strong style="color: #e8e8e8;">Episode ${ep.EpisodeNumber}</strong>`;
+            html += `<strong>Episode ${ep.EpisodeNumber}</strong>`;
             html += `<span style="font-size: 1.5em; color: ${statusColor};">${statusIcon}</span>`;
             html += `</div>`;
-            html += `<div style="font-size: 0.9em; color: #d0d0d0; margin-bottom: 0.5em;">${ep.EpisodeName}</div>`;
-            html += `<div style="font-size: 0.85em; color: #a0a0a0; margin-bottom: 0.5em;">Duration: ${ep.Duration}</div>`;
+            html += `<div style="font-size: 0.9em; margin-bottom: 0.5em;">${ep.EpisodeName}</div>`;
+            html += `<div style="font-size: 0.85em; opacity: 0.7; margin-bottom: 0.5em;">Duration: ${ep.Duration}</div>`;
             
             if (hasMarker) {
                 html += `<div style="font-weight: bold; color: #52B54B; margin-bottom: 0.5em;">Credits: ${ep.Marker.StartTime}</div>`;
@@ -715,7 +715,7 @@ define(['loading', 'toast'], function (loading, toast) {
                 html += `<button is="emby-button" type="button" class="raised btnValidationApply" data-episode-id="${ep.EpisodeId}" data-series-id="${data.SeriesId}" data-season-number="${data.SeasonNumber}" data-episode-name="${ep.EpisodeName || 'Unknown'}" style="padding: 0.3em 0.6em; font-size: 0.85em; background-color: #52B54B; color: white; flex: 1; min-width: 80px;">Apply to all</button>`;
                 html += `</div>`;
             } else {
-                html += `<div style="font-style: italic; color: #808080; margin-bottom: 0.5em;">No credits marker</div>`;
+                html += `<div style="font-style: italic; opacity: 0.6; margin-bottom: 0.5em;">No credits marker</div>`;
                 html += `<button is="emby-button" type="button" class="raised btnValidationEdit" data-episode-id="${ep.EpisodeId}" data-current-time="" data-duration-seconds="${ep.DurationSeconds || 0}" data-series-id="${data.SeriesId}" style="padding: 0.3em 0.6em; font-size: 0.85em; background-color: #4A9FE5; color: white; width: 100%;">Add Marker</button>`;
             }
             
@@ -772,7 +772,8 @@ define(['loading', 'toast'], function (loading, toast) {
         modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 2em;';
         
         const content = document.createElement('div');
-        content.style.cssText = 'background: #181818; color: #e8e8e8; border-radius: 8px; max-width: 1200px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 2em; box-shadow: 0 4px 30px rgba(0,0,0,0.5);';
+        content.className = 'paper-card';
+        content.style.cssText = 'border-radius: 8px; max-width: 1200px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 2em; box-shadow: 0 4px 30px rgba(0,0,0,0.5);';
         
         modal.appendChild(content);
         document.body.appendChild(modal);

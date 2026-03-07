@@ -41,10 +41,9 @@ namespace EmbyCredits.Services.DetectionMethods
         private const int StuckDetectionTimeoutSeconds = 20;
         private const int MaxStuckRetries = 1;
 
-        private static readonly HttpClient _httpClient = new HttpClient 
-        { 
-            Timeout = TimeSpan.FromMinutes(2)
-        };
+        private static readonly Lazy<Services.Http.IHttpClientWrapper> _httpClient = new Lazy<Services.Http.IHttpClientWrapper>(() => 
+            Services.Http.HttpClientPool.Instance.GetClient()
+        );
 
         private static readonly Regex _multipleWhitespaceRegex = new Regex(@"\s{2,}", RegexOptions.Compiled);
 
@@ -52,11 +51,6 @@ namespace EmbyCredits.Services.DetectionMethods
         private static readonly ConcurrentDictionary<string, DateTime> _cacheLastAccess = new ConcurrentDictionary<string, DateTime>();
         private const int MaxCacheEntries = 100;
         private static readonly TimeSpan CacheExpiration = TimeSpan.FromHours(24);
-
-        static OcrDetection()
-        {
-            _httpClient.DefaultRequestHeaders.ConnectionClose = false;
-        }
 
         public OcrDetection(ILogger logger, PluginConfiguration configuration, bool isForAnime = false)
             : base(logger, configuration)
@@ -1666,7 +1660,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
                     using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token))
                     {
-                        using (var response = await _httpClient.PostAsync(endpoint, content, linkedCts.Token).ConfigureAwait(false))
+                        using (var response = await _httpClient.Value.PostAsync(endpoint, content, linkedCts.Token).ConfigureAwait(false))
                         {
                             if (response.IsSuccessStatusCode)
                             {
@@ -1732,7 +1726,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
                     using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token))
                     {
-                        using (var response = await _httpClient.PostAsync(endpoint, content, linkedCts.Token).ConfigureAwait(false))
+                        using (var response = await _httpClient.Value.PostAsync(endpoint, content, linkedCts.Token).ConfigureAwait(false))
                         {
                             if (response.IsSuccessStatusCode)
                             {
@@ -2134,7 +2128,7 @@ namespace EmbyCredits.Services.DetectionMethods
             {
                 var endpoint = Configuration.OcrEndpoint.TrimEnd('/');
 
-                using (var response = await _httpClient.GetAsync(endpoint, cancellationToken).ConfigureAwait(false))
+                using (var response = await _httpClient.Value.GetAsync(endpoint, cancellationToken).ConfigureAwait(false))
                 {
                     if (response.IsSuccessStatusCode)
                     {
