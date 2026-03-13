@@ -1,0 +1,28 @@
+<div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
+    <h2 style="margin-top:0;">Auto Skip Exclusions</h2>
+    <p class="fieldDescription" style="margin-bottom: 1.5em;">Select TV shows where Emby's auto skip feature should be disabled. Checked shows will not have credits automatically skipped.</p>
+
+    <div style="margin-bottom: 1em;">
+        <input is="emby-input" type="text" id="txtAutoSkipSearch" placeholder="Filter shows..." style="max-width: 400px;" />
+    </div>
+
+    <div style="margin-bottom: 1em; display: flex; gap: 0.5em; flex-wrap: wrap;">
+        <button is="emby-button" type="button" class="raised" id="btnAutoSkipSelectAll">
+            <span>Select All</span>
+        </button>
+        <button is="emby-button" type="button" class="raised" id="btnAutoSkipDeselectAll">
+            <span>Deselect All</span>
+        </button>
+    </div>
+
+    <div id="autoSkipSeriesList" style="max-height: 500px; overflow-y: auto; border: 1px solid rgba(128,128,128,0.2); border-radius: 4px; padding: 0.5em 1em;">
+        <div style="padding: 1em; opacity: 0.5;">Loading TV shows...</div>
+    </div>
+
+    <div style="margin-top: 1.5em;">
+        <button is="emby-button" type="button" class="raised button-submit" id="btnSaveAutoSkip">
+            <i class="md-icon">save</i>
+            <span>Save</span>
+        </button>
+    </div>
+</div>

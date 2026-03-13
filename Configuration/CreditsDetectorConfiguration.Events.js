@@ -9,8 +9,10 @@ define([], function () {
             'ocrEnhancementsPage': view.querySelector('#ocrEnhancementsPage'),
             'actionsPage': view.querySelector('#actionsPage'),
             'rulesPage': view.querySelector('#rulesPage'),
+            'autoSkipPage': view.querySelector('#autoSkipPage'),
             'guidePage': view.querySelector('#guidePage'),
-            'apiPage': view.querySelector('#apiPage')
+            'apiPage': view.querySelector('#apiPage'),
+            'chapterEditPage': view.querySelector('#chapterEditPage')
         };
 
         navButtons.forEach(btn => {

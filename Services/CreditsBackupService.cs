@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -20,6 +21,12 @@ namespace EmbyCredits.Services
         private readonly ILibraryManager _libraryManager;
         private readonly IItemRepository _itemRepository;
 
+        private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
+
         public CreditsBackupService(ILogger logger, ILibraryManager libraryManager, IItemRepository itemRepository)
         {
             _logger = logger;
@@ -27,10 +34,215 @@ namespace EmbyCredits.Services
             _itemRepository = itemRepository;
         }
 
+        private static string SanitizeFileName(string name)
+        {
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var sanitized = new System.Text.StringBuilder();
+            foreach (var c in name)
+            {
+                sanitized.Append(Array.IndexOf(invalidChars, c) >= 0 ? '_' : c);
+            }
+            var result = sanitized.ToString().Trim().TrimEnd('.');
+            return string.IsNullOrEmpty(result) ? "Unknown" : result;
+        }
+
+        private static string GetSeriesBackupPattern(string seriesName)
+        {
+            return $"{SanitizeFileName(seriesName)}_*.json";
+        }
+
+        private string? FindLatestSeriesBackupFile(string seriesName, string backupFolder)
+        {
+            if (!Directory.Exists(backupFolder))
+                return null;
+
+            var pattern = GetSeriesBackupPattern(seriesName);
+            var files = Directory.GetFiles(backupFolder, pattern);
+            if (files.Length == 0)
+                return null;
+
+            return files
+                .Select(f => new FileInfo(f))
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .First()
+                .FullName;
+        }
+
+        public void SaveSeriesBackupToFile(Series series, List<Episode> episodes, string backupFolder, int maxBackups)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(backupFolder))
+                {
+                    _logger.Warn("Backup folder not configured — skipping per-series backup");
+                    return;
+                }
+
+                if (!Directory.Exists(backupFolder))
+                    Directory.CreateDirectory(backupFolder);
+
+                var backupEntries = new List<CreditsBackupEntry>();
+                foreach (var episode in episodes)
+                {
+                    var chapters = _itemRepository.GetChapters(episode);
+                    var creditsMarker = chapters?.FirstOrDefault(c => GetMarkerType(c) == "CreditsStart");
+                    if (creditsMarker == null)
+                        continue;
+
+                    backupEntries.Add(new CreditsBackupEntry
+                    {
+                        SeriesName = series.Name,
+                        SeriesId = series.Id.ToString(),
+                        TvdbId = series.ProviderIds?.TryGetValue("Tvdb", out var tvdbId) == true ? tvdbId : null,
+                        TmdbId = series.ProviderIds?.TryGetValue("Tmdb", out var tmdbId) == true ? tmdbId : null,
+                        ImdbId = series.ProviderIds?.TryGetValue("Imdb", out var imdbId) == true ? imdbId : null,
+                        TvdbEpisodeId = episode.ProviderIds?.TryGetValue("Tvdb", out var epTvdbId) == true ? epTvdbId : null,
+                        TmdbEpisodeId = episode.ProviderIds?.TryGetValue("Tmdb", out var epTmdbId) == true ? epTmdbId : null,
+                        ImdbEpisodeId = episode.ProviderIds?.TryGetValue("Imdb", out var epImdbId) == true ? epImdbId : null,
+                        SeasonNumber = episode.ParentIndexNumber ?? 0,
+                        EpisodeNumber = episode.IndexNumber ?? 0,
+                        EpisodeName = episode.Name,
+                        FilePath = episode.Path,
+                        CreditsStartTicks = creditsMarker.StartPositionTicks
+                    });
+                }
+
+                var backup = new CreditsBackup
+                {
+                    Version = "1.0",
+                    BackupDate = DateTime.UtcNow,
+                    TotalEpisodes = episodes.Count,
+                    EpisodesWithCredits = backupEntries.Count,
+                    Entries = backupEntries
+                };
+
+                var json = JsonSerializer.Serialize(backup, _jsonOptions);
+                var safeName = SanitizeFileName(series.Name);
+                var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HHmmss");
+                var filePath = Path.Combine(backupFolder, $"{safeName}_{timestamp}.json");
+
+                File.WriteAllText(filePath, json);
+                _logger.Info($"Per-series backup saved: {filePath} ({backupEntries.Count} episodes with credits)");
+
+                RotateSeriesBackups(backupFolder, series.Name, maxBackups > 0 ? maxBackups : 10);
+            }
+            catch (Exception ex)
+            {
+                _logger.ErrorException($"Error saving per-series backup for {series.Name}", ex);
+            }
+        }
+
+        private void RotateSeriesBackups(string backupFolder, string seriesName, int maxBackups)
+        {
+            try
+            {
+                var pattern = GetSeriesBackupPattern(seriesName);
+                var files = Directory.GetFiles(backupFolder, pattern)
+                    .Select(f => new FileInfo(f))
+                    .OrderByDescending(f => f.LastWriteTimeUtc)
+                    .ToList();
+
+                for (int i = maxBackups; i < files.Count; i++)
+                {
+                    try
+                    {
+                        files[i].Delete();
+                        _logger.Debug($"Deleted old backup: {files[i].Name}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Warn($"Failed to delete old backup {files[i].Name}: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"Error rotating backups for {seriesName}: {ex.Message}");
+            }
+        }
+
+        public bool RestoreEpisodeMarkerFromBackup(Episode episode, string backupFolder)
+        {
+            try
+            {
+                var series = episode.Series;
+                if (series == null || string.IsNullOrWhiteSpace(backupFolder))
+                    return false;
+
+                var backupFile = FindLatestSeriesBackupFile(series.Name, backupFolder);
+                if (backupFile == null)
+                {
+                    _logger.Debug($"No backup file found for series '{series.Name}' in {backupFolder}");
+                    return false;
+                }
+
+                var json = File.ReadAllText(backupFile);
+                var backup = JsonSerializer.Deserialize<CreditsBackup>(json);
+                if (backup?.Entries == null || backup.Entries.Count == 0)
+                    return false;
+
+                CreditsBackupEntry? entry = null;
+
+                if (entry == null && episode.ProviderIds?.TryGetValue("Tvdb", out var epTvdb) == true && !string.IsNullOrEmpty(epTvdb))
+                    entry = backup.Entries.FirstOrDefault(e => e.TvdbEpisodeId == epTvdb);
+
+                if (entry == null && episode.ProviderIds?.TryGetValue("Tmdb", out var epTmdb) == true && !string.IsNullOrEmpty(epTmdb))
+                    entry = backup.Entries.FirstOrDefault(e => e.TmdbEpisodeId == epTmdb);
+
+                if (entry == null && !string.IsNullOrEmpty(episode.Path))
+                    entry = backup.Entries.FirstOrDefault(e => string.Equals(e.FilePath, episode.Path, StringComparison.OrdinalIgnoreCase));
+
+                if (entry == null && episode.ParentIndexNumber.HasValue && episode.IndexNumber.HasValue)
+                    entry = backup.Entries.FirstOrDefault(e => e.SeasonNumber == episode.ParentIndexNumber.Value && e.EpisodeNumber == episode.IndexNumber.Value);
+
+                if (entry == null)
+                {
+                    _logger.Debug($"Episode '{episode.Name}' not found in backup for series '{series.Name}'");
+                    return false;
+                }
+
+                if (!episode.RunTimeTicks.HasValue || entry.CreditsStartTicks >= episode.RunTimeTicks.Value)
+                {
+                    _logger.Warn($"Backed-up timestamp for '{episode.Name}' exceeds episode duration — skipping restore");
+                    return false;
+                }
+
+                var chapters = _itemRepository.GetChapters(episode)?.ToList() ?? new List<ChapterInfo>();
+                chapters.RemoveAll(c => GetMarkerType(c) == "CreditsStart");
+
+                var creditsChapter = new ChapterInfo
+                {
+                    Name = "Credits Start",
+                    StartPositionTicks = entry.CreditsStartTicks
+                };
+
+                var markerTypeProp = creditsChapter.GetType().GetProperty("MarkerType");
+                if (markerTypeProp != null && markerTypeProp.CanWrite)
+                {
+                    markerTypeProp.SetValue(creditsChapter, CreditsMarkerType.CreditsStart);
+                    chapters.Add(creditsChapter);
+                    chapters = chapters.OrderBy(c => c.StartPositionTicks).ToList();
+                    _itemRepository.SaveChapters(episode.InternalId, chapters);
+                    _logger.Info($"Restored credits marker for '{series.Name} S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2}' from backup");
+                    return true;
+                }
+
+                _logger.Warn($"Could not set MarkerType on ChapterInfo for '{episode.Name}'");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.ErrorException($"Error restoring marker from backup for episode '{episode.Name}'", ex);
+                return false;
+            }
+        }
+
         public Task<CreditsBackupResult> ExportCreditsMarkers(
             List<string>? libraryIds,
             List<string>? seriesIds,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string? backupFolder = null,
+            int maxBackupsPerSeries = 10)
         {
             var result = new CreditsBackupResult { Success = true };
             var backupData = new List<CreditsBackupEntry>();
@@ -205,7 +417,45 @@ namespace EmbyCredits.Services
                     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
                 };
 
-                var json = JsonSerializer.Serialize(backup, jsonOptions);
+                string json;
+
+                if (!string.IsNullOrWhiteSpace(backupFolder))
+                {
+                    if (!Directory.Exists(backupFolder))
+                        Directory.CreateDirectory(backupFolder);
+
+                    var bySeriesName = backupData.GroupBy(e => e.SeriesName).ToList();
+                    var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HHmmss");
+
+                    foreach (var seriesGroup in bySeriesName)
+                    {
+                        var seriesEntries = seriesGroup.ToList();
+                        var seriesBackup = new CreditsBackup
+                        {
+                            Version = "1.0",
+                            BackupDate = DateTime.UtcNow,
+                            TotalEpisodes = seriesEntries.Count,
+                            EpisodesWithCredits = seriesEntries.Count,
+                            Entries = seriesEntries
+                        };
+
+                        var seriesJson = JsonSerializer.Serialize(seriesBackup, jsonOptions);
+                        var safeName = SanitizeFileName(seriesGroup.Key);
+                        var filePath = Path.Combine(backupFolder, $"{safeName}_{timestamp}.json");
+                        File.WriteAllText(filePath, seriesJson);
+                        _logger.Debug($"Saved series backup: {filePath}");
+
+                        RotateSeriesBackups(backupFolder, seriesGroup.Key, maxBackupsPerSeries);
+                    }
+
+                    _logger.Info($"Saved {bySeriesName.Count} per-series backup files to: {backupFolder}");
+
+                    json = JsonSerializer.Serialize(backup, jsonOptions);
+                }
+                else
+                {
+                    json = JsonSerializer.Serialize(backup, jsonOptions);
+                }
 
                 result.Success = true;
                 result.TotalEpisodes = episodesList.Count;

@@ -160,6 +160,7 @@
 
     <div class="fieldDescription" style="font-size: 0.9em; opacity: 0.8;">
         <strong>Export:</strong> Downloads a JSON file with all detected credits markers, including TheTVDB IDs for portable matching.<br>
+        <strong>Bulk Export:</strong> Saves one backup file per TV show to your configured Backup Folder Path. Set the folder in Settings first.<br>
         <strong>Import:</strong> Restores credits markers from a backup file. Matches episodes by TheTVDB ID, internal ID, file path, or series + season/episode number.
     </div>
 
@@ -184,7 +185,7 @@
 <div id="bulkExportModal" class="dialogBackdrop" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; justify-content: center; align-items: center;">
     <div class="dialog" style="border-radius: 8px; padding: 2em; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em;">
-            <h2 style="margin: 0; color: #52B54B;">Select TV Shows to Export</h2>
+            <h2 style="margin: 0; color: #52B54B;">Bulk Export to Folder</h2>
             <button is="emby-button" type="button" id="btnCloseBulkExportModal" class="paper-icon-button-light" style="background: transparent; border: none; cursor: pointer;">
                 <i class="md-icon" style="font-size: 24px;">close</i>
             </button>
@@ -216,8 +217,8 @@
                 <span>Cancel</span>
             </button>
             <button is="emby-button" type="button" class="raised button-submit" id="btnConfirmBulkExport" style="background-color: #52B54B;">
-                <i class="md-icon">download</i>
-                <span>Export Selected</span>
+                <i class="md-icon">save</i>
+                <span>Export to Folder</span>
             </button>
         </div>
     </div>

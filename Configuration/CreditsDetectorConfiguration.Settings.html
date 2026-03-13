@@ -75,13 +75,29 @@
                     <i class="md-icon">folder_open</i>
                 </button>
             </div>
-            <div class="fieldDescription">Custom location for scheduled backup files. If empty, backups will be saved to the default plugin data folder (DataPath/plugins/EmbyCredits/Backups/).</div>
+            <div class="fieldDescription">Required for backup features. Location where per-series backup files are saved. Each TV show gets its own backup file.</div>
         </div>
 
         <div class="inputContainer">
-            <label class="inputLabel inputLabelUnfocused" for="txtMaxScheduledBackups">Maximum Backup Files</label>
+            <label class="inputLabel inputLabelUnfocused" for="txtMaxScheduledBackups">Maximum Backup Files Per Series</label>
             <input is="emby-input" type="number" id="txtMaxScheduledBackups" data-config-key="MaxScheduledBackups" />
-            <div class="fieldDescription">Maximum number of scheduled backup files to keep. Older backups will be automatically deleted. Default: 10</div>
+            <div class="fieldDescription">Maximum number of backup files to keep per TV show. Older backups are automatically deleted. Default: 10</div>
+        </div>
+
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkEnableAutoBackupAfterDetection" data-config-key="EnableAutoBackupAfterDetection" />
+                <span>Auto-backup after detection</span>
+            </label>
+            <div class="fieldDescription">Automatically save a per-series backup file whenever detection completes for a TV show. Requires Backup Folder Path to be set.</div>
+        </div>
+
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkEnableAutoRestoreAfterScan" data-config-key="EnableAutoRestoreAfterScan" />
+                <span>Auto-restore markers after Emby scan</span>
+            </label>
+            <div class="fieldDescription">Automatically re-apply credits markers if an Emby library scan or metadata refresh removes them. Requires Backup Folder Path to be set and at least one backup to exist for the series.</div>
         </div>
 
         <div style="margin-top: 2em; padding: 1em; background: rgba(128,128,128,0.08); border-radius: 4px;">

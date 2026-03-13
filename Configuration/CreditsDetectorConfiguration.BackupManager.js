@@ -176,7 +176,13 @@ define(['loading', 'toast'], function (loading, toast) {
     function openBulkExportModal(view) {
         const modal = view.querySelector('#bulkExportModal');
         if (!modal) return;
-        
+
+        const backupFolder = view.querySelector('#txtBackupFolderPath')?.value?.trim();
+        if (!backupFolder) {
+            toast({ type: 'error', text: 'Backup Folder Path is not configured. Please set it in Settings before using bulk export.' });
+            return;
+        }
+
         modal.style.display = 'flex';
         loadBulkExportLibraries(view);
         loadBulkExportSeriesList(view, '');
@@ -274,70 +280,38 @@ define(['loading', 'toast'], function (loading, toast) {
             return;
         }
         
-        const selectedSeries = Array.from(checkboxes).map(cb => ({
-            id: cb.getAttribute('data-series-id'),
-            name: cb.getAttribute('data-series-name')
-        }));
+        const selectedSeriesIds = Array.from(checkboxes).map(cb => cb.getAttribute('data-series-id'));
+        const selectedCount = selectedSeriesIds.length;
         
         closeBulkExportModal(view);
-        exportSelectedSeries(selectedSeries);
-    }
-    
-    function exportSelectedSeries(seriesList) {
-        require(['loading', 'toast'], function(loading, toast) {
-            loading.show();
-            
-            let completed = 0;
-            let failed = 0;
-            
-            const exportPromises = seriesList.map(series => {
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-                const filename = `credits-${series.name.replace(/[^a-z0-9]/gi, '_')}-${timestamp}.json`;
-                
-                const url = ApiClient.getUrl('CreditsDetector/ExportSeriesCredits', {
-                    SeriesId: series.id
-                });
-                
-                return fetch(url, {
-                    method: 'GET',
-                    headers: {
-                        'X-Emby-Token': ApiClient.accessToken()
-                    }
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    return response.blob();
-                })
-                .then(blob => {
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.style.display = 'none';
-                    a.href = url;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                    
-                    completed++;
-                })
-                .catch(error => {
-                    console.error(`Error exporting ${series.name}:`, error);
-                    failed++;
-                });
-            });
-            
-            Promise.all(exportPromises).then(() => {
-                loading.hide();
-                
-                if (failed === 0) {
-                    toast({ type: 'success', text: `Successfully exported ${completed} TV show(s)` });
-                } else {
-                    toast({ type: 'warning', text: `Exported ${completed} TV show(s), ${failed} failed` });
-                }
-            });
+        
+        loading.show();
+        
+        const url = ApiClient.getUrl('CreditsDetector/BulkExportToFolder');
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-Emby-Token': ApiClient.accessToken(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ SeriesIds: selectedSeriesIds })
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(result => {
+            loading.hide();
+            if (result.Success) {
+                toast({ type: 'success', text: `Exported ${selectedCount} series (${result.EpisodesWithCredits} episodes) to: ${result.FolderPath}` });
+            } else {
+                toast({ type: 'error', text: 'Export failed: ' + result.Message });
+            }
+        })
+        .catch(error => {
+            loading.hide();
+            console.error('Error during bulk export:', error);
+            toast({ type: 'error', text: 'Bulk export failed: ' + error.message });
         });
     }
     

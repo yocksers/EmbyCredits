@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using EmbyCredits.Api;
 using EmbyCredits.Services;
@@ -1214,6 +1215,46 @@ namespace EmbyCredits.Services
             }
         }
 
+        public async Task<object> Post(BulkExportToFolderRequest request)
+        {
+            try
+            {
+                var config = Plugin.Instance?.Configuration;
+                if (config == null)
+                    return new { Success = false, Message = "Plugin configuration not available" };
+
+                if (string.IsNullOrWhiteSpace(config.BackupFolderPath))
+                    return new { Success = false, Message = "Backup folder path is not configured. Please set it in Settings before using bulk export." };
+
+                var backupService = Plugin.CreditsBackupService;
+                if (backupService == null)
+                    return new { Success = false, Message = "Backup service not initialized" };
+
+                var maxBackups = config.MaxScheduledBackups > 0 ? config.MaxScheduledBackups : 10;
+
+                var result = await backupService.ExportCreditsMarkers(
+                    null,
+                    request.SeriesIds,
+                    CancellationToken.None,
+                    config.BackupFolderPath,
+                    maxBackups);
+
+                return new
+                {
+                    Success = result.Success,
+                    Message = result.Message,
+                    TotalEpisodes = result.TotalEpisodes,
+                    EpisodesWithCredits = result.EpisodesWithCredits,
+                    FolderPath = config.BackupFolderPath
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error during bulk export to folder", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
         public async Task<object> Get(ExportSeriesCreditsRequest request)
         {
             try
@@ -2312,6 +2353,104 @@ namespace EmbyCredits.Services
                 "[path]");
             
             return sanitized;
+        }
+
+        public object Get(GetEpisodeChaptersRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.EpisodeId))
+                    return new { Success = false, Message = "EpisodeId is required" };
+
+                if (!Guid.TryParse(request.EpisodeId, out var guid))
+                    return new { Success = false, Message = "Invalid EpisodeId format" };
+
+                var episode = _libraryManager.GetItemById(guid) as Episode;
+                if (episode == null)
+                    return new { Success = false, Message = "Episode not found" };
+
+                var chapterService = Plugin.ChapterMarkerService;
+                if (chapterService == null)
+                    return new { Success = false, Message = "Chapter service not available" };
+
+                var chapters = chapterService.GetChapters(episode);
+                var result = chapters.Select((c, i) => new
+                {
+                    Index = i,
+                    Name = c.Name ?? string.Empty,
+                    StartPositionTicks = c.StartPositionTicks,
+                    TimeFormatted = FormatTimeTicks(c.StartPositionTicks),
+                    MarkerType = chapterService.GetChapterMarkerType(c)
+                }).ToList();
+
+                return new
+                {
+                    Success = true,
+                    EpisodeId = request.EpisodeId,
+                    EpisodeName = episode.Name,
+                    SeriesName = episode.SeriesName,
+                    SeasonNumber = episode.ParentIndexNumber,
+                    EpisodeNumber = episode.IndexNumber,
+                    DurationSeconds = episode.RunTimeTicks.HasValue
+                        ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond
+                        : 0,
+                    Chapters = result
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting episode chapters", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Post(SaveEpisodeChaptersRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.EpisodeId))
+                    return new { Success = false, Message = "EpisodeId is required" };
+
+                if (!Guid.TryParse(request.EpisodeId, out var guid))
+                    return new { Success = false, Message = "Invalid EpisodeId format" };
+
+                var episode = _libraryManager.GetItemById(guid) as Episode;
+                if (episode == null)
+                    return new { Success = false, Message = "Episode not found" };
+
+                var chapterService = Plugin.ChapterMarkerService;
+                if (chapterService == null)
+                    return new { Success = false, Message = "Chapter service not available" };
+
+                var entries = (request.Chapters ?? new List<ChapterItemDto>())
+                    .Select(c => (c.Name ?? string.Empty, c.StartPositionTicks, c.MarkerType ?? "Chapter"))
+                    .ToList();
+
+                chapterService.SaveChapterList(episode, entries);
+
+                return new
+                {
+                    Success = true,
+                    Message = $"Saved {entries.Count} chapter(s) for '{episode.Name}'",
+                    ChapterCount = entries.Count
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error saving episode chapters", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        private string FormatTimeTicks(long ticks)
+        {
+            var totalMs = ticks / 10000;
+            var ms = totalMs % 1000;
+            var totalSecs = totalMs / 1000;
+            var ss = totalSecs % 60;
+            var mm = (totalSecs / 60) % 60;
+            var hh = totalSecs / 3600;
+            return $"{hh:D2}:{mm:D2}:{ss:D2}.{ms:D3}";
         }
     }
 }

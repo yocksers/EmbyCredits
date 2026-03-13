@@ -1,0 +1,339 @@
+<div>
+    <style>
+        .chapter-edit-layout {
+            display: flex;
+            gap: 1.5em;
+            min-height: 580px;
+        }
+
+        .chapter-browser-panel {
+            width: 280px;
+            min-width: 280px;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 0.9em;
+            overflow: hidden;
+        }
+
+        .chapter-browser-hint {
+            font-size: 0.82em;
+            opacity: 0.65;
+            margin-bottom: 0.65em;
+            line-height: 1.4;
+        }
+
+        .chapter-browser-search {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0.35em 0.6em;
+            font-size: 0.87em;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 5px;
+            color: inherit;
+            margin-bottom: 0.6em;
+            outline: none;
+        }
+
+        .chapter-browser-search:focus {
+            border-color: rgba(82, 181, 75, 0.6);
+            background: rgba(82, 181, 75, 0.06);
+        }
+
+        .chapter-browser-path {
+            font-size: 0.78em;
+            opacity: 0.72;
+            margin-bottom: 0.45em;
+            padding-bottom: 0.45em;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            word-break: break-word;
+            line-height: 1.6;
+        }
+
+        .chapter-path-crumb {
+            cursor: pointer;
+            color: #52B54B;
+            text-decoration: none;
+        }
+
+        .chapter-path-crumb:hover {
+            text-decoration: underline;
+        }
+
+        .chapter-browser-list {
+            flex: 1;
+            overflow-y: auto;
+            padding-top: 0.2em;
+        }
+
+        .chapter-browser-item {
+            display: flex;
+            align-items: center;
+            gap: 0.4em;
+            padding: 0.38em 0.55em;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 0.88em;
+            line-height: 1.35;
+            transition: background 0.12s;
+            user-select: none;
+        }
+
+        .chapter-browser-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .chapter-browser-item.selected {
+            background: rgba(82, 181, 75, 0.22);
+            color: #7cce76;
+        }
+
+        .chapter-browser-item .chapter-item-icon {
+            font-size: 0.9em;
+            opacity: 0.7;
+            flex-shrink: 0;
+        }
+
+        .chapter-browser-item.is-folder .chapter-item-icon::before {
+            content: "▸";
+        }
+
+        .chapter-browser-item.is-episode .chapter-item-icon::before {
+            content: "▶";
+            font-size: 0.75em;
+            color: #52B54B;
+        }
+
+        .chapter-browser-item .chapter-item-label {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Chapter editor right panel */
+        .chapter-editor-panel {
+            flex: 1;
+            min-width: 0;
+            overflow-y: auto;
+        }
+
+        .chapter-editor-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+            opacity: 0.4;
+            font-size: 0.95em;
+        }
+
+        .chapter-editor-content {
+            display: none;
+        }
+
+        /* Add-chapter form row */
+        .chapter-add-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5em;
+            flex-wrap: wrap;
+            padding: 0.6em 0.7em;
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 6px;
+            margin-bottom: 0.6em;
+        }
+
+        .chapter-inp {
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 4px;
+            color: inherit;
+            padding: 0.28em 0.45em;
+            font-size: 0.88em;
+            outline: none;
+        }
+
+        .chapter-inp:focus {
+            border-color: rgba(82, 181, 75, 0.55);
+        }
+
+        .chapter-type-sel {
+            background: rgba(82, 181, 75, 0.1);
+            border: 1px solid rgba(82, 181, 75, 0.32);
+            border-radius: 4px;
+            color: inherit;
+            padding: 0.28em 0.4em;
+            font-size: 0.88em;
+            outline: none;
+        }
+
+        .chapter-time-sep {
+            opacity: 0.45;
+            font-size: 0.9em;
+            margin: 0 1px;
+        }
+
+        .chapter-time-num {
+            width: 40px;
+            text-align: center;
+        }
+
+        .chapter-time-ms {
+            width: 52px;
+            text-align: center;
+        }
+
+        /* Column headers */
+        .chapter-table-header {
+            display: grid;
+            grid-template-columns: 28px 1fr 128px 212px 34px;
+            gap: 0.4em;
+            padding: 0.3em 0.5em;
+            font-size: 0.78em;
+            font-weight: 600;
+            opacity: 0.55;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+            margin-bottom: 3px;
+        }
+
+        /* Chapter row */
+        .chapter-row {
+            display: grid;
+            grid-template-columns: 28px 1fr 128px 212px 34px;
+            align-items: center;
+            gap: 0.4em;
+            padding: 0.28em 0.5em;
+            border-radius: 4px;
+            margin-bottom: 2px;
+        }
+
+        .chapter-row:nth-child(odd) {
+            background: rgba(82, 181, 75, 0.055);
+        }
+
+        .chapter-row:nth-child(even) {
+            background: rgba(82, 181, 75, 0.10);
+        }
+
+        .chapter-row-name {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .chapter-row-type {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .chapter-time-group {
+            display: flex;
+            align-items: center;
+        }
+
+        .chapter-del-btn {
+            background: none;
+            border: none;
+            color: #ef9a9a;
+            cursor: pointer;
+            font-size: 1.15em;
+            padding: 0.15em 0.25em;
+            border-radius: 4px;
+            line-height: 1;
+            transition: background 0.12s, color 0.12s;
+        }
+
+        .chapter-del-btn:hover {
+            background: rgba(229, 115, 115, 0.2);
+            color: #e57373;
+        }
+
+        .chapter-unsaved-note {
+            font-size: 0.83em;
+            color: #ffa726;
+            opacity: 0;
+            transition: opacity 0.25s;
+            margin-left: 0.6em;
+        }
+    </style>
+
+    <div class="chapter-edit-layout">
+
+        <!-- ===== LEFT: FILE BROWSER ===== -->
+        <div class="chapter-browser-panel">
+            <div class="chapter-browser-hint">Select an item to view or edit its chapters.</div>
+
+            <label style="font-size:0.8em;opacity:0.65;display:block;margin-bottom:0.25em;">Search</label>
+            <input type="text" id="chapterBrowserSearch" class="chapter-browser-search" placeholder="Search episodes..." autocomplete="off" />
+
+            <div id="chapterBrowserPath" class="chapter-browser-path">Path &nbsp;</div>
+
+            <div id="chapterBrowserList" class="chapter-browser-list">
+                <div style="text-align:center;padding:2em 0.5em;opacity:0.38;font-size:0.87em;">Loading libraries...</div>
+            </div>
+        </div>
+
+        <!-- ===== RIGHT: CHAPTER EDITOR ===== -->
+        <div class="chapter-editor-panel">
+
+            <div id="chapterEditorEmpty" class="chapter-editor-empty">
+                Select an episode to edit its chapters
+            </div>
+
+            <div id="chapterEditorContent" class="chapter-editor-content">
+                <h3 id="chapterEpisodeTitle" style="margin:0 0 0.2em;font-size:1.15em;font-weight:600;"></h3>
+                <div id="chapterEpisodeSubtitle" style="font-size:0.83em;opacity:0.65;margin-bottom:1.4em;">Episode</div>
+
+                <h4 style="margin:0 0 0.7em;padding-bottom:0.4em;border-bottom:1px solid rgba(255,255,255,0.14);font-size:1em;font-weight:600;">Chapter List</h4>
+
+                <!-- Add chapter form -->
+                <div class="chapter-add-row">
+                    <input type="text" id="chapterNewName" class="chapter-inp" placeholder="Name" style="width:148px;" />
+                    <select id="chapterNewType" class="chapter-type-sel">
+                        <option value="Chapter">Chapter</option>
+                        <option value="IntroStart">IntroStart</option>
+                        <option value="IntroEnd">IntroEnd</option>
+                        <option value="CreditsStart">CreditsStart</option>
+                    </select>
+                    <div class="chapter-time-group">
+                        <input type="number" id="chapterNewHH" class="chapter-inp chapter-time-num" min="0" max="99" value="0" title="Hours" />
+                        <span class="chapter-time-sep">:</span>
+                        <input type="number" id="chapterNewMM" class="chapter-inp chapter-time-num" min="0" max="59" value="0" title="Minutes" />
+                        <span class="chapter-time-sep">:</span>
+                        <input type="number" id="chapterNewSS" class="chapter-inp chapter-time-num" min="0" max="59" value="0" title="Seconds" />
+                        <span class="chapter-time-sep">.</span>
+                        <input type="number" id="chapterNewMS" class="chapter-inp chapter-time-ms" min="0" max="999" value="0" title="Milliseconds" />
+                    </div>
+                    <button is="emby-button" type="button" id="btnAddChapter" class="raised button-submit" style="padding:0.3em 1em;font-size:0.88em;">Add</button>
+                </div>
+
+                <!-- Column headers -->
+                <div class="chapter-table-header">
+                    <span></span>
+                    <span>Name</span>
+                    <span>Type</span>
+                    <span>Time</span>
+                    <span></span>
+                </div>
+
+                <!-- Chapter rows rendered here -->
+                <div id="chapterTableBody" style="margin-bottom:0.9em;"></div>
+
+                <!-- Footer buttons -->
+                <div style="display:flex;align-items:center;gap:0.5em;flex-wrap:wrap;">
+                    <button is="emby-button" type="button" id="btnDeleteSelectedChapters" class="raised" style="background-color:#b71c1c;padding:0.35em 1em;font-size:0.87em;">Delete</button>
+                    <span id="chapterUnsavedNote" class="chapter-unsaved-note">● Unsaved changes</span>
+                    <button is="emby-button" type="button" id="btnSaveChapters" class="raised button-submit" style="margin-left:auto;padding:0.35em 1.2em;font-size:0.87em;">
+                        <i class="md-icon" style="font-size:1em;margin-right:0.3em;vertical-align:middle;">save</i>Save Changes
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div style="margin-top:1.8em;padding:0.75em 1em;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;font-size:0.82em;opacity:0.65;text-align:center;">
+        Special thanks to Team B and his Chapter API plugin which this is heavily inspired by!
+    </div>
+</div>

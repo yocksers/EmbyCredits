@@ -8,8 +8,10 @@ define([], function () {
             { id: 'rulesPage', page: 'CreditsDetectorConfiguration.Rules' },
             { id: 'notificationsPage', page: 'CreditsDetectorConfiguration.Notifications' },
             { id: 'ocrEnhancementsPage', page: 'CreditsDetectorConfiguration.OcrEnhancements' },
+            { id: 'autoSkipPage', page: 'CreditsDetectorConfiguration.AutoSkip' },
             { id: 'guidePage', page: 'CreditsDetectorConfiguration.Guide' },
-            { id: 'apiPage', page: 'CreditsDetectorConfiguration.API' }
+            { id: 'apiPage', page: 'CreditsDetectorConfiguration.API' },
+            { id: 'chapterEditPage', page: 'CreditsDetectorConfiguration.ChapterEdit' }
         ];
 
         const promises = parts.map(p => {

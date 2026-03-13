@@ -22,6 +22,7 @@ namespace EmbyCredits.Api
         public const string ExportCreditsBackup = "/CreditsDetector/ExportCreditsBackup";
         public const string ImportCreditsBackup = "/CreditsDetector/ImportCreditsBackup";
         public const string ExportSeriesCredits = "/CreditsDetector/ExportSeriesCredits";
+        public const string BulkExportToFolder = "/CreditsDetector/BulkExportToFolder";
         public const string ImportSeriesCredits = "/CreditsDetector/ImportSeriesCredits";
         public const string GetBackupExportProgress = "/CreditsDetector/GetBackupExportProgress";
         public const string GetBackupImportProgress = "/CreditsDetector/GetBackupImportProgress";
@@ -40,5 +41,7 @@ namespace EmbyCredits.Api
         public const string GetFailedEpisodes = "/CreditsDetector/GetFailedEpisodes";
         public const string ClearFailureMarkers = "/CreditsDetector/ClearFailureMarkers";
         public const string ClearAllFailureMarkers = "/CreditsDetector/ClearAllFailureMarkers";
+        public const string GetEpisodeChapters = "/CreditsDetector/GetEpisodeChapters";
+        public const string SaveEpisodeChapters = "/CreditsDetector/SaveEpisodeChapters";
     }
 }

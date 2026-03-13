@@ -128,6 +128,8 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkBackupImportOverwriteExisting').checked = config.BackupImportOverwriteExisting || false;
             view.querySelector('#txtBackupFolderPath').value = config.BackupFolderPath || '';
             view.querySelector('#txtMaxScheduledBackups').value = config.MaxScheduledBackups !== null && config.MaxScheduledBackups !== undefined ? config.MaxScheduledBackups : 10;
+            view.querySelector('#chkEnableAutoBackupAfterDetection').checked = config.EnableAutoBackupAfterDetection || false;
+            view.querySelector('#chkEnableAutoRestoreAfterScan').checked = config.EnableAutoRestoreAfterScan || false;
 
             view.querySelector('#chkEnableScheduledTaskNotifications').checked = config.EnableScheduledTaskNotifications || false;
             view.querySelector('#chkEnableAutoDetectionNotifications').checked = config.EnableAutoDetectionNotifications || false;
@@ -180,6 +182,11 @@ define(['loading', 'toast'], function (loading, toast) {
                 seriesManager.loadLibraries(view, config);
                 seriesManager.loadLibraryFilter(view);
                 seriesManager.loadSeriesList(view);
+            });
+
+            // Load auto skip exclusions list
+            require(['configurationpage?name=CreditsDetectorConfigurationAutoSkipManager'], (autoSkipManager) => {
+                autoSkipManager.loadAutoSkipSeriesList(view, config.AutoSkipExcludedSeriesIds || []);
             });
             
             // Load rules
@@ -357,6 +364,8 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.BackupImportOverwriteExisting = view.querySelector('#chkBackupImportOverwriteExisting').checked;
         instance.config.BackupFolderPath = view.querySelector('#txtBackupFolderPath').value || '';
         instance.config.MaxScheduledBackups = Number.parseInt(view.querySelector('#txtMaxScheduledBackups').value, 10) || 10;
+        instance.config.EnableAutoBackupAfterDetection = view.querySelector('#chkEnableAutoBackupAfterDetection').checked;
+        instance.config.EnableAutoRestoreAfterScan = view.querySelector('#chkEnableAutoRestoreAfterScan').checked;
 
         instance.config.EnableScheduledTaskNotifications = view.querySelector('#chkEnableScheduledTaskNotifications').checked;
         instance.config.EnableAutoDetectionNotifications = view.querySelector('#chkEnableAutoDetectionNotifications').checked;
@@ -408,6 +417,17 @@ define(['loading', 'toast'], function (loading, toast) {
             }
         });
         instance.config.LibraryIds = selectedLibraryIds;
+
+        const autoSkipCheckboxes = view.querySelectorAll('.chkAutoSkipSeries');
+        if (autoSkipCheckboxes.length > 0) {
+            const excludedIds = [];
+            autoSkipCheckboxes.forEach(cb => {
+                if (cb.checked) {
+                    excludedIds.push(cb.getAttribute('data-series-id'));
+                }
+            });
+            instance.config.AutoSkipExcludedSeriesIds = excludedIds;
+        }
 
         require(['configurationpage?name=CreditsDetectorConfigurationRulesManager'], (rulesManager) => {
             rulesManager.saveRules(instance.config);

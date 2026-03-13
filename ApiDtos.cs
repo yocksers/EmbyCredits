@@ -136,6 +136,12 @@ namespace EmbyCredits.Api
         public string SeriesId { get; set; } = string.Empty;
     }
 
+    [Route(ApiRoutes.BulkExportToFolder, "POST", Summary = "Exports credits markers for selected series to the configured backup folder")]
+    public class BulkExportToFolderRequest : IReturn<object>
+    {
+        public List<string>? SeriesIds { get; set; }
+    }
+
     [Route(ApiRoutes.ImportSeriesCredits, "POST", Summary = "Imports credits markers for a single TV series")]
     public class ImportSeriesCreditsRequest : IReturn<object>
     {
@@ -303,5 +309,25 @@ namespace EmbyCredits.Api
     {
         public string? LibraryId { get; set; }
         public string? SeriesId { get; set; }
+    }
+
+    [Route(ApiRoutes.GetEpisodeChapters, "GET", Summary = "Gets all chapter markers for a specific episode.")]
+    public class GetEpisodeChaptersRequest : IReturn<object>
+    {
+        public string EpisodeId { get; set; } = string.Empty;
+    }
+
+    public class ChapterItemDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public long StartPositionTicks { get; set; }
+        public string MarkerType { get; set; } = "Chapter";
+    }
+
+    [Route(ApiRoutes.SaveEpisodeChapters, "POST", Summary = "Saves the full chapter list for a specific episode.")]
+    public class SaveEpisodeChaptersRequest : IReturn<object>
+    {
+        public string EpisodeId { get; set; } = string.Empty;
+        public List<ChapterItemDto>? Chapters { get; set; }
     }
 }

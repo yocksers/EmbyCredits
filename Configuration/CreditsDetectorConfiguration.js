@@ -8,8 +8,10 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
     'configurationpage?name=CreditsDetectorConfigurationProgressMonitor',
     'configurationpage?name=CreditsDetectorConfigurationMarkersManager',
     'configurationpage?name=CreditsDetectorConfigurationBackupManager',
-    'configurationpage?name=CreditsDetectorConfigurationRulesManager'
-], function (BaseView, loading, toast, embyInput, embyButton, embyCheckbox, loader, events, utils, dataManager, seriesManager, processingActions, progressMonitor, markersManager, backupManager, rulesManager) {
+    'configurationpage?name=CreditsDetectorConfigurationRulesManager',
+    'configurationpage?name=CreditsDetectorConfigurationAutoSkipManager',
+    'configurationpage?name=CreditsDetectorConfigurationChapterEditManager'
+], function (BaseView, loading, toast, embyInput, embyButton, embyCheckbox, loader, events, utils, dataManager, seriesManager, processingActions, progressMonitor, markersManager, backupManager, rulesManager, autoSkipManager, chapterEditManager) {
     'use strict';
 
     return class extends BaseView {
@@ -166,6 +168,12 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 });
             }
 
+            // Initialize chapter editor if its elements are present
+            const chapterBrowserList = view.querySelector('#chapterBrowserList');
+            if (chapterBrowserList) {
+                chapterEditManager.init(view);
+            }
+
             const detectionModeSelect = view.querySelector('#selectDetectionMode');
             
             if (detectionModeSelect) {
@@ -299,6 +307,34 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             if (btnSaveOcrEnhancements) {
                 btnSaveOcrEnhancements.addEventListener('click', () => {
                     dataManager.saveData(this, view);
+                });
+            }
+
+            const btnSaveAutoSkip = view.querySelector('#btnSaveAutoSkip');
+            if (btnSaveAutoSkip) {
+                btnSaveAutoSkip.addEventListener('click', () => {
+                    dataManager.saveData(this, view);
+                });
+            }
+
+            const txtAutoSkipSearch = view.querySelector('#txtAutoSkipSearch');
+            if (txtAutoSkipSearch) {
+                txtAutoSkipSearch.addEventListener('input', () => {
+                    autoSkipManager.filterSeries(view, txtAutoSkipSearch.value);
+                });
+            }
+
+            const btnAutoSkipSelectAll = view.querySelector('#btnAutoSkipSelectAll');
+            if (btnAutoSkipSelectAll) {
+                btnAutoSkipSelectAll.addEventListener('click', () => {
+                    autoSkipManager.selectAll(view);
+                });
+            }
+
+            const btnAutoSkipDeselectAll = view.querySelector('#btnAutoSkipDeselectAll');
+            if (btnAutoSkipDeselectAll) {
+                btnAutoSkipDeselectAll.addEventListener('click', () => {
+                    autoSkipManager.deselectAll(view);
                 });
             }
 

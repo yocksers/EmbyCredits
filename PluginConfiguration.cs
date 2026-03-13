@@ -247,7 +247,12 @@ namespace EmbyCredits
         public int MaxScheduledBackups { get; set; } = 10;
         public string BackupFolderPath { get; set; } = "";
 
+        public bool EnableAutoBackupAfterDetection { get; set; } = false;
+        public bool EnableAutoRestoreAfterScan { get; set; } = false;
+
         public bool EnableThumbnailGeneration { get; set; } = false;
+
+        public string[] AutoSkipExcludedSeriesIds { get; set; } = Array.Empty<string>();
         public int ThumbnailWidth { get; set; } = 320;
         public int ThumbnailQuality { get; set; } = 85;
 

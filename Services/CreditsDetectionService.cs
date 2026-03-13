@@ -36,6 +36,7 @@ namespace EmbyCredits.Services
         private static bool _cancellationRequested = false;
         private static CancellationTokenSource? _cancellationTokenSource = null;
         private static bool _isDryRun = false;
+        private static bool _previousRestoreAfterScanState = false;
 
         private const int MaxQueueSize = 1000;
         private const int MaxProcessedEpisodesCache = 10000;
@@ -47,6 +48,9 @@ namespace EmbyCredits.Services
         private static ChapterMarkerService? _chapterMarkerService;
         private static EpisodeProcessor? _episodeProcessor;
         private static PluginCoordinationService? _pluginCoordination;
+
+        private static ConcurrentDictionary<string, DateTime> _recentlyRestoredEpisodes = new ConcurrentDictionary<string, DateTime>();
+        private const int RestoreGuardSeconds = 120;
 
         private static ConcurrentDictionary<string, List<(string method, double timestamp)>> _batchDetectionCache = new ConcurrentDictionary<string, List<(string method, double timestamp)>>();
         private static bool _isBatchMode = false;
@@ -129,6 +133,12 @@ namespace EmbyCredits.Services
                 _libraryManager.ItemAdded += OnItemAdded;
                 _logger.Info("Auto-detection enabled: ItemAdded event handler registered");
             }
+
+            if (_libraryManager != null && configuration.EnableAutoRestoreAfterScan)
+            {
+                _libraryManager.ItemUpdated += OnItemUpdated;
+                _logger.Info("Auto-restore enabled: ItemUpdated event handler registered");
+            }
         }
 
         public static void UpdateConfiguration(PluginConfiguration configuration)
@@ -173,6 +183,23 @@ namespace EmbyCredits.Services
                     else
                     {
                         _logger?.Info("Auto-detection disabled: ItemAdded event handler unregistered");
+                    }
+                }
+
+                var previousRestoreState = _previousRestoreAfterScanState;
+                _previousRestoreAfterScanState = configuration.EnableAutoRestoreAfterScan;
+                if (configuration.EnableAutoRestoreAfterScan != previousRestoreState)
+                {
+                    _libraryManager.ItemUpdated -= OnItemUpdated;
+
+                    if (configuration.EnableAutoRestoreAfterScan)
+                    {
+                        _libraryManager.ItemUpdated += OnItemUpdated;
+                        _logger?.Info("Auto-restore enabled: ItemUpdated event handler registered");
+                    }
+                    else
+                    {
+                        _logger?.Info("Auto-restore disabled: ItemUpdated event handler unregistered");
                     }
                 }
             }
@@ -289,10 +316,11 @@ namespace EmbyCredits.Services
                 try
                 {
                     _libraryManager.ItemAdded -= OnItemAdded;
+                    _libraryManager.ItemUpdated -= OnItemUpdated;
                 }
                 catch (Exception ex)
                 {
-                    LogError("Error unregistering ItemAdded event", ex);
+                    LogError("Error unregistering library event handlers", ex);
                 }
             }
 
@@ -446,6 +474,59 @@ namespace EmbyCredits.Services
             catch (Exception ex)
             {
                 LogError($"Error handling ItemAdded event for {e.Item?.Name}", ex);
+            }
+        }
+
+        private static void OnItemUpdated(object? sender, ItemChangeEventArgs e)
+        {
+            if (!_isRunning || _isProcessing || _configuration == null || !_configuration.EnableAutoRestoreAfterScan)
+                return;
+
+            if (string.IsNullOrWhiteSpace(_configuration.BackupFolderPath))
+                return;
+
+            if (e.Item is not Episode episode)
+                return;
+
+            if (episode.IsVirtualItem || episode.ParentIndexNumber == null || episode.ParentIndexNumber == 0)
+                return;
+
+            try
+            {
+                var episodeId = episode.Id.ToString();
+
+                if (_recentlyRestoredEpisodes.TryGetValue(episodeId, out var restoredAt) &&
+                    (DateTime.UtcNow - restoredAt).TotalSeconds < RestoreGuardSeconds)
+                {
+                    return;
+                }
+
+                if (_itemRepository == null)
+                    return;
+
+                var chapters = _itemRepository.GetChapters(episode);
+                var hasCreditsMarker = chapters?.Any(c => GetMarkerType(c) == "CreditsStart") ?? false;
+
+                if (hasCreditsMarker)
+                    return;
+
+                if (Plugin.CreditsBackupService == null)
+                    return;
+
+                var restored = Plugin.CreditsBackupService.RestoreEpisodeMarkerFromBackup(episode, _configuration.BackupFolderPath);
+
+                if (restored)
+                {
+                    _recentlyRestoredEpisodes[episodeId] = DateTime.UtcNow;
+
+                    var cutoff = DateTime.UtcNow.AddSeconds(-RestoreGuardSeconds * 2);
+                    foreach (var key in _recentlyRestoredEpisodes.Where(kvp => kvp.Value < cutoff).Select(kvp => kvp.Key).ToList())
+                        _recentlyRestoredEpisodes.TryRemove(key, out _);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Error in OnItemUpdated restore handler for '{e.Item?.Name}'", ex);
             }
         }
 
@@ -1225,6 +1306,43 @@ namespace EmbyCredits.Services
                     }
                     else if (_processingQueue.Count == 0)
                     {
+                        if (_configuration != null &&
+                            _configuration.EnableAutoBackupAfterDetection &&
+                            !string.IsNullOrWhiteSpace(_configuration.BackupFolderPath) &&
+                            !_isDryRun &&
+                            Plugin.CreditsBackupService != null)
+                        {
+                            try
+                            {
+                                var distinctSeriesIds = allEpisodes
+                                    .Where(e => e.Series != null)
+                                    .GroupBy(e => e.Series!.Id)
+                                    .Select(g => g.First().Series!)
+                                    .ToList();
+
+                                foreach (var series in distinctSeriesIds)
+                                {
+                                    var seriesEpisodes = _libraryManager?.GetItemList(new InternalItemsQuery
+                                    {
+                                        IncludeItemTypes = new[] { "Episode" },
+                                        IsVirtualItem = false,
+                                        HasPath = true,
+                                        AncestorIds = new[] { series.InternalId }
+                                    }).OfType<Episode>().ToList() ?? new List<Episode>();
+
+                                    Plugin.CreditsBackupService.SaveSeriesBackupToFile(
+                                        series,
+                                        seriesEpisodes,
+                                        _configuration.BackupFolderPath,
+                                        _configuration.MaxScheduledBackups > 0 ? _configuration.MaxScheduledBackups : 10);
+                                }
+                            }
+                            catch (Exception backupEx)
+                            {
+                                LogError("Auto-backup after detection failed", backupEx);
+                            }
+                        }
+
                         Plugin.Progress.IsRunning = false;
                         Plugin.Progress.EndTime = DateTime.Now;
                         Plugin.Progress.CurrentItem = _isDryRun ? "Dry Run Complete" : "Complete";

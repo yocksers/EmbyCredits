@@ -10,8 +10,8 @@
 
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
-	<AssemblyVersion>2.2.9.0</AssemblyVersion>
-	<FileVersion>2.2.9.0</FileVersion>
+	<AssemblyVersion>2.3.4.0</AssemblyVersion>
+	<FileVersion>2.3.4.0</FileVersion>
 		<RootNamespace>EmbyCredits</RootNamespace>
 		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**;credit\**;test\**</DefaultItemExcludes>
 		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
@@ -76,6 +76,18 @@
 		</EmbeddedResource>
 		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.RulesManager.js">
 			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.RulesManager.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.AutoSkip.html">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.AutoSkip.html</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.AutoSkipManager.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.AutoSkipManager.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.ChapterEditManager.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.ChapterEditManager.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.ChapterEdit.html">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.ChapterEdit.html</LogicalName>
 		</EmbeddedResource>
 	</ItemGroup>
 

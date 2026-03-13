@@ -253,6 +253,11 @@ namespace EmbyCredits
                 },
                 new PluginPageInfo
                 {
+                    Name = "CreditsDetectorConfigurationAutoSkipManager",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.AutoSkipManager.js"
+                },
+                new PluginPageInfo
+                {
                     Name = "CreditsDetectorConfiguration.Settings",
                     EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Settings.html"
                 },
@@ -273,6 +278,11 @@ namespace EmbyCredits
                 },
                 new PluginPageInfo
                 {
+                    Name = "CreditsDetectorConfiguration.AutoSkip",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.AutoSkip.html"
+                },
+                new PluginPageInfo
+                {
                     Name = "CreditsDetectorConfiguration.Actions",
                     EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Actions.html"
                 },
@@ -285,6 +295,16 @@ namespace EmbyCredits
                 {
                     Name = "CreditsDetectorConfiguration.API",
                     EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.API.html"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfigurationChapterEditManager",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.ChapterEditManager.js"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfiguration.ChapterEdit",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.ChapterEdit.html"
                 }
             };
         }
