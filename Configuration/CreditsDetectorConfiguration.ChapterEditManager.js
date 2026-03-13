@@ -9,6 +9,7 @@ define(['loading', 'toast'], function (loading, toast) {
     let _isDirty = false;
     let _isSearchMode = false;
     let _searchTimeout = null;
+    let _allEpisodeItems = null; // cached episode list with Chapters for filtering
 
     function q(id) { return _view.querySelector('#' + id); }
 
@@ -27,6 +28,16 @@ define(['loading', 'toast'], function (loading, toast) {
     function hmsmsToTicks(hh, mm, ss, ms) {
         var totalMs = (hh * 3600 + mm * 60 + ss) * 1000 + ms;
         return totalMs * 10000;
+    }
+
+    function formatRuntime(ticks) {
+        var totalSecs = Math.floor(ticks / 10000000);
+        var h = Math.floor(totalSecs / 3600);
+        var m = Math.floor((totalSecs % 3600) / 60);
+        var s = totalSecs % 60;
+        return h > 0
+            ? h + ':' + pad(m, 2) + ':' + pad(s, 2)
+            : pad(m, 2) + ':' + pad(s, 2);
     }
 
     function escapeAttr(str) {
@@ -130,6 +141,8 @@ define(['loading', 'toast'], function (loading, toast) {
         listEl.innerHTML = '<div style="text-align:center;padding:2em 0.5em;opacity:0.38;font-size:0.85em;">Loading...</div>';
 
         if (_navStack.length === 0) {
+            q('chapterBrowserFilters').style.display = 'none';
+            _allEpisodeItems = null;
             // Root: show TV libraries
             ApiClient.getJSON(ApiClient.getUrl('Library/MediaFolders'))
                 .then(function (response) {
@@ -155,22 +168,77 @@ define(['loading', 'toast'], function (loading, toast) {
             includeTypes = 'Episode';
             sortBy = 'IndexNumber';
         } else {
+            q('chapterBrowserFilters').style.display = 'none';
+            _allEpisodeItems = null;
             renderBrowserList([]);
             return;
         }
+
+        var isEpisodeLevel = includeTypes === 'Episode';
+        q('chapterBrowserFilters').style.display = isEpisodeLevel ? 'block' : 'none';
+        if (!isEpisodeLevel) _allEpisodeItems = null;
 
         var params = {
             ParentId: current.id,
             IncludeItemTypes: includeTypes,
             SortBy: sortBy,
             SortOrder: 'Ascending',
-            Fields: 'ParentIndexNumber,IndexNumber',
+            Fields: isEpisodeLevel ? 'ParentIndexNumber,IndexNumber,Chapters' : 'ParentIndexNumber,IndexNumber',
             Limit: 1000
         };
 
         ApiClient.getJSON(ApiClient.getUrl('Items', params))
-            .then(function (response) { renderBrowserList(response.Items || []); })
+            .then(function (response) {
+                var items = response.Items || [];
+                if (isEpisodeLevel) {
+                    _allEpisodeItems = items;
+                    applyBrowserFilter();
+                } else {
+                    renderBrowserList(items);
+                }
+            })
             .catch(function () { renderBrowserList([]); });
+    }
+
+    function applyBrowserFilter() {
+        if (!_allEpisodeItems) return;
+
+        var noChaptersOnly = q('chapterFilterNoChapters').checked;
+        var maxCountRaw = q('chapterFilterMaxCount').value.trim();
+        var minGapRaw = q('chapterFilterMinGap').value.trim();
+        var hasMaxCount = maxCountRaw !== '' && !isNaN(parseInt(maxCountRaw, 10));
+        var hasMinGap = minGapRaw !== '' && !isNaN(parseInt(minGapRaw, 10));
+        var maxCount = hasMaxCount ? parseInt(maxCountRaw, 10) : null;
+        var minGapTicks = hasMinGap ? parseInt(minGapRaw, 10) * 10000000 : null;
+
+        var anyFilterActive = noChaptersOnly || hasMaxCount || hasMinGap;
+
+        if (!anyFilterActive) {
+            renderBrowserList(_allEpisodeItems);
+            return;
+        }
+
+        var filtered = _allEpisodeItems.filter(function (item) {
+            var chapters = item.Chapters || [];
+            var count = chapters.length;
+
+            if (noChaptersOnly && count !== 0) return false;
+            if (hasMaxCount && count >= maxCount) return false;
+            if (hasMinGap) {
+                var hasLargeGap = false;
+                for (var i = 1; i < chapters.length; i++) {
+                    if ((chapters[i].StartPositionTicks - chapters[i - 1].StartPositionTicks) > minGapTicks) {
+                        hasLargeGap = true;
+                        break;
+                    }
+                }
+                if (!hasLargeGap) return false;
+            }
+
+            return true;
+        });
+
+        renderBrowserList(filtered);
     }
 
     function handleSearch(query) {
@@ -217,6 +285,7 @@ define(['loading', 'toast'], function (loading, toast) {
         q('chapterEditorContent').style.display = 'block';
         q('chapterEpisodeTitle').textContent = displayName;
         q('chapterEpisodeSubtitle').textContent = 'Episode';
+        q('chapterEpisodeRuntime').textContent = '';
         q('chapterTableBody').innerHTML =
             '<div style="text-align:center;padding:1.5em;opacity:0.4;font-size:0.85em;">Loading chapters...</div>';
         q('chapterUnsavedNote').style.opacity = '0';
@@ -232,6 +301,11 @@ define(['loading', 'toast'], function (loading, toast) {
                 if (response.ParentIndexNumber != null) sub += ' · Season ' + response.ParentIndexNumber;
                 if (response.IndexNumber != null) sub += ' · Episode ' + response.IndexNumber;
                 q('chapterEpisodeSubtitle').textContent = sub;
+            }
+            if (response.RunTimeTicks) {
+                q('chapterEpisodeRuntime').textContent = 'Runtime: ' + formatRuntime(response.RunTimeTicks);
+            } else {
+                q('chapterEpisodeRuntime').textContent = '';
             }
             var chapters = (response.Chapters || []).map(function (c) {
                 return {
@@ -462,6 +536,14 @@ define(['loading', 'toast'], function (loading, toast) {
                 }
             }
         });
+
+        // Filter inputs — re-apply filter on any change
+        var filterNoChaps = q('chapterFilterNoChapters');
+        if (filterNoChaps) filterNoChaps.addEventListener('change', applyBrowserFilter);
+        var filterMaxCount = q('chapterFilterMaxCount');
+        if (filterMaxCount) filterMaxCount.addEventListener('input', applyBrowserFilter);
+        var filterMinGap = q('chapterFilterMinGap');
+        if (filterMinGap) filterMinGap.addEventListener('input', applyBrowserFilter);
 
         // Add chapter button
         var btnAdd = q('btnAddChapter');

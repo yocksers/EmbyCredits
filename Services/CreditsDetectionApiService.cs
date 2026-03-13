@@ -398,6 +398,7 @@ namespace EmbyCredits.Services
                         }
 
                         chapterMarkerService.SaveCreditsMarker(episode, actualCreditsStartSeconds);
+                        TryAutoBackupEpisode(episode, (long)(actualCreditsStartSeconds * TimeSpan.TicksPerSecond));
                         successCount++;
                         if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
                         {
@@ -1423,6 +1424,7 @@ namespace EmbyCredits.Services
                 }
 
                 chapterMarkerService.SaveCreditsMarker(episode, actualCreditsStartSeconds);
+                TryAutoBackupEpisode(episode, (long)(actualCreditsStartSeconds * TimeSpan.TicksPerSecond));
 
                 var timeDescription = request.IsRelativeFromEnd 
                     ? $"-{FormatTime(Math.Abs(request.CreditsStartSeconds))} from end (absolute: {FormatTime(actualCreditsStartSeconds)})"
@@ -1590,6 +1592,7 @@ namespace EmbyCredits.Services
                         }
 
                         chapterMarkerService.SaveCreditsMarker(episode, episodeCreditsStartSeconds);
+                        TryAutoBackupEpisode(episode, (long)(episodeCreditsStartSeconds * TimeSpan.TicksPerSecond));
                         successCount++;
                         _logger?.Info($"Applied credits marker at {FormatTime(episodeCreditsStartSeconds)} (-{FormatTime(timeFromEnd)} from end) to {episode.Name}");
                     }
@@ -1632,6 +1635,25 @@ namespace EmbyCredits.Services
             {
                 _logger?.ErrorException($"Error applying credits marker to season", ex);
                 return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        private void TryAutoBackupEpisode(Episode episode, long creditsStartTicks)
+        {
+            try
+            {
+                var config = Plugin.Instance?.Configuration;
+                if (config == null || !config.EnableAutoBackupAfterDetection ||
+                    string.IsNullOrWhiteSpace(config.BackupFolderPath) ||
+                    Plugin.CreditsBackupService == null)
+                    return;
+
+                Plugin.CreditsBackupService.UpsertEpisodeInSeriesBackup(
+                    episode, creditsStartTicks, config.BackupFolderPath);
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Auto-backup after marker save failed", ex);
             }
         }
 
@@ -1690,6 +1712,7 @@ namespace EmbyCredits.Services
                 _logger?.Info($"Manually adding timestamp from dry run: {episodeInfo} at {FormatTime(request.TimestampSeconds)}");
 
                 chapterMarkerService.SaveCreditsMarker(episode, request.TimestampSeconds);
+                TryAutoBackupEpisode(episode, (long)(request.TimestampSeconds * TimeSpan.TicksPerSecond));
 
                 return new { 
                     Success = true, 
@@ -2411,10 +2434,7 @@ namespace EmbyCredits.Services
                 if (string.IsNullOrEmpty(request.EpisodeId))
                     return new { Success = false, Message = "EpisodeId is required" };
 
-                if (!Guid.TryParse(request.EpisodeId, out var guid))
-                    return new { Success = false, Message = "Invalid EpisodeId format" };
-
-                var episode = _libraryManager.GetItemById(guid) as Episode;
+                var episode = _libraryManager.GetItemById(request.EpisodeId) as Episode;
                 if (episode == null)
                     return new { Success = false, Message = "Episode not found" };
 
@@ -2427,6 +2447,11 @@ namespace EmbyCredits.Services
                     .ToList();
 
                 chapterService.SaveChapterList(episode, entries);
+
+                // Auto-backup if a CreditsStart marker was included in the saved chapter list
+                var creditsEntry = entries.FirstOrDefault(e => e.Item3 == "CreditsStart");
+                if (creditsEntry.Item3 == "CreditsStart")
+                    TryAutoBackupEpisode(episode, creditsEntry.Item2);
 
                 return new
                 {

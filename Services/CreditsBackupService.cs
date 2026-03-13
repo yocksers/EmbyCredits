@@ -118,8 +118,10 @@ namespace EmbyCredits.Services
 
                 var json = JsonSerializer.Serialize(backup, _jsonOptions);
                 var safeName = SanitizeFileName(series.Name);
-                var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HHmmss");
-                var filePath = Path.Combine(backupFolder, $"{safeName}_{timestamp}.json");
+                // Overwrite the existing backup file so auto-restore always reads current data.
+                // Only create a new timestamped file when no backup exists yet.
+                var existingBackupFile = FindLatestSeriesBackupFile(series.Name, backupFolder);
+                var filePath = existingBackupFile ?? Path.Combine(backupFolder, $"{safeName}_{DateTime.Now:yyyy-MM-dd_HHmmss}.json");
 
                 File.WriteAllText(filePath, json);
                 _logger.Info($"Per-series backup saved: {filePath} ({backupEntries.Count} episodes with credits)");
@@ -129,6 +131,88 @@ namespace EmbyCredits.Services
             catch (Exception ex)
             {
                 _logger.ErrorException($"Error saving per-series backup for {series.Name}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Updates (or creates) the series backup file with the new credits timestamp for a single episode.
+        /// Call this after any single-episode marker save so the backup stays in sync.
+        /// </summary>
+        public void UpsertEpisodeInSeriesBackup(Episode episode, long creditsStartTicks, string backupFolder)
+        {
+            try
+            {
+                var series = episode.Series;
+                if (series == null || string.IsNullOrWhiteSpace(backupFolder))
+                    return;
+
+                if (!Directory.Exists(backupFolder))
+                    Directory.CreateDirectory(backupFolder);
+
+                CreditsBackup backup;
+                string filePath;
+                var existingFile = FindLatestSeriesBackupFile(series.Name, backupFolder);
+
+                if (existingFile != null)
+                {
+                    filePath = existingFile;
+                    try
+                    {
+                        backup = JsonSerializer.Deserialize<CreditsBackup>(File.ReadAllText(filePath))
+                            ?? new CreditsBackup { Version = "1.0", BackupDate = DateTime.UtcNow, Entries = new List<CreditsBackupEntry>() };
+                        backup.Entries ??= new List<CreditsBackupEntry>();
+                    }
+                    catch
+                    {
+                        backup = new CreditsBackup { Version = "1.0", BackupDate = DateTime.UtcNow, Entries = new List<CreditsBackupEntry>() };
+                    }
+                }
+                else
+                {
+                    var safeName = SanitizeFileName(series.Name);
+                    filePath = Path.Combine(backupFolder, $"{safeName}_{DateTime.Now:yyyy-MM-dd_HHmmss}.json");
+                    backup = new CreditsBackup { Version = "1.0", BackupDate = DateTime.UtcNow, Entries = new List<CreditsBackupEntry>() };
+                }
+
+                // Resolve episode provider IDs upfront for use in both Remove and Add
+                string? epTvdb = episode.ProviderIds?.TryGetValue("Tvdb", out var t1) == true ? t1 : null;
+                string? epTmdb = episode.ProviderIds?.TryGetValue("Tmdb", out var t2) == true ? t2 : null;
+                string? epImdb = episode.ProviderIds?.TryGetValue("Imdb", out var t3) == true ? t3 : null;
+
+                // Remove any existing entry for this episode (match on provider ID, path, or S/E numbers)
+                backup.Entries.RemoveAll(e =>
+                    (!string.IsNullOrEmpty(epTvdb) && e.TvdbEpisodeId == epTvdb) ||
+                    (!string.IsNullOrEmpty(episode.Path) && string.Equals(e.FilePath, episode.Path, StringComparison.OrdinalIgnoreCase)) ||
+                    (episode.ParentIndexNumber.HasValue && episode.IndexNumber.HasValue &&
+                     e.SeasonNumber == episode.ParentIndexNumber.Value && e.EpisodeNumber == episode.IndexNumber.Value));
+
+                // Add the updated entry
+                backup.Entries.Add(new CreditsBackupEntry
+                {
+                    SeriesName = series.Name,
+                    SeriesId = series.Id.ToString(),
+                    TvdbId = series.ProviderIds?.TryGetValue("Tvdb", out var sTvdb) == true ? sTvdb : null,
+                    TmdbId = series.ProviderIds?.TryGetValue("Tmdb", out var sTmdb) == true ? sTmdb : null,
+                    ImdbId = series.ProviderIds?.TryGetValue("Imdb", out var sImdb) == true ? sImdb : null,
+                    TvdbEpisodeId = epTvdb,
+                    TmdbEpisodeId = epTmdb,
+                    ImdbEpisodeId = epImdb,
+                    SeasonNumber = episode.ParentIndexNumber ?? 0,
+                    EpisodeNumber = episode.IndexNumber ?? 0,
+                    EpisodeName = episode.Name,
+                    FilePath = episode.Path,
+                    CreditsStartTicks = creditsStartTicks
+                });
+
+                backup.BackupDate = DateTime.UtcNow;
+                backup.EpisodesWithCredits = backup.Entries.Count;
+
+                File.WriteAllText(filePath, JsonSerializer.Serialize(backup, _jsonOptions));
+                _logger.Info($"Auto-backup: updated entry for '{episode.Name}' in '{Path.GetFileName(filePath)}'");
+            }
+            catch (Exception ex)
+            {
+                _logger.ErrorException($"Error updating backup entry for '{episode.Name}'", ex);
             }
         }
 

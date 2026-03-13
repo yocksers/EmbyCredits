@@ -269,6 +269,29 @@
 
             <div id="chapterBrowserPath" class="chapter-browser-path">Path &nbsp;</div>
 
+            <!-- Filter bar — shown only when viewing episodes inside a season -->
+            <div id="chapterBrowserFilters" style="display:none;padding:0.5em 0.25em 0.4em;border-top:1px solid rgba(255,255,255,0.1);margin-top:0.35em;font-size:0.8em;">
+                <div style="font-weight:600;opacity:0.6;margin-bottom:0.45em;font-size:0.95em;">Filter</div>
+                <div style="display:flex;flex-direction:column;gap:0.4em;">
+                    <label style="display:flex;align-items:center;gap:0.4em;cursor:pointer;">
+                        <input type="checkbox" id="chapterFilterNoChapters" style="cursor:pointer;" />
+                        <span style="opacity:0.75;">No chapters only</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:0.4em;">
+                        <span style="opacity:0.75;">Fewer than</span>
+                        <input type="number" id="chapterFilterMaxCount" min="1" max="999" placeholder="—"
+                            style="width:3.5em;padding:0.15em 0.3em;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:4px;color:inherit;font-size:1em;text-align:center;" />
+                        <span style="opacity:0.75;">chapters</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:0.4em;">
+                        <span style="opacity:0.75;">Gap &nbsp;&gt;</span>
+                        <input type="number" id="chapterFilterMinGap" min="1" placeholder="—"
+                            style="width:4.5em;padding:0.15em 0.3em;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:4px;color:inherit;font-size:1em;text-align:center;" />
+                        <span style="opacity:0.75;">sec between chapters</span>
+                    </label>
+                </div>
+            </div>
+
             <div id="chapterBrowserList" class="chapter-browser-list">
                 <div style="text-align:center;padding:2em 0.5em;opacity:0.38;font-size:0.87em;">Loading libraries...</div>
             </div>
@@ -283,7 +306,8 @@
 
             <div id="chapterEditorContent" class="chapter-editor-content">
                 <h3 id="chapterEpisodeTitle" style="margin:0 0 0.2em;font-size:1.15em;font-weight:600;"></h3>
-                <div id="chapterEpisodeSubtitle" style="font-size:0.83em;opacity:0.65;margin-bottom:1.4em;">Episode</div>
+                <div id="chapterEpisodeSubtitle" style="font-size:0.83em;opacity:0.65;margin-bottom:0.2em;">Episode</div>
+                <div id="chapterEpisodeRuntime" style="font-size:0.8em;opacity:0.5;margin-bottom:1.2em;"></div>
 
                 <h4 style="margin:0 0 0.7em;padding-bottom:0.4em;border-bottom:1px solid rgba(255,255,255,0.14);font-size:1em;font-weight:600;">Chapter List</h4>
 

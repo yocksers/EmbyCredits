@@ -87,9 +87,9 @@
         <div class="checkboxContainer">
             <label>
                 <input is="emby-checkbox" type="checkbox" id="chkEnableAutoBackupAfterDetection" data-config-key="EnableAutoBackupAfterDetection" />
-                <span>Auto-backup after detection</span>
+                <span>Auto-backup after changes</span>
             </label>
-            <div class="fieldDescription">Automatically save a per-series backup file whenever detection completes for a TV show. Requires Backup Folder Path to be set.</div>
+            <div class="fieldDescription">Automatically update the backup file whenever credits timestamps are changed — whether through detection, the marker editor, the chapter editor, or any bulk action. Existing backup entries for affected episodes are overwritten so the auto-restore always uses the latest timestamps. Requires Backup Folder Path to be set.</div>
         </div>
 
         <div class="checkboxContainer">
