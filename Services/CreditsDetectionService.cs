@@ -37,6 +37,7 @@ namespace EmbyCredits.Services
         private static CancellationTokenSource? _cancellationTokenSource = null;
         private static bool _isDryRun = false;
         private static bool _previousRestoreAfterScanState = false;
+        private static bool _previousItemAddedHandlerState = false;
 
         private const int MaxQueueSize = 1000;
         private const int MaxProcessedEpisodesCache = 10000;
@@ -51,6 +52,8 @@ namespace EmbyCredits.Services
 
         private static ConcurrentDictionary<string, DateTime> _recentlyRestoredEpisodes = new ConcurrentDictionary<string, DateTime>();
         private const int RestoreGuardSeconds = 120;
+        private static ConcurrentDictionary<string, bool> _pendingDeferredRestoreChecks = new ConcurrentDictionary<string, bool>();
+        private const int DeferredRestoreDelaySeconds = 45;
 
         private static ConcurrentDictionary<string, List<(string method, double timestamp)>> _batchDetectionCache = new ConcurrentDictionary<string, List<(string method, double timestamp)>>();
         private static bool _isBatchMode = false;
@@ -128,10 +131,11 @@ namespace EmbyCredits.Services
 
             _logger.Info("Credits Detection Service started");
 
-            if (_libraryManager != null && configuration.EnableAutoDetection)
+            _previousItemAddedHandlerState = configuration.EnableAutoDetection || configuration.EnableTracerMode || configuration.OnlyProcessNewEpisodes;
+            if (_libraryManager != null && _previousItemAddedHandlerState)
             {
                 _libraryManager.ItemAdded += OnItemAdded;
-                _logger.Info("Auto-detection enabled: ItemAdded event handler registered");
+                _logger.Info("ItemAdded event handler registered (auto-detection, tracer, or OnlyProcessNewEpisodes enabled)");
             }
 
             if (_libraryManager != null && configuration.EnableAutoRestoreAfterScan)
@@ -171,18 +175,19 @@ namespace EmbyCredits.Services
 
             if (_libraryManager != null && _isRunning)
             {
-                if (configuration.EnableAutoDetection != previousAutoDetectionState)
+                var needsItemAddedHandler = configuration.EnableAutoDetection || configuration.EnableTracerMode || configuration.OnlyProcessNewEpisodes;
+                if (needsItemAddedHandler != _previousItemAddedHandlerState)
                 {
                     _libraryManager.ItemAdded -= OnItemAdded;
-                    
-                    if (configuration.EnableAutoDetection)
+                    _previousItemAddedHandlerState = needsItemAddedHandler;
+                    if (needsItemAddedHandler)
                     {
                         _libraryManager.ItemAdded += OnItemAdded;
-                        _logger?.Info("Auto-detection enabled: ItemAdded event handler registered");
+                        _logger?.Info("ItemAdded event handler registered (auto-detection, tracer, or OnlyProcessNewEpisodes enabled)");
                     }
                     else
                     {
-                        _logger?.Info("Auto-detection disabled: ItemAdded event handler unregistered");
+                        _logger?.Info("ItemAdded event handler unregistered (auto-detection, tracer, and OnlyProcessNewEpisodes all disabled)");
                     }
                 }
 
@@ -360,7 +365,14 @@ namespace EmbyCredits.Services
 
         private static void OnItemAdded(object? sender, ItemChangeEventArgs e)
         {
-            if (!_isRunning || _configuration == null || !_configuration.EnableAutoDetection)
+            if (!_isRunning || _configuration == null)
+                return;
+
+            var autoDetect = _configuration.EnableAutoDetection;
+            var tracerEnabled = _configuration.EnableTracerMode;
+
+            // Nothing to do if neither feature is on
+            if (!autoDetect && !tracerEnabled)
                 return;
 
             try
@@ -412,6 +424,18 @@ namespace EmbyCredits.Services
                     }
 
                     LogInfo($"New episode detected: {episode.SeriesName} - {episode.Name}");
+
+                    // Track in Tracer if enabled (independent of auto-detection)
+                    if (tracerEnabled && Plugin.TracerService != null)
+                        Plugin.TracerService.TrackEpisode(episode);
+
+                    // Track in pending queue if OnlyProcessNewEpisodes is enabled
+                    if (_configuration.OnlyProcessNewEpisodes && Plugin.PendingEpisodesService != null)
+                        Plugin.PendingEpisodesService.TrackEpisode(episode);
+
+                    // Stop here if auto-detection is off
+                    if (!autoDetect)
+                        return;
 
                     var episodeId = episode.Id;
                     var episodeName = episode.Name;
@@ -508,7 +532,10 @@ namespace EmbyCredits.Services
                 var hasCreditsMarker = chapters?.Any(c => GetMarkerType(c) == "CreditsStart") ?? false;
 
                 if (hasCreditsMarker)
+                {
+                    ScheduleDeferredRestoreCheck(episode, episodeId);
                     return;
+                }
 
                 if (Plugin.CreditsBackupService == null)
                     return;
@@ -522,12 +549,59 @@ namespace EmbyCredits.Services
                     var cutoff = DateTime.UtcNow.AddSeconds(-RestoreGuardSeconds * 2);
                     foreach (var key in _recentlyRestoredEpisodes.Where(kvp => kvp.Value < cutoff).Select(kvp => kvp.Key).ToList())
                         _recentlyRestoredEpisodes.TryRemove(key, out _);
+
+                    ScheduleDeferredRestoreCheck(episode, episodeId);
                 }
             }
             catch (Exception ex)
             {
                 LogError($"Error in OnItemUpdated restore handler for '{e.Item?.Name}'", ex);
             }
+        }
+
+        private static void ScheduleDeferredRestoreCheck(Episode episode, string episodeId)
+        {
+            if (!_pendingDeferredRestoreChecks.TryAdd(episodeId, true))
+                return;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(DeferredRestoreDelaySeconds)).ConfigureAwait(false);
+                    _pendingDeferredRestoreChecks.TryRemove(episodeId, out _);
+
+                    if (!_isRunning || _configuration == null || !_configuration.EnableAutoRestoreAfterScan)
+                        return;
+
+                    if (string.IsNullOrWhiteSpace(_configuration.BackupFolderPath))
+                        return;
+
+                    if (_itemRepository == null || Plugin.CreditsBackupService == null)
+                        return;
+
+                    var chapters = _itemRepository.GetChapters(episode);
+                    var stillHasMarker = chapters?.Any(c => GetMarkerType(c) == "CreditsStart") ?? false;
+
+                    if (!stillHasMarker)
+                    {
+                        LogInfo($"Deferred restore check: credits marker was removed for '{episode.Name}', restoring from backup...");
+                        var restored = Plugin.CreditsBackupService.RestoreEpisodeMarkerFromBackup(episode, _configuration.BackupFolderPath);
+                        if (restored)
+                        {
+                            _recentlyRestoredEpisodes[episodeId] = DateTime.UtcNow;
+                            var cutoff = DateTime.UtcNow.AddSeconds(-RestoreGuardSeconds * 2);
+                            foreach (var key in _recentlyRestoredEpisodes.Where(kvp => kvp.Value < cutoff).Select(kvp => kvp.Key).ToList())
+                                _recentlyRestoredEpisodes.TryRemove(key, out _);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _pendingDeferredRestoreChecks.TryRemove(episodeId, out _);
+                    LogError($"Error in deferred restore check for '{episode.Name}'", ex);
+                }
+            });
         }
 
         public static void SetLibraryManager(ILibraryManager libraryManager)
@@ -649,6 +723,29 @@ namespace EmbyCredits.Services
                 else if (hasFailed && isManualDetection && _configuration.IgnoreFailureMarkers)
                 {
                     LogInfo($"Retrying previously failed episode {episode.Name} (IgnoreFailureMarkers is enabled)");
+                }
+            }
+
+            // Skip if file is unchanged since last detection
+            if (!isManualDetection &&
+                _configuration != null &&
+                _configuration.SkipDetectionIfFileUnchanged &&
+                !string.IsNullOrWhiteSpace(_configuration.BackupFolderPath) &&
+                Plugin.CreditsBackupService != null)
+            {
+                if (!Plugin.CreditsBackupService.HasFileChanged(episode, _configuration.BackupFolderPath))
+                {
+                    LogInfo($"Skipping {episode.Name} — file unchanged since last detection");
+                    if (Plugin.Instance != null)
+                    {
+                        var skipSeries = episode.Series;
+                        var skipKey = skipSeries != null
+                            ? $"{skipSeries.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
+                            : episode.Name;
+                        Plugin.Progress.SkipReasons[skipKey] = "File unchanged since last detection";
+                        Plugin.Progress.SkippedItems++;
+                    }
+                    return;
                 }
             }
 
@@ -1496,7 +1593,23 @@ namespace EmbyCredits.Services
                     break;
 
                 var episodeId = episode.Id.ToString();
-                
+
+                if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && !_configuration.IgnoreFailureMarkers)
+                {
+                    var hasFailed = episode.ProviderIds?.TryGetValue("EmbyCredits.Fail", out var failValue) == true && failValue == "true";
+                    if (hasFailed)
+                    {
+                        _logger?.Info($"Skipping {episode.Name} - previously failed detection (SkipPreviouslyFailedEpisodes is enabled)");
+                        if (Plugin.Instance != null)
+                        {
+                            var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
+                            Plugin.Progress.SkipReasons[episodeKey] = "Previously failed detection";
+                            Plugin.Progress.SkippedItems++;
+                        }
+                        continue;
+                    }
+                }
+
                 try
                 {
                     if (Plugin.Instance != null)
@@ -1574,6 +1687,28 @@ namespace EmbyCredits.Services
                         if (!_isDryRun)
                         {
                             _processedEpisodes.TryAdd(episodeId, DateTime.UtcNow);
+
+                            // Remove from Tracer and pending queue now that detection has run
+                            Plugin.TracerService?.MarkDetected(episodeId);
+                            Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
+
+                            // Record file fingerprint so "skip if unchanged" works on next run
+                            if (_configuration != null &&
+                                _configuration.SkipDetectionIfFileUnchanged &&
+                                !string.IsNullOrWhiteSpace(_configuration.BackupFolderPath) &&
+                                Plugin.CreditsBackupService != null)
+                            {
+                                try
+                                {
+                                    var fpTicks = (long)(creditsStart * TimeSpan.TicksPerSecond);
+                                    Plugin.CreditsBackupService.UpsertEpisodeInSeriesBackup(
+                                        episode, fpTicks, _configuration.BackupFolderPath);
+                                }
+                                catch (Exception fpEx)
+                                {
+                                    _logger?.Debug($"Failed to record file fingerprint for {episode.Name}: {fpEx.Message}");
+                                }
+                            }
                         }
                         
                         _logger?.Debug($"Successfully detected credits at {FormatTime(creditsStart)} for {episode.Name}");
@@ -1590,11 +1725,36 @@ namespace EmbyCredits.Services
                         
                         GetAndClearEpisodeStatusMessages(episodeId);
                         _logger?.Warn($"Failed to detect credits for {episode.Name}: {failureReason}");
+
+                        // Record file fingerprint on failure so "skip if unchanged" prevents re-queuing
+                        // this episode on subsequent scheduled runs when the file hasn't changed.
+                        // Chromaprint is unaffected: it routes through QueueSeries which bypasses
+                        // all QueueEpisode skip checks before the fingerprint check is reached.
+                        if (!_isDryRun &&
+                            _configuration != null &&
+                            _configuration.SkipDetectionIfFileUnchanged &&
+                            !string.IsNullOrWhiteSpace(_configuration.BackupFolderPath) &&
+                            Plugin.CreditsBackupService != null)
+                        {
+                            try
+                            {
+                                Plugin.CreditsBackupService.UpsertEpisodeInSeriesBackup(
+                                    episode, 0L, _configuration.BackupFolderPath);
+                            }
+                            catch (Exception fpEx)
+                            {
+                                _logger?.Debug($"Failed to record file fingerprint for {episode.Name}: {fpEx.Message}");
+                            }
+                        }
+
+                        if (!_isDryRun)
+                            Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger?.ErrorException($"Error processing episode {episode.Name}", ex);
+                    Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
                     if (Plugin.Instance != null)
                     {
                         Plugin.Progress.CompleteProcessingItem(false);

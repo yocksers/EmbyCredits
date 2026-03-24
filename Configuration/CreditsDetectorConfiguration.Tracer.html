@@ -1,0 +1,148 @@
+<div>
+    <style>
+        .tracer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.75em;
+            margin-bottom: 1.2em;
+        }
+
+        .tracer-header h2 {
+            margin: 0;
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+
+        .tracer-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.6em;
+            flex-wrap: wrap;
+        }
+
+        .tracer-meta {
+            font-size: 0.82em;
+            opacity: 0.55;
+            margin-bottom: 1.2em;
+        }
+
+        .tracer-disabled-notice {
+            padding: 1.2em;
+            background: rgba(255,152,0,0.08);
+            border: 1px solid rgba(255,152,0,0.25);
+            border-radius: 6px;
+            font-size: 0.88em;
+            color: #ffb74d;
+            margin-bottom: 1.2em;
+        }
+
+        .tracer-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35em;
+        }
+
+        .tracer-item {
+            display: flex;
+            align-items: center;
+            gap: 0.6em;
+            padding: 0.55em 0.75em;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 5px;
+            font-size: 0.88em;
+        }
+
+        .tracer-item-label {
+            flex: 1;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tracer-item-series {
+            font-weight: 600;
+            opacity: 0.9;
+        }
+
+        .tracer-item-ep {
+            opacity: 0.6;
+            font-size: 0.9em;
+            margin-left: 0.3em;
+        }
+
+        .tracer-item-added {
+            font-size: 0.78em;
+            opacity: 0.38;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .tracer-item-actions {
+            display: flex;
+            gap: 0.4em;
+            flex-shrink: 0;
+        }
+
+        .tracer-run-btn {
+            padding: 0.25em 0.75em;
+            font-size: 0.82em;
+        }
+
+        .tracer-dismiss-btn {
+            padding: 0.25em 0.55em;
+            font-size: 0.82em;
+            background: transparent !important;
+            border: 1px solid rgba(255,255,255,0.18) !important;
+            opacity: 0.6;
+        }
+
+        .tracer-dismiss-btn:hover {
+            opacity: 1;
+        }
+
+        #tracerEmptyMsg {
+            text-align: center;
+            padding: 2.5em 1em;
+            opacity: 0.38;
+            font-size: 0.9em;
+        }
+    </style>
+
+    <div style="display:flex;align-items:center;gap:0.75em;margin-bottom:1em;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:0.5em;cursor:pointer;margin:0;">
+            <input is="emby-checkbox" type="checkbox" id="chkEnableTracerMode" data-config-key="EnableTracerMode" />
+            <span style="font-weight:600;">Enable Tracer</span>
+        </label>
+        <span style="font-size:0.82em;opacity:0.55;">Track newly added episodes that haven't had detection run yet</span>
+        <button is="emby-button" type="button" id="btnTracerSave" class="raised button-submit" style="padding:0.3em 1.1em;font-size:0.85em;margin-left:auto;">Save</button>
+    </div>
+
+    <div class="tracer-header">
+        <h2>Episodes Pending Detection</h2>
+        <div class="tracer-header-actions">
+            <button is="emby-button" type="button" id="btnTracerRefresh" class="raised" style="padding:0.35em 1em;font-size:0.87em;">
+                <i class="md-icon" style="font-size:1em;margin-right:0.3em;vertical-align:middle;">refresh</i>Refresh
+            </button>
+            <button is="emby-button" type="button" id="btnTracerRunAll" class="raised button-submit" style="padding:0.35em 1.1em;font-size:0.87em;">
+                <i class="md-icon" style="font-size:1em;margin-right:0.3em;vertical-align:middle;">play_arrow</i>Run Detection for All
+            </button>
+            <button is="emby-button" type="button" id="btnTracerClear" class="raised" style="padding:0.35em 0.9em;font-size:0.87em;background-color:#b71c1c;">
+                <i class="md-icon" style="font-size:1em;margin-right:0.3em;vertical-align:middle;">clear_all</i>Clear List
+            </button>
+        </div>
+    </div>
+
+    <div id="tracerDisabledNotice" class="tracer-disabled-notice" style="display:none;">
+        Tracer is currently disabled. Enable the <strong>Enable Tracer</strong> toggle above to start tracking newly added episodes.
+    </div>
+
+    <div id="tracerCountLine" class="tracer-meta" style="display:none;"></div>
+
+    <div id="tracerEpisodeList" class="tracer-list">
+        <div id="tracerEmptyMsg">Loading...</div>
+    </div>
+</div>

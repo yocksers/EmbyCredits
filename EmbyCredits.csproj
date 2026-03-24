@@ -10,8 +10,8 @@
 
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
-	<AssemblyVersion>2.3.5.0</AssemblyVersion>
-	<FileVersion>2.3.5.0</FileVersion>
+	<AssemblyVersion>2.4.0.0</AssemblyVersion>
+	<FileVersion>2.4.0.0</FileVersion>
 		<RootNamespace>EmbyCredits</RootNamespace>
 		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**;credit\**;test\**</DefaultItemExcludes>
 		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
@@ -88,6 +88,12 @@
 		</EmbeddedResource>
 		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.ChapterEdit.html">
 			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.ChapterEdit.html</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.TracerManager.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.TracerManager.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.Tracer.html">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.Tracer.html</LogicalName>
 		</EmbeddedResource>
 	</ItemGroup>
 

@@ -17,14 +17,6 @@
             </div>
         </div>
 
-        <div class="checkboxContainer">
-            <label>
-                <input is="emby-checkbox" type="checkbox" id="chkEnableAutoDetection" data-config-key="EnableAutoDetection" />
-                <span>Enable Automatic Detection</span>
-            </label>
-            <div class="fieldDescription">Automatically process new episodes as they are added to the library</div>
-        </div>
-
         <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtTimestampOffsetSeconds">Timestamp Offset (seconds)</label>
             <input is="emby-input" type="number" id="txtTimestampOffsetSeconds" data-config-key="TimestampOffsetSeconds" step="1" />
@@ -82,22 +74,6 @@
             <label class="inputLabel inputLabelUnfocused" for="txtMaxScheduledBackups">Maximum Backup Files Per Series</label>
             <input is="emby-input" type="number" id="txtMaxScheduledBackups" data-config-key="MaxScheduledBackups" />
             <div class="fieldDescription">Maximum number of backup files to keep per TV show. Older backups are automatically deleted. Default: 10</div>
-        </div>
-
-        <div class="checkboxContainer">
-            <label>
-                <input is="emby-checkbox" type="checkbox" id="chkEnableAutoBackupAfterDetection" data-config-key="EnableAutoBackupAfterDetection" />
-                <span>Auto-backup after changes</span>
-            </label>
-            <div class="fieldDescription">Automatically update the backup file whenever credits timestamps are changed — whether through detection, the marker editor, the chapter editor, or any bulk action. Existing backup entries for affected episodes are overwritten so the auto-restore always uses the latest timestamps. Requires Backup Folder Path to be set.</div>
-        </div>
-
-        <div class="checkboxContainer">
-            <label>
-                <input is="emby-checkbox" type="checkbox" id="chkEnableAutoRestoreAfterScan" data-config-key="EnableAutoRestoreAfterScan" />
-                <span>Auto-restore markers after Emby scan</span>
-            </label>
-            <div class="fieldDescription">Automatically re-apply credits markers if an Emby library scan or metadata refresh removes them. Requires Backup Folder Path to be set and at least one backup to exist for the series.</div>
         </div>
 
         <div style="margin-top: 2em; padding: 1em; background: rgba(128,128,128,0.08); border-radius: 4px;">
@@ -169,15 +145,55 @@
         <div class="collapsible-section" style="margin-top: 1.5em;">
             <h3 class="collapsible-header" style="cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
                 <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
-                <span>Library Selection</span>
+                <span>Auto-detection and Schedule task</span>
             </h3>
             <div class="collapsible-content" style="display: none; margin-top: 1em;">
                 <div class="fieldDescription" style="margin-bottom: 1em;">Choose which TV Show or Mixed libraries to enable credits detection. If none are selected, all TV Show and Mixed libraries will be used.</div>
 
-                <div style="margin-bottom: 1em;">
+                <div style="margin-bottom: 1.5em;">
                     <label style="display: block; font-weight: bold; margin-bottom: 0.5em;">Enabled Libraries:</label>
                     <div id="creditsLibraries" style="margin-left: 1em;"></div>
                     <div class="fieldDescription" style="margin-top: 0.5em;">Libraries where automatic detection and scheduled tasks will run</div>
+                </div>
+
+                <div class="checkboxContainer">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkEnableAutoDetection" data-config-key="EnableAutoDetection" />
+                        <span>Enable Automatic Detection</span>
+                    </label>
+                    <div class="fieldDescription">Automatically process new episodes as they are added to the library</div>
+                </div>
+
+                <div class="checkboxContainer" style="margin-top: 1em;">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkEnableAutoBackupAfterDetection" data-config-key="EnableAutoBackupAfterDetection" />
+                        <span>Auto-backup after changes</span>
+                    </label>
+                    <div class="fieldDescription">Automatically update the backup file whenever credits timestamps are changed — whether through detection, the marker editor, the chapter editor, or any bulk action. Existing backup entries for affected episodes are overwritten so the auto-restore always uses the latest timestamps. Requires Backup Folder Path to be set.</div>
+                </div>
+
+                <div class="checkboxContainer" style="margin-top: 1em;">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkEnableAutoRestoreAfterScan" data-config-key="EnableAutoRestoreAfterScan" />
+                        <span>Auto-restore markers after Emby scan</span>
+                    </label>
+                    <div class="fieldDescription">Automatically re-apply credits markers if an Emby library scan or metadata refresh removes them. Requires Backup Folder Path to be set and at least one backup to exist for the series.</div>
+                </div>
+
+                <div class="checkboxContainer" style="margin-top: 1em;">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkSkipDetectionIfFileUnchanged" data-config-key="SkipDetectionIfFileUnchanged" />
+                        <span>Skip detection if file is unchanged</span>
+                    </label>
+                    <div class="fieldDescription">Skip re-running detection on an episode if its media file has not changed (same size and modification time) since the last successful detection. Useful for scheduled tasks to avoid redundant processing. Requires Backup Folder Path to be set. Manual detection always runs regardless of this setting.</div>
+                </div>
+
+                <div class="checkboxContainer" style="margin-top: 1em;">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkOnlyProcessNewEpisodes" data-config-key="OnlyProcessNewEpisodes" />
+                        <span>Only process new episodes</span>
+                    </label>
+                    <div class="fieldDescription">When enabled, both automatic detection and the scheduled task will only process episodes that have been added to the library since the last detection run, rather than scanning the whole library every time. New episodes are tracked automatically when they are added to Emby. For Chromaprint detection the full season is still fetched so audio comparison works correctly.</div>
                 </div>
 
                 <div class="checkboxContainer" style="margin-top: 1em;">
@@ -199,8 +215,8 @@
         </div>
     </div>
 
-    <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
-        <h2 class="collapsible-header" data-detection-type="ocr" style="margin-top:0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
+    <div class="paper-card" style="padding: 0; margin-top: 1.5em;">
+        <h2 class="collapsible-header" data-detection-type="ocr" style="font-size: 1em; margin: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
             <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
             <span>OCR Keywords</span>
         </h2>
@@ -232,8 +248,8 @@
         </div>
     </div>
 
-    <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
-        <h2 class="collapsible-header" style="margin-top:0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
+    <div class="paper-card" style="padding: 0; margin-top: 1.5em;">
+        <h2 class="collapsible-header" style="font-size: 1em; margin: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
             <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
             <span>Anime Detection</span>
         </h2>
@@ -271,8 +287,8 @@
         </div>
     </div>
 
-    <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
-        <h2 class="collapsible-header" data-detection-type="hash" style="margin-top:0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
+    <div class="paper-card" style="padding: 0; margin-top: 1.5em;">
+        <h2 class="collapsible-header" data-detection-type="hash" style="font-size: 1em; margin: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
             <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
             <span>Hash Detection (Chromaprint)</span>
         </h2>
@@ -401,8 +417,8 @@
         </div>
     </div>
 
-    <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
-        <h2 class="collapsible-header" data-detection-type="ocr" style="margin-top:0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
+    <div class="paper-card" style="padding: 0; margin-top: 1.5em;">
+        <h2 class="collapsible-header" data-detection-type="ocr" style="font-size: 1em; margin: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
             <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
             <span>Performance & Resource Control</span>
         </h2>
@@ -605,8 +621,8 @@
         </div>
     </div>
 
-    <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
-        <h2 class="collapsible-header" data-detection-type="ocr" style="margin-top: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
+    <div class="paper-card" style="padding: 0; margin-top: 1.5em;">
+        <h2 class="collapsible-header" data-detection-type="ocr" style="font-size: 1em; margin: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
             <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
             <span>OCR Detection Settings</span>
         </h2>
@@ -762,8 +778,8 @@
         </div>
     </div>
 
-    <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
-        <h2 class="collapsible-header" style="margin-top: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
+    <div class="paper-card" style="padding: 0; margin-top: 1.5em;">
+        <h2 class="collapsible-header" style="font-size: 1em; margin: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
             <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
             <span>Detection Thumbnails</span>
         </h2>

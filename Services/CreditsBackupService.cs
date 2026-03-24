@@ -89,6 +89,15 @@ namespace EmbyCredits.Services
                     if (creditsMarker == null)
                         continue;
 
+                    long? epFileSize = null;
+                    DateTime? epFileModified = null;
+                    if (!string.IsNullOrEmpty(episode.Path) && File.Exists(episode.Path))
+                    {
+                        var fi = new FileInfo(episode.Path);
+                        epFileSize = fi.Length;
+                        epFileModified = fi.LastWriteTimeUtc;
+                    }
+
                     backupEntries.Add(new CreditsBackupEntry
                     {
                         SeriesName = series.Name,
@@ -103,7 +112,9 @@ namespace EmbyCredits.Services
                         EpisodeNumber = episode.IndexNumber ?? 0,
                         EpisodeName = episode.Name,
                         FilePath = episode.Path,
-                        CreditsStartTicks = creditsMarker.StartPositionTicks
+                        CreditsStartTicks = creditsMarker.StartPositionTicks,
+                        LastDetectedFileSize = epFileSize,
+                        LastDetectedModified = epFileModified
                     });
                 }
 
@@ -131,6 +142,54 @@ namespace EmbyCredits.Services
             catch (Exception ex)
             {
                 _logger.ErrorException($"Error saving per-series backup for {series.Name}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Returns true when the episode's media file has changed (size or modification time differs)
+        /// since the last time a fingerprint was recorded in the backup, or when no fingerprint exists.
+        /// Returns true on any error so detection is never silently skipped.
+        /// </summary>
+        public bool HasFileChanged(Episode episode, string backupFolder)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(backupFolder) || string.IsNullOrEmpty(episode.Path))
+                    return true;
+
+                var series = episode.Series;
+                if (series == null) return true;
+
+                var backupFile = FindLatestSeriesBackupFile(series.Name, backupFolder);
+                if (backupFile == null) return true;
+
+                CreditsBackup? backup;
+                try { backup = JsonSerializer.Deserialize<CreditsBackup>(File.ReadAllText(backupFile)); }
+                catch { return true; }
+
+                if (backup?.Entries == null) return true;
+
+                CreditsBackupEntry? entry = null;
+                if (episode.ProviderIds?.TryGetValue("Tvdb", out var epTvdb) == true && !string.IsNullOrEmpty(epTvdb))
+                    entry = backup.Entries.FirstOrDefault(e => e.TvdbEpisodeId == epTvdb);
+                if (entry == null && !string.IsNullOrEmpty(episode.Path))
+                    entry = backup.Entries.FirstOrDefault(e => string.Equals(e.FilePath, episode.Path, StringComparison.OrdinalIgnoreCase));
+                if (entry == null && episode.ParentIndexNumber.HasValue && episode.IndexNumber.HasValue)
+                    entry = backup.Entries.FirstOrDefault(e => e.SeasonNumber == episode.ParentIndexNumber.Value && e.EpisodeNumber == episode.IndexNumber.Value);
+
+                if (entry == null || !entry.LastDetectedFileSize.HasValue || !entry.LastDetectedModified.HasValue)
+                    return true; // no fingerprint yet — run detection
+
+                if (!File.Exists(episode.Path)) return true;
+
+                var fi = new FileInfo(episode.Path);
+                return fi.Length != entry.LastDetectedFileSize.Value ||
+                       Math.Abs((fi.LastWriteTimeUtc - entry.LastDetectedModified.Value).TotalSeconds) > 2;
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"Error checking file fingerprint for '{episode.Name}': {ex.Message}");
+                return true;
             }
         }
 
@@ -186,6 +245,16 @@ namespace EmbyCredits.Services
                     (episode.ParentIndexNumber.HasValue && episode.IndexNumber.HasValue &&
                      e.SeasonNumber == episode.ParentIndexNumber.Value && e.EpisodeNumber == episode.IndexNumber.Value));
 
+                // Read current file fingerprint
+                long? fileSize = null;
+                DateTime? fileModified = null;
+                if (!string.IsNullOrEmpty(episode.Path) && File.Exists(episode.Path))
+                {
+                    var fi = new FileInfo(episode.Path);
+                    fileSize = fi.Length;
+                    fileModified = fi.LastWriteTimeUtc;
+                }
+
                 // Add the updated entry
                 backup.Entries.Add(new CreditsBackupEntry
                 {
@@ -201,7 +270,9 @@ namespace EmbyCredits.Services
                     EpisodeNumber = episode.IndexNumber ?? 0,
                     EpisodeName = episode.Name,
                     FilePath = episode.Path,
-                    CreditsStartTicks = creditsStartTicks
+                    CreditsStartTicks = creditsStartTicks,
+                    LastDetectedFileSize = fileSize,
+                    LastDetectedModified = fileModified
                 });
 
                 backup.BackupDate = DateTime.UtcNow;
@@ -953,6 +1024,8 @@ namespace EmbyCredits.Services
         public string EpisodeName { get; set; } = string.Empty;
         public string FilePath { get; set; } = string.Empty;
         public long CreditsStartTicks { get; set; }
+        public long? LastDetectedFileSize { get; set; }
+        public DateTime? LastDetectedModified { get; set; }
     }
 
     public class CreditsBackupResult

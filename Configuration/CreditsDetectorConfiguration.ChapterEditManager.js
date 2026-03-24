@@ -6,6 +6,7 @@ define(['loading', 'toast'], function (loading, toast) {
     let _view = null;
     let _navStack = []; // [{id, name, type}]
     let _currentEpisodeId = null;
+    let _currentEpisodeRuntimeTicks = 0;
     let _isDirty = false;
     let _isSearchMode = false;
     let _searchTimeout = null;
@@ -289,6 +290,7 @@ define(['loading', 'toast'], function (loading, toast) {
         q('chapterTableBody').innerHTML =
             '<div style="text-align:center;padding:1.5em;opacity:0.4;font-size:0.85em;">Loading chapters...</div>';
         q('chapterUnsavedNote').style.opacity = '0';
+        _currentEpisodeRuntimeTicks = 0;
 
         // Use the native Emby Items API — this is the authoritative source for chapter data
         var userId = ApiClient.getCurrentUserId();
@@ -303,8 +305,10 @@ define(['loading', 'toast'], function (loading, toast) {
                 q('chapterEpisodeSubtitle').textContent = sub;
             }
             if (response.RunTimeTicks) {
+                _currentEpisodeRuntimeTicks = response.RunTimeTicks;
                 q('chapterEpisodeRuntime').textContent = 'Runtime: ' + formatRuntime(response.RunTimeTicks);
             } else {
+                _currentEpisodeRuntimeTicks = 0;
                 q('chapterEpisodeRuntime').textContent = '';
             }
             var chapters = (response.Chapters || []).map(function (c) {
@@ -347,6 +351,7 @@ define(['loading', 'toast'], function (loading, toast) {
 
         var row = document.createElement('div');
         row.className = 'chapter-row';
+        row.setAttribute('data-chapter-type', markerType);
 
         var typeOpts = CHAPTER_TYPES.map(function (t) {
             return '<option value="' + t + '"' + (t === markerType ? ' selected' : '') + '>' + t + '</option>';
@@ -359,15 +364,32 @@ define(['loading', 'toast'], function (loading, toast) {
             '<input type="text" class="chapter-inp chapter-row-name" value="' + escapeAttr(name) + '" placeholder="Name" />' +
             '<select class="chapter-type-sel chapter-row-type">' + typeOpts + '</select>' +
             '<div class="chapter-time-group">' +
-                '<input type="number" class="chapter-inp chapter-time-num chapter-hh" min="0" max="99" value="' + hh + '" title="Hours" />' +
+                '<div class="chapter-time-field">' +
+                    '<input type="number" class="chapter-inp chapter-time-num chapter-hh" min="0" max="99" value="' + hh + '" />' +
+                    '<span class="chapter-time-unit">H</span>' +
+                '</div>' +
                 '<span class="chapter-time-sep">:</span>' +
-                '<input type="number" class="chapter-inp chapter-time-num chapter-mm" min="0" max="59" value="' + mm + '" title="Minutes" />' +
+                '<div class="chapter-time-field">' +
+                    '<input type="number" class="chapter-inp chapter-time-num chapter-mm" min="0" max="59" value="' + mm + '" />' +
+                    '<span class="chapter-time-unit">M</span>' +
+                '</div>' +
                 '<span class="chapter-time-sep">:</span>' +
-                '<input type="number" class="chapter-inp chapter-time-num chapter-ss" min="0" max="59" value="' + ss + '" title="Seconds" />' +
+                '<div class="chapter-time-field">' +
+                    '<input type="number" class="chapter-inp chapter-time-num chapter-ss" min="0" max="59" value="' + ss + '" />' +
+                    '<span class="chapter-time-unit">S</span>' +
+                '</div>' +
                 '<span class="chapter-time-sep">.</span>' +
-                '<input type="number" class="chapter-inp chapter-time-ms chapter-ms" min="0" max="999" value="' + ms + '" title="Milliseconds" />' +
+                '<div class="chapter-time-field">' +
+                    '<input type="number" class="chapter-inp chapter-time-ms chapter-ms" min="0" max="999" value="' + ms + '" />' +
+                    '<span class="chapter-time-unit">ms</span>' +
+                '</div>' +
             '</div>' +
             '<button type="button" class="chapter-del-btn" title="Delete this chapter">⊗</button>';
+
+        // Update row color when type changes
+        row.querySelector('.chapter-row-type').addEventListener('change', function () {
+            row.setAttribute('data-chapter-type', this.value);
+        });
 
         // Mark dirty on any edit
         row.querySelectorAll('input, select').forEach(function (el) {
@@ -395,6 +417,39 @@ define(['loading', 'toast'], function (loading, toast) {
     function markDirty() {
         _isDirty = true;
         q('chapterUnsavedNote').style.opacity = '1';
+    }
+
+    function addChaptersEveryInterval() {
+        if (!_currentEpisodeId) return;
+
+        if (!_currentEpisodeRuntimeTicks) {
+            toast({ type: 'warning', text: 'Episode runtime unknown — open an episode first' });
+            return;
+        }
+
+        var intervalMins = parseInt(q('chapterIntervalMin').value) || 5;
+        if (intervalMins < 1) intervalMins = 1;
+        var prefix = q('chapterIntervalPrefix').value.trim() || 'Chapter';
+
+        var intervalTicks = intervalMins * 60 * 10000000;
+        var body = q('chapterTableBody');
+
+        // Remove empty placeholder if present
+        var placeholder = body.querySelector('div:not(.chapter-row)');
+        if (placeholder) placeholder.remove();
+
+        var count = 1;
+        var t = 0;
+        var added = 0;
+        while (t < _currentEpisodeRuntimeTicks) {
+            body.appendChild(buildChapterRow(prefix + ' ' + count, 'Chapter', t));
+            count++;
+            t += intervalTicks;
+            added++;
+        }
+
+        markDirty();
+        toast({ type: 'success', text: added + ' chapter' + (added === 1 ? '' : 's') + ' generated' });
     }
 
     function addChapter() {
@@ -560,6 +615,10 @@ define(['loading', 'toast'], function (loading, toast) {
         // Delete selected
         var btnDel = q('btnDeleteSelectedChapters');
         if (btnDel) btnDel.addEventListener('click', deleteSelected);
+
+        // Generate chapters by interval
+        var btnInterval = q('btnAddChaptersInterval');
+        if (btnInterval) btnInterval.addEventListener('click', addChaptersEveryInterval);
 
         // Save
         var btnSave = q('btnSaveChapters');

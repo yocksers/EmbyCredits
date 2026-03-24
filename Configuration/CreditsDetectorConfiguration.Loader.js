@@ -11,7 +11,8 @@ define([], function () {
             { id: 'autoSkipPage', page: 'CreditsDetectorConfiguration.AutoSkip' },
             { id: 'guidePage', page: 'CreditsDetectorConfiguration.Guide' },
             { id: 'apiPage', page: 'CreditsDetectorConfiguration.API' },
-            { id: 'chapterEditPage', page: 'CreditsDetectorConfiguration.ChapterEdit' }
+            { id: 'chapterEditPage', page: 'CreditsDetectorConfiguration.ChapterEdit' },
+            { id: 'tracerPage',      page: 'CreditsDetectorConfiguration.Tracer' }
         ];
 
         const promises = parts.map(p => {

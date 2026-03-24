@@ -159,20 +159,20 @@
             border-color: rgba(82, 181, 75, 0.55);
         }
 
+        /* ChapterEdit inherits the global select styles from the root page.
+           Only layout overrides needed here. */
         .chapter-type-sel {
-            background: rgba(82, 181, 75, 0.1);
-            border: 1px solid rgba(82, 181, 75, 0.32);
-            border-radius: 4px;
-            color: inherit;
-            padding: 0.28em 0.4em;
-            font-size: 0.88em;
-            outline: none;
+            border-radius: 4px !important;
+            padding: 0.28em 0.4em !important;
+            font-size: 0.88em !important;
         }
 
         .chapter-time-sep {
             opacity: 0.45;
             font-size: 0.9em;
             margin: 0 1px;
+            margin-top: 0.32em;
+            align-self: flex-start;
         }
 
         .chapter-time-num {
@@ -188,7 +188,7 @@
         /* Column headers */
         .chapter-table-header {
             display: grid;
-            grid-template-columns: 28px 1fr 128px 212px 34px;
+            grid-template-columns: 28px 1fr 128px 245px 46px;
             gap: 0.4em;
             padding: 0.3em 0.5em;
             font-size: 0.78em;
@@ -201,7 +201,7 @@
         /* Chapter row */
         .chapter-row {
             display: grid;
-            grid-template-columns: 28px 1fr 128px 212px 34px;
+            grid-template-columns: 28px 1fr 128px 245px 46px;
             align-items: center;
             gap: 0.4em;
             padding: 0.28em 0.5em;
@@ -209,12 +209,20 @@
             margin-bottom: 2px;
         }
 
-        .chapter-row:nth-child(odd) {
-            background: rgba(82, 181, 75, 0.055);
+        .chapter-row[data-chapter-type="Chapter"] {
+            background: rgba(82, 181, 75, 0.08);
         }
 
-        .chapter-row:nth-child(even) {
-            background: rgba(82, 181, 75, 0.10);
+        .chapter-row[data-chapter-type="IntroStart"] {
+            background: rgba(41, 128, 185, 0.13);
+        }
+
+        .chapter-row[data-chapter-type="IntroEnd"] {
+            background: rgba(142, 68, 173, 0.13);
+        }
+
+        .chapter-row[data-chapter-type="CreditsStart"] {
+            background: rgba(230, 126, 34, 0.13);
         }
 
         .chapter-row-name {
@@ -229,7 +237,21 @@
 
         .chapter-time-group {
             display: flex;
+            align-items: flex-start;
+        }
+
+        .chapter-time-field {
+            display: inline-flex;
+            flex-direction: column;
             align-items: center;
+        }
+
+        .chapter-time-unit {
+            font-size: 0.62em;
+            opacity: 0.48;
+            line-height: 1;
+            margin-top: 2px;
+            text-align: center;
         }
 
         .chapter-del-btn {
@@ -321,15 +343,38 @@
                         <option value="CreditsStart">CreditsStart</option>
                     </select>
                     <div class="chapter-time-group">
-                        <input type="number" id="chapterNewHH" class="chapter-inp chapter-time-num" min="0" max="99" value="0" title="Hours" />
+                        <div class="chapter-time-field">
+                            <input type="number" id="chapterNewHH" class="chapter-inp chapter-time-num" min="0" max="99" value="0" />
+                            <span class="chapter-time-unit">H</span>
+                        </div>
                         <span class="chapter-time-sep">:</span>
-                        <input type="number" id="chapterNewMM" class="chapter-inp chapter-time-num" min="0" max="59" value="0" title="Minutes" />
+                        <div class="chapter-time-field">
+                            <input type="number" id="chapterNewMM" class="chapter-inp chapter-time-num" min="0" max="59" value="0" />
+                            <span class="chapter-time-unit">M</span>
+                        </div>
                         <span class="chapter-time-sep">:</span>
-                        <input type="number" id="chapterNewSS" class="chapter-inp chapter-time-num" min="0" max="59" value="0" title="Seconds" />
+                        <div class="chapter-time-field">
+                            <input type="number" id="chapterNewSS" class="chapter-inp chapter-time-num" min="0" max="59" value="0" />
+                            <span class="chapter-time-unit">S</span>
+                        </div>
                         <span class="chapter-time-sep">.</span>
-                        <input type="number" id="chapterNewMS" class="chapter-inp chapter-time-ms" min="0" max="999" value="0" title="Milliseconds" />
+                        <div class="chapter-time-field">
+                            <input type="number" id="chapterNewMS" class="chapter-inp chapter-time-ms" min="0" max="999" value="0" />
+                            <span class="chapter-time-unit">ms</span>
+                        </div>
                     </div>
                     <button is="emby-button" type="button" id="btnAddChapter" class="raised button-submit" style="padding:0.3em 1em;font-size:0.88em;">Add</button>
+                </div>
+
+                <!-- Auto-generate chapters by interval -->
+                <div class="chapter-add-row" style="margin-top:0.4em;">
+                    <span style="font-size:0.85em;opacity:0.65;white-space:nowrap;">Every</span>
+                    <input type="number" id="chapterIntervalMin" class="chapter-inp" min="1" max="999" value="5" style="width:50px;text-align:center;" title="Interval in minutes" />
+                    <span style="font-size:0.85em;opacity:0.65;white-space:nowrap;">min &nbsp;&nbsp; Prefix:</span>
+                    <input type="text" id="chapterIntervalPrefix" class="chapter-inp" placeholder="Chapter" style="width:100px;" />
+                    <button is="emby-button" type="button" id="btnAddChaptersInterval" class="raised" style="padding:0.3em 1em;font-size:0.88em;margin-left:auto;">
+                        <i class="md-icon" style="font-size:1em;margin-right:0.25em;vertical-align:middle;">format_list_numbered</i>Generate
+                    </button>
                 </div>
 
                 <!-- Column headers -->
@@ -337,7 +382,15 @@
                     <span></span>
                     <span>Name</span>
                     <span>Type</span>
-                    <span>Time</span>
+                    <div style="display:flex;align-items:center;">
+                        <span style="width:40px;text-align:center;">H</span>
+                        <span style="width:8px;text-align:center;opacity:0.45;">:</span>
+                        <span style="width:40px;text-align:center;">M</span>
+                        <span style="width:8px;text-align:center;opacity:0.45;">:</span>
+                        <span style="width:40px;text-align:center;">S</span>
+                        <span style="width:8px;text-align:center;opacity:0.45;">.</span>
+                        <span style="width:52px;text-align:center;">ms</span>
+                    </div>
                     <span></span>
                 </div>
 

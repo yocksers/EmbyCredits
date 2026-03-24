@@ -330,4 +330,16 @@ namespace EmbyCredits.Api
         public string EpisodeId { get; set; } = string.Empty;
         public List<ChapterItemDto>? Chapters { get; set; }
     }
+
+    [Route(ApiRoutes.GetTracerEpisodes, "GET", Summary = "Returns the list of episodes pending detection.")]
+    public class GetTracerEpisodesRequest : IReturn<object> { }
+
+    [Route(ApiRoutes.DismissTracerEpisode, "POST", Summary = "Removes one episode from the tracer list.")]
+    public class DismissTracerEpisodeRequest : IReturn<object>
+    {
+        public string EpisodeId { get; set; } = string.Empty;
+    }
+
+    [Route(ApiRoutes.ClearTracerList, "POST", Summary = "Clears the entire tracer list.")]
+    public class ClearTracerListRequest : IReturn<object> { }
 }

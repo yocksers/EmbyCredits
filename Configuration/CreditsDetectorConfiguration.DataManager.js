@@ -129,6 +129,8 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtBackupFolderPath').value = config.BackupFolderPath || '';
             view.querySelector('#txtMaxScheduledBackups').value = config.MaxScheduledBackups !== null && config.MaxScheduledBackups !== undefined ? config.MaxScheduledBackups : 10;
             view.querySelector('#chkEnableAutoBackupAfterDetection').checked = config.EnableAutoBackupAfterDetection || false;
+            view.querySelector('#chkSkipDetectionIfFileUnchanged').checked = config.SkipDetectionIfFileUnchanged || false;
+            view.querySelector('#chkEnableTracerMode').checked = config.EnableTracerMode || false;
             view.querySelector('#chkEnableAutoRestoreAfterScan').checked = config.EnableAutoRestoreAfterScan || false;
 
             view.querySelector('#chkEnableScheduledTaskNotifications').checked = config.EnableScheduledTaskNotifications || false;
@@ -365,6 +367,8 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.BackupFolderPath = view.querySelector('#txtBackupFolderPath').value || '';
         instance.config.MaxScheduledBackups = Number.parseInt(view.querySelector('#txtMaxScheduledBackups').value, 10) || 10;
         instance.config.EnableAutoBackupAfterDetection = view.querySelector('#chkEnableAutoBackupAfterDetection').checked;
+        instance.config.SkipDetectionIfFileUnchanged = view.querySelector('#chkSkipDetectionIfFileUnchanged').checked;
+        instance.config.EnableTracerMode = view.querySelector('#chkEnableTracerMode').checked;
         instance.config.EnableAutoRestoreAfterScan = view.querySelector('#chkEnableAutoRestoreAfterScan').checked;
 
         instance.config.EnableScheduledTaskNotifications = view.querySelector('#chkEnableScheduledTaskNotifications').checked;

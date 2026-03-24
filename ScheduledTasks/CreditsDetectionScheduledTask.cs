@@ -53,73 +53,138 @@ namespace EmbyCredits.ScheduledTasks
             CreditsDetectionService.SetItemRepository(_itemRepository);
 
             var allEpisodes = new List<Episode>();
-            List<Folder> librariesToProcess;
 
-            if (libraryIds.Length == 0)
+            if (config.OnlyProcessNewEpisodes && Plugin.PendingEpisodesService != null)
             {
-                _logger.Info("No specific libraries configured, processing all TV Show and Mixed libraries");
+                // Pending-queue mode: only process episodes that have been added since
+                // the last detection run, rather than scanning the whole library.
+                var pendingIds = Plugin.PendingEpisodesService.GetPendingEpisodeIds();
+                _logger.Info($"OnlyProcessNewEpisodes: {pendingIds.Count} pending episode(s) in queue");
 
-                var allLibraries = _libraryManager.GetItemList(new InternalItemsQuery
+                if (pendingIds.Count == 0)
                 {
-                    IncludeItemTypes = new[] { "CollectionFolder" }
-                }).ToList();
-
-                librariesToProcess = allLibraries
-                    .Where(lib => 
-                    {
-                        var collectionType = lib.GetType().GetProperty("CollectionType")?.GetValue(lib) as string;
-                        return collectionType == "tvshows" || collectionType == "mixed" || string.IsNullOrEmpty(collectionType);
-                    })
-                    .OfType<Folder>()
-                    .ToList();
-            }
-            else
-            {
-                librariesToProcess = new List<Folder>();
-                foreach (var libraryId in libraryIds)
-                {
-                    var library = _libraryManager.GetItemById(libraryId) as Folder;
-                    if (library != null)
-                    {
-                        librariesToProcess.Add(library);
-                    }
-                    else
-                    {
-                        _logger.Warn($"Library not found: {libraryId}");
-                    }
+                    _logger.Info("No pending episodes to process");
+                    return;
                 }
-            }
 
-            _logger.Info($"Starting scheduled credits detection for {librariesToProcess.Count} libraries");
-
-            foreach (var library in librariesToProcess)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                    break;
-
-                try
+                // Resolve IDs and group by series+season
+                var pendingBySeason = new Dictionary<(string seriesId, int season), List<Episode>>();
+                foreach (var id in pendingIds)
                 {
-                    _logger.Info($"Scanning library: {library.Name}");
+                    if (!Guid.TryParse(id, out var guid)) continue;
+                    var ep = _libraryManager.GetItemById(guid) as Episode;
+                    if (ep == null || ep.ParentIndexNumber == null || ep.ParentIndexNumber == 0 || ep.Series == null)
+                        continue;
 
-                    var query = new InternalItemsQuery
+                    var key = (ep.Series.Id.ToString(), ep.ParentIndexNumber.Value);
+                    if (!pendingBySeason.ContainsKey(key))
+                        pendingBySeason[key] = new List<Episode>();
+                    pendingBySeason[key].Add(ep);
+                }
+
+                if (pendingBySeason.Count == 0)
+                {
+                    _logger.Info("No resolvable pending episodes found (items may have been removed from library)");
+                    // Clear stale IDs
+                    foreach (var id in pendingIds)
+                        Plugin.PendingEpisodesService.MarkProcessed(id);
+                    return;
+                }
+
+                // For each season with pending episodes, fetch the full season so that
+                // Chromaprint batch detection has access to all episodes it needs.
+                // For non-Chromaprint series the extra episodes are filtered out below
+                // by ScheduledTaskOnlyProcessMissing, so there's no wasted work.
+                foreach (var kvp in pendingBySeason)
+                {
+                    var (seriesId, seasonNumber) = kvp.Key;
+                    var firstPending = kvp.Value.First();
+                    var series = firstPending.Series!;
+
+                    var seasonEps = _libraryManager.GetItemList(new InternalItemsQuery
                     {
                         IncludeItemTypes = new[] { "Episode" },
                         IsVirtualItem = false,
                         HasPath = true,
-                        Recursive = true,
-                        Parent = library
-                    };
+                        AncestorIds = new[] { series.InternalId }
+                    }).OfType<Episode>()
+                      .Where(e => e.ParentIndexNumber == seasonNumber && e.ParentIndexNumber != 0)
+                      .ToList();
 
-                    var allLibraryEpisodes = _libraryManager.GetItemList(query).OfType<Episode>().ToList();
-                    var episodes = allLibraryEpisodes.Where(e => e.ParentIndexNumber != null && e.ParentIndexNumber != 0).ToList();
-                    var specialCount = allLibraryEpisodes.Count - episodes.Count;
-                    allEpisodes.AddRange(episodes);
-
-                    _logger.Info($"Found {episodes.Count} episodes in {library.Name} (excluded {specialCount} specials)");
+                    allEpisodes.AddRange(seasonEps);
+                    _logger.Info($"Pending queue: queued {seasonEps.Count} episode(s) from {series.Name} Season {seasonNumber} (includes full season for Chromaprint)");
                 }
-                catch (Exception ex)
+
+                // Deduplicate in case seasons overlapped
+                allEpisodes = allEpisodes.GroupBy(e => e.Id).Select(g => g.First()).ToList();
+            }
+            else
+            {
+                // Full library scan mode (original behaviour)
+                List<Folder> librariesToProcess;
+
+                if (libraryIds.Length == 0)
                 {
-                    _logger.ErrorException($"Error processing library {library.Name}", ex);
+                    _logger.Info("No specific libraries configured, processing all TV Show and Mixed libraries");
+
+                    var allLibraries = _libraryManager.GetItemList(new InternalItemsQuery
+                    {
+                        IncludeItemTypes = new[] { "CollectionFolder" }
+                    }).ToList();
+
+                    librariesToProcess = allLibraries
+                        .Where(lib =>
+                        {
+                            var collectionType = lib.GetType().GetProperty("CollectionType")?.GetValue(lib) as string;
+                            return collectionType == "tvshows" || collectionType == "mixed" || string.IsNullOrEmpty(collectionType);
+                        })
+                        .OfType<Folder>()
+                        .ToList();
+                }
+                else
+                {
+                    librariesToProcess = new List<Folder>();
+                    foreach (var libraryId in libraryIds)
+                    {
+                        var library = _libraryManager.GetItemById(libraryId) as Folder;
+                        if (library != null)
+                            librariesToProcess.Add(library);
+                        else
+                            _logger.Warn($"Library not found: {libraryId}");
+                    }
+                }
+
+                _logger.Info($"Starting scheduled credits detection for {librariesToProcess.Count} libraries");
+
+                foreach (var library in librariesToProcess)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        break;
+
+                    try
+                    {
+                        _logger.Info($"Scanning library: {library.Name}");
+
+                        var query = new InternalItemsQuery
+                        {
+                            IncludeItemTypes = new[] { "Episode" },
+                            IsVirtualItem = false,
+                            HasPath = true,
+                            Recursive = true,
+                            Parent = library
+                        };
+
+                        var allLibraryEpisodes = _libraryManager.GetItemList(query).OfType<Episode>().ToList();
+                        var episodes = allLibraryEpisodes.Where(e => e.ParentIndexNumber != null && e.ParentIndexNumber != 0).ToList();
+                        var specialCount = allLibraryEpisodes.Count - episodes.Count;
+                        allEpisodes.AddRange(episodes);
+
+                        _logger.Info($"Found {episodes.Count} episodes in {library.Name} (excluded {specialCount} specials)");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.ErrorException($"Error processing library {library.Name}", ex);
+                    }
                 }
             }
 

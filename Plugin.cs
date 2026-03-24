@@ -34,6 +34,8 @@ namespace EmbyCredits
         public static CreditsDetectionProgress BackupImportProgress { get; } = new CreditsDetectionProgress();
         public static CreditsBackupService? CreditsBackupService { get; private set; }
         public static ChapterMarkerService? ChapterMarkerService { get; private set; }
+        public static TracerService? TracerService { get; private set; }
+        public static PendingEpisodesService? PendingEpisodesService { get; private set; }
         public static INotificationManager? NotificationManager { get; private set; }
 
         public IApplicationPaths AppPaths => _appPaths;
@@ -305,6 +307,16 @@ namespace EmbyCredits
                 {
                     Name = "CreditsDetectorConfiguration.ChapterEdit",
                     EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.ChapterEdit.html"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfigurationTracerManager",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.TracerManager.js"
+                },
+                new PluginPageInfo
+                {
+                    Name = "CreditsDetectorConfiguration.Tracer",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Tracer.html"
                 }
             };
         }
@@ -323,6 +335,8 @@ namespace EmbyCredits
 
             CreditsBackupService = new CreditsBackupService(_logger, _libraryManager, _itemRepository);
             ChapterMarkerService = new ChapterMarkerService(_logger, _itemRepository);
+            TracerService = new TracerService(_logger, _appPaths.DataPath);
+            PendingEpisodesService = new PendingEpisodesService(_logger, _appPaths.DataPath);
 
             var cleanedCount = Services.Utilities.FFmpegHelper.CleanupOrphanedTempDirectories();
             if (cleanedCount > 0)

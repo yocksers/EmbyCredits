@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("EmbyCredits")]
-[assembly: AssemblyDescription("Automatically detect and mark end credits in TV show episodes using OCR technology.")]
+[assembly: AssemblyDescription("Automatically detect and mark end credits in TV show episodes.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("EmbyCredits")]
@@ -14,5 +14,5 @@ using System.Runtime.InteropServices;
 
 [assembly: Guid("a3c7f2e5-8d4b-4a1e-9c5f-7b2d6e8a3f41")]
 
-[assembly: AssemblyVersion("2.3.5.0")]
-[assembly: AssemblyFileVersion("2.3.5.0")]
+[assembly: AssemblyVersion("2.4.0.0")]
+[assembly: AssemblyFileVersion("2.4.0.0")]

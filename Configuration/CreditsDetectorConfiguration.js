@@ -10,8 +10,9 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
     'configurationpage?name=CreditsDetectorConfigurationBackupManager',
     'configurationpage?name=CreditsDetectorConfigurationRulesManager',
     'configurationpage?name=CreditsDetectorConfigurationAutoSkipManager',
-    'configurationpage?name=CreditsDetectorConfigurationChapterEditManager'
-], function (BaseView, loading, toast, embyInput, embyButton, embyCheckbox, loader, events, utils, dataManager, seriesManager, processingActions, progressMonitor, markersManager, backupManager, rulesManager, autoSkipManager, chapterEditManager) {
+    'configurationpage?name=CreditsDetectorConfigurationChapterEditManager',
+    'configurationpage?name=CreditsDetectorConfigurationTracerManager'
+], function (BaseView, loading, toast, embyInput, embyButton, embyCheckbox, loader, events, utils, dataManager, seriesManager, processingActions, progressMonitor, markersManager, backupManager, rulesManager, autoSkipManager, chapterEditManager, tracerManager) {
     'use strict';
 
     return class extends BaseView {
@@ -172,6 +173,12 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             const chapterBrowserList = view.querySelector('#chapterBrowserList');
             if (chapterBrowserList) {
                 chapterEditManager.init(view);
+            }
+
+            // Initialize tracer tab if its elements are present
+            const tracerList = view.querySelector('#tracerEpisodeList');
+            if (tracerList) {
+                tracerManager.init(view);
             }
 
             const detectionModeSelect = view.querySelector('#selectDetectionMode');

@@ -2477,5 +2477,64 @@ namespace EmbyCredits.Services
             var hh = totalSecs / 3600;
             return $"{hh:D2}:{mm:D2}:{ss:D2}.{ms:D3}";
         }
+
+        public object Get(GetTracerEpisodesRequest request)
+        {
+            try
+            {
+                var tracer = Plugin.TracerService;
+                if (tracer == null)
+                    return new { Success = false, Message = "Tracer service not available" };
+
+                var entries = tracer.GetAll().Select(e => new
+                {
+                    e.EpisodeId,
+                    e.SeriesName,
+                    e.SeasonNumber,
+                    e.EpisodeNumber,
+                    e.EpisodeName,
+                    e.FilePath,
+                    AddedUtc = e.AddedUtc.ToString("o")
+                }).ToList();
+
+                return new { Success = true, Count = entries.Count, Episodes = entries };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting tracer episodes", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Post(DismissTracerEpisodeRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.EpisodeId))
+                    return new { Success = false, Message = "EpisodeId is required" };
+
+                Plugin.TracerService?.Remove(request.EpisodeId);
+                return new { Success = true };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error dismissing tracer episode", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Post(ClearTracerListRequest request)
+        {
+            try
+            {
+                Plugin.TracerService?.Clear();
+                return new { Success = true };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error clearing tracer list", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
     }
 }
