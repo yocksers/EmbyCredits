@@ -286,13 +286,18 @@
         <div class="chapter-browser-panel">
             <div class="chapter-browser-hint">Select an item to view or edit its chapters.</div>
 
+            <label style="display:flex;align-items:center;gap:0.4em;cursor:pointer;font-size:0.8em;margin-bottom:0.45em;">
+                <input type="checkbox" id="chkAllLibraries" style="cursor:pointer;" />
+                <span style="opacity:0.75;">Show all libraries (including movies)</span>
+            </label>
+
             <label style="font-size:0.8em;opacity:0.65;display:block;margin-bottom:0.25em;">Search</label>
-            <input type="text" id="chapterBrowserSearch" class="chapter-browser-search" placeholder="Search episodes..." autocomplete="off" />
+            <input type="text" id="chapterBrowserSearch" class="chapter-browser-search" placeholder="Search..." autocomplete="off" />
 
             <div id="chapterBrowserPath" class="chapter-browser-path">Path &nbsp;</div>
 
             <!-- Filter bar — shown only when viewing episodes inside a season -->
-            <div id="chapterBrowserFilters" style="display:none;padding:0.5em 0.25em 0.4em;border-top:1px solid rgba(255,255,255,0.1);margin-top:0.35em;font-size:0.8em;">
+            <div id="chapterBrowserFilters" style="display:block;padding:0.5em 0.25em 0.4em;border-top:1px solid rgba(255,255,255,0.1);margin-top:0.35em;font-size:0.8em;">
                 <div style="font-weight:600;opacity:0.6;margin-bottom:0.45em;font-size:0.95em;">Filter</div>
                 <div style="display:flex;flex-direction:column;gap:0.4em;">
                     <label style="display:flex;align-items:center;gap:0.4em;cursor:pointer;">
@@ -303,13 +308,31 @@
                         <span style="opacity:0.75;">Fewer than</span>
                         <input type="number" id="chapterFilterMaxCount" min="1" max="999" placeholder="—"
                             style="width:3.5em;padding:0.15em 0.3em;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:4px;color:inherit;font-size:1em;text-align:center;" />
+                        <button id="chapterFilterMaxCountClear" title="Clear filter" style="display:none;background:none;border:none;color:inherit;opacity:0.45;cursor:pointer;font-size:1.1em;line-height:1;padding:0 0.1em;">&times;</button>
                         <span style="opacity:0.75;">chapters</span>
                     </label>
                     <label style="display:flex;align-items:center;gap:0.4em;">
                         <span style="opacity:0.75;">Gap &nbsp;&gt;</span>
                         <input type="number" id="chapterFilterMinGap" min="1" placeholder="—"
                             style="width:4.5em;padding:0.15em 0.3em;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:4px;color:inherit;font-size:1em;text-align:center;" />
+                        <button id="chapterFilterMinGapClear" title="Clear filter" style="display:none;background:none;border:none;color:inherit;opacity:0.45;cursor:pointer;font-size:1.1em;line-height:1;padding:0 0.1em;">&times;</button>
                         <span style="opacity:0.75;">sec between chapters</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:0.4em;">
+                        <span style="opacity:0.75;">Intro Start</span>
+                        <select id="chapterFilterIntro" style="padding:0.15em 0.3em;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:4px;color:inherit;font-size:1em;">
+                            <option value="">—</option>
+                            <option value="has">Has</option>
+                            <option value="missing">Missing</option>
+                        </select>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:0.4em;">
+                        <span style="opacity:0.75;">Credits Start</span>
+                        <select id="chapterFilterCredits" style="padding:0.15em 0.3em;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:4px;color:inherit;font-size:1em;">
+                            <option value="">—</option>
+                            <option value="has">Has</option>
+                            <option value="missing">Missing</option>
+                        </select>
                     </label>
                 </div>
             </div>

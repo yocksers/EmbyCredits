@@ -1724,7 +1724,6 @@ namespace EmbyCredits.Services
                         }
                         
                         GetAndClearEpisodeStatusMessages(episodeId);
-                        _logger?.Warn($"Failed to detect credits for {episode.Name}: {failureReason}");
 
                         // Record file fingerprint on failure so "skip if unchanged" prevents re-queuing
                         // this episode on subsequent scheduled runs when the file hasn't changed.

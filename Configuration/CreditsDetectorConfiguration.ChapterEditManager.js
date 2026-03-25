@@ -3,6 +3,8 @@ define(['loading', 'toast'], function (loading, toast) {
 
     const CHAPTER_TYPES = ['Chapter', 'IntroStart', 'IntroEnd', 'CreditsStart'];
 
+    function isAllLibraries() { return _view.querySelector('#chkAllLibraries').checked; }
+
     let _view = null;
     let _navStack = []; // [{id, name, type}]
     let _currentEpisodeId = null;
@@ -93,20 +95,22 @@ define(['loading', 'toast'], function (loading, toast) {
         }
 
         items.forEach(function (item) {
-            var isEpisode = item.Type === 'Episode';
+            var isLeaf = item.Type === 'Episode' || item.Type === 'Movie';
             var div = document.createElement('div');
-            div.className = 'chapter-browser-item ' + (isEpisode ? 'is-episode' : 'is-folder');
+            div.className = 'chapter-browser-item ' + (isLeaf ? 'is-episode' : 'is-folder');
 
             if (item.Id === _currentEpisodeId) {
                 div.classList.add('selected');
             }
 
             var label = item.Name || '';
-            if (isEpisode) {
+            if (item.Type === 'Episode') {
                 var ep = item.IndexNumber != null ? pad(item.IndexNumber, 2) : null;
                 var sn = item.ParentIndexNumber != null ? pad(item.ParentIndexNumber, 2) : null;
                 if (sn && ep) label = 'S' + sn + 'E' + ep + ' - ' + label;
                 else if (ep) label = ep + ' - ' + label;
+            } else if (item.Type === 'Movie') {
+                label = '🎬 ' + label;
             }
 
             var iconSpan = document.createElement('span');
@@ -120,7 +124,7 @@ define(['loading', 'toast'], function (loading, toast) {
             div.appendChild(labelSpan);
 
             div.addEventListener('click', function () {
-                if (isEpisode) {
+                if (isLeaf) {
                     _view.querySelectorAll('.chapter-browser-item').forEach(function (el) {
                         el.classList.remove('selected');
                     });
@@ -141,13 +145,27 @@ define(['loading', 'toast'], function (loading, toast) {
         var listEl = q('chapterBrowserList');
         listEl.innerHTML = '<div style="text-align:center;padding:2em 0.5em;opacity:0.38;font-size:0.85em;">Loading...</div>';
 
+        // Check if any filter is active
+        var noChaptersOnly = q('chapterFilterNoChapters').checked;
+        var maxCountRaw = q('chapterFilterMaxCount').value.trim();
+        var minGapRaw = q('chapterFilterMinGap').value.trim();
+        var introFilter = q('chapterFilterIntro').value;
+        var creditsFilter = q('chapterFilterCredits').value;
+        var anyFilterActive = noChaptersOnly ||
+            (maxCountRaw !== '' && !isNaN(parseInt(maxCountRaw, 10))) ||
+            (minGapRaw !== '' && !isNaN(parseInt(minGapRaw, 10))) ||
+            introFilter !== '' || creditsFilter !== '';
+
         if (_navStack.length === 0) {
-            q('chapterBrowserFilters').style.display = 'none';
             _allEpisodeItems = null;
-            // Root: show TV libraries
+            if (anyFilterActive) {
+                fetchAllEpisodesAndFilter(null);
+                return;
+            }
             ApiClient.getJSON(ApiClient.getUrl('Library/MediaFolders'))
                 .then(function (response) {
                     var libs = (response.Items || []).filter(function (l) {
+                        if (isAllLibraries()) return true;
                         return l.CollectionType === 'tvshows' || l.CollectionType === 'mixed' || !l.CollectionType;
                     }).sort(function (a, b) { return a.Name.localeCompare(b.Name); });
                     renderBrowserList(libs);
@@ -161,7 +179,7 @@ define(['loading', 'toast'], function (loading, toast) {
         var sortBy = 'SortName';
 
         if (current.type === 'CollectionFolder') {
-            includeTypes = 'Series';
+            includeTypes = isAllLibraries() ? 'Series,Movie' : 'Series';
         } else if (current.type === 'Series') {
             includeTypes = 'Season';
             sortBy = 'IndexNumber';
@@ -169,22 +187,29 @@ define(['loading', 'toast'], function (loading, toast) {
             includeTypes = 'Episode';
             sortBy = 'IndexNumber';
         } else {
-            q('chapterBrowserFilters').style.display = 'none';
             _allEpisodeItems = null;
             renderBrowserList([]);
             return;
         }
 
         var isEpisodeLevel = includeTypes === 'Episode';
-        q('chapterBrowserFilters').style.display = isEpisodeLevel ? 'block' : 'none';
-        if (!isEpisodeLevel) _allEpisodeItems = null;
+        var isMixedLeafLevel = includeTypes === 'Series,Movie';
+
+        if (!isEpisodeLevel && !isMixedLeafLevel && anyFilterActive) {
+            _allEpisodeItems = null;
+            fetchAllEpisodesAndFilter(current.id);
+            return;
+        }
+
+        if (!isEpisodeLevel && !isMixedLeafLevel) _allEpisodeItems = null;
 
         var params = {
             ParentId: current.id,
             IncludeItemTypes: includeTypes,
+            Recursive: isMixedLeafLevel,
             SortBy: sortBy,
             SortOrder: 'Ascending',
-            Fields: isEpisodeLevel ? 'ParentIndexNumber,IndexNumber,Chapters' : 'ParentIndexNumber,IndexNumber',
+            Fields: (isEpisodeLevel || isMixedLeafLevel) ? 'ParentIndexNumber,IndexNumber,Chapters' : 'ParentIndexNumber,IndexNumber',
             Limit: 1000
         };
 
@@ -194,6 +219,15 @@ define(['loading', 'toast'], function (loading, toast) {
                 if (isEpisodeLevel) {
                     _allEpisodeItems = items;
                     applyBrowserFilter();
+                } else if (isMixedLeafLevel) {
+                    var movies = items.filter(function (i) { return i.Type === 'Movie'; });
+                    var nonMovies = items.filter(function (i) { return i.Type !== 'Movie'; });
+                    if (anyFilterActive) {
+                        _allEpisodeItems = movies;
+                        applyBrowserFilter(nonMovies);
+                    } else {
+                        renderBrowserList(items);
+                    }
                 } else {
                     renderBrowserList(items);
                 }
@@ -201,21 +235,50 @@ define(['loading', 'toast'], function (loading, toast) {
             .catch(function () { renderBrowserList([]); });
     }
 
-    function applyBrowserFilter() {
+    function fetchAllEpisodesAndFilter(parentId) {
+        var listEl = q('chapterBrowserList');
+        listEl.innerHTML = '<div style="text-align:center;padding:2em 0.5em;opacity:0.38;font-size:0.85em;">Filtering...</div>';
+
+        var includeTypes = isAllLibraries() ? 'Episode,Movie' : 'Episode';
+
+        var params = {
+            IncludeItemTypes: includeTypes,
+            Recursive: true,
+            SortBy: 'SeriesName,ParentIndexNumber,IndexNumber',
+            SortOrder: 'Ascending',
+            Fields: 'ParentIndexNumber,IndexNumber,SeriesName,Chapters',
+            Limit: 5000
+        };
+        if (parentId) params.ParentId = parentId;
+
+        ApiClient.getJSON(ApiClient.getUrl('Items', params))
+            .then(function (response) {
+                _allEpisodeItems = (response.Items || []).filter(function (e) {
+                    if (e.Type === 'Movie') return true;
+                    return e.ParentIndexNumber != null && e.ParentIndexNumber !== 0;
+                });
+                applyBrowserFilter();
+            })
+            .catch(function () { renderBrowserList([]); });
+    }
+
+    function applyBrowserFilter(prependItems) {
         if (!_allEpisodeItems) return;
 
         var noChaptersOnly = q('chapterFilterNoChapters').checked;
         var maxCountRaw = q('chapterFilterMaxCount').value.trim();
         var minGapRaw = q('chapterFilterMinGap').value.trim();
+        var introFilter = q('chapterFilterIntro').value;
+        var creditsFilter = q('chapterFilterCredits').value;
         var hasMaxCount = maxCountRaw !== '' && !isNaN(parseInt(maxCountRaw, 10));
         var hasMinGap = minGapRaw !== '' && !isNaN(parseInt(minGapRaw, 10));
         var maxCount = hasMaxCount ? parseInt(maxCountRaw, 10) : null;
         var minGapTicks = hasMinGap ? parseInt(minGapRaw, 10) * 10000000 : null;
 
-        var anyFilterActive = noChaptersOnly || hasMaxCount || hasMinGap;
+        var anyFilterActive = noChaptersOnly || hasMaxCount || hasMinGap || introFilter !== '' || creditsFilter !== '';
 
         if (!anyFilterActive) {
-            renderBrowserList(_allEpisodeItems);
+            renderBrowserList((prependItems || []).concat(_allEpisodeItems));
             return;
         }
 
@@ -225,6 +288,10 @@ define(['loading', 'toast'], function (loading, toast) {
 
             if (noChaptersOnly && count !== 0) return false;
             if (hasMaxCount && count >= maxCount) return false;
+            if (introFilter === 'has' && !chapters.some(function (c) { return (c.MarkerType || 'Chapter') === 'IntroStart'; })) return false;
+            if (introFilter === 'missing' && chapters.some(function (c) { return (c.MarkerType || 'Chapter') === 'IntroStart'; })) return false;
+            if (creditsFilter === 'has' && !chapters.some(function (c) { return (c.MarkerType || 'Chapter') === 'CreditsStart'; })) return false;
+            if (creditsFilter === 'missing' && chapters.some(function (c) { return (c.MarkerType || 'Chapter') === 'CreditsStart'; })) return false;
             if (hasMinGap) {
                 var hasLargeGap = false;
                 for (var i = 1; i < chapters.length; i++) {
@@ -239,7 +306,7 @@ define(['loading', 'toast'], function (loading, toast) {
             return true;
         });
 
-        renderBrowserList(filtered);
+        renderBrowserList((prependItems || []).concat(filtered));
     }
 
     function handleSearch(query) {
@@ -257,7 +324,7 @@ define(['loading', 'toast'], function (loading, toast) {
 
         var params = {
             SearchTerm: query.trim(),
-            IncludeItemTypes: 'Episode',
+            IncludeItemTypes: isAllLibraries() ? 'Episode,Movie' : 'Episode',
             Recursive: true,
             SortBy: 'SortName',
             SortOrder: 'Ascending',
@@ -592,13 +659,41 @@ define(['loading', 'toast'], function (loading, toast) {
             }
         });
 
-        // Filter inputs — re-apply filter on any change
+        // All-libraries toggle — reload browser from root
+        var allLibsChk = q('chkAllLibraries');
+        if (allLibsChk) allLibsChk.addEventListener('change', function () {
+            _navStack = [];
+            _isSearchMode = false;
+            searchEl.value = '';
+            loadCurrentLevel();
+        });
+
+        // Filter inputs — reload the current level on any change so the list always updates
         var filterNoChaps = q('chapterFilterNoChapters');
-        if (filterNoChaps) filterNoChaps.addEventListener('change', applyBrowserFilter);
-        var filterMaxCount = q('chapterFilterMaxCount');
-        if (filterMaxCount) filterMaxCount.addEventListener('input', applyBrowserFilter);
-        var filterMinGap = q('chapterFilterMinGap');
-        if (filterMinGap) filterMinGap.addEventListener('input', applyBrowserFilter);
+        if (filterNoChaps) filterNoChaps.addEventListener('change', loadCurrentLevel);
+
+        function setupNumberFilter(inputId, clearBtnId) {
+            var inp = q(inputId);
+            var btn = q(clearBtnId);
+            if (!inp || !btn) return;
+            function onInput() {
+                btn.style.display = inp.value !== '' ? 'inline' : 'none';
+                clearTimeout(_searchTimeout);
+                _searchTimeout = setTimeout(loadCurrentLevel, 400);
+            }
+            inp.addEventListener('input', onInput);
+            btn.addEventListener('click', function () {
+                inp.value = '';
+                btn.style.display = 'none';
+                loadCurrentLevel();
+            });
+        }
+        setupNumberFilter('chapterFilterMaxCount', 'chapterFilterMaxCountClear');
+        setupNumberFilter('chapterFilterMinGap', 'chapterFilterMinGapClear');
+        var filterIntro = q('chapterFilterIntro');
+        if (filterIntro) filterIntro.addEventListener('change', loadCurrentLevel);
+        var filterCredits = q('chapterFilterCredits');
+        if (filterCredits) filterCredits.addEventListener('change', loadCurrentLevel);
 
         // Add chapter button
         var btnAdd = q('btnAddChapter');

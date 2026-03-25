@@ -2353,10 +2353,15 @@ namespace EmbyCredits.Services
                         if (bytes[0] == 192 && bytes[1] == 168) return true;
                         if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true;
                     }
+
+                    // Host is a public IP address — reject
+                    _logger?.Warn($"Rejected OCR endpoint test for public IP address: {endpoint}");
+                    return false;
                 }
 
-                _logger?.Warn($"Rejected OCR endpoint test for public address: {endpoint}");
-                return false;
+                // Host is a non-IP hostname (e.g. Docker container name, service hostname).
+                // These are always internal network names so we allow them.
+                return true;
             }
             catch (Exception ex)
             {
