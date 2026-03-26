@@ -1,28 +1,30 @@
-# EmbyCredits - Automatic Credits Detection for Emby
+# EmbyCredits - Credits Detection Plugin for Emby
 
-Automatically detect and mark end credits in TV show episodes. Never miss the start of the next episode again!
+Automatically detects and marks end credits in TV show episodes using OCR, audio fingerprinting, or black frame analysis.
 
 ## Features
 
-- **Multiple Detection Methods** - OCR text detection, audio fingerprinting, black frame detection for anime
-- **Cross-Episode Analysis** - Compares episodes in a season for improved accuracy
-- **Smart Detection Rules** - Configure different detection methods per series, studio, or tag
-- **Backup & Restore** - Export/import chapter markers for server migrations
+- **Multiple Detection Methods** - OCR text detection, audio fingerprinting (Chromaprint), and black frame detection for anime
+- **Cross-Episode Analysis** - Compares timestamps across episodes in a season for improved accuracy
+- **Detection Rules** - Configure different detection methods per series, studio, or tag
+- **Backup & Restore** - Export and import chapter markers for server migrations
 - **Manual Editing** - Override automated timestamps when needed
-- **Auto-Detection** - Automatically process new episodes as they're added
-- **Batch Processing** - Process entire series or seasons at once
+- **Auto-Detection** - Automatically process new episodes as they are added to your library
+- **Batch Processing** - Process entire series or individual seasons at once
+- **Notifications** - Receive alerts when detection is complete
 
-## Prerequisites
+## Requirements
 
-- Emby Server 4.8+
-- OCR Server (for OCR detection mode - Docker recommended)
-- FFmpeg (included with Emby)
+- Emby Server 4.8 or later
+- FFmpeg (bundled with Emby)
+- OCR server (required only for OCR detection mode; Docker recommended)
 
-## Quick Start
+## Installation
 
-### 1. Install OCR Server (Optional - for OCR detection)
+### 1. Install the OCR Server (Optional)
 
-Using Docker:
+Only required if you plan to use OCR-based detection:
+
 ```bash
 docker run -d --name tesseract-ocr -p 8884:8884 --restart unless-stopped yock1/embycreditocr
 ```
@@ -30,7 +32,7 @@ docker run -d --name tesseract-ocr -p 8884:8884 --restart unless-stopped yock1/e
 ### 2. Install the Plugin
 
 1. Download `EmbyCredits.dll` from [Releases](../../releases)
-2. Copy to your Emby plugins folder:
+2. Copy the file to your Emby plugins folder:
    - **Windows**: `C:\Users\[YourUser]\AppData\Roaming\Emby-Server\plugins`
    - **Linux**: `/var/lib/emby/plugins`
    - **Docker**: `/config/plugins`
@@ -38,69 +40,61 @@ docker run -d --name tesseract-ocr -p 8884:8884 --restart unless-stopped yock1/e
 
 ### 3. Configure
 
-1. Go to **Dashboard** → **Plugins** → **Credits Detector**
-2. Select detection mode (default is OCR Only)
-3. For OCR: Set **OCR Endpoint** to `http://localhost:8884` and test connection
-4. **Docker users**: Set **Custom Temp Folder Path** to `/tmp` to prevent container bloat
-5. Save and you're ready to go
+1. Go to **Dashboard** > **Plugins** > **Credits Detector**
+2. Choose a detection mode (default: OCR Only)
+3. If using OCR, set the **OCR Endpoint** to `http://localhost:8884` and test the connection
+4. Docker users: set **Custom Temp Folder Path** to `/tmp` to prevent container disk bloat
+5. Save settings
 
-## Basic Usage
+## Usage
 
 ### Process Episodes
 
-**Single Episode:**
-1. Go to **Dashboard** → **Plugins** → **Credits Detector**
-2. Select a series and episode
-3. Click **Process Episode**
+Open the plugin page from **Dashboard** > **Plugins** > **Credits Detector**.
 
-**Entire Series/Season:**
-1. Select a series from the dropdown
-2. Click **Process Selection** for all episodes, or select a specific season first
-3. Monitor real-time progress
+- **Single episode**: Select a series, then an episode, and click **Process Episode**
+- **Full series or season**: Select a series and season, then click **Process Selection**
+- Progress is shown in real time
 
 ### Auto-Detection
 
-Enable **Enable Auto Detection** in settings to automatically process new episodes when added to your library.
+Enable **Enable Auto Detection** in settings to automatically process new episodes when they are added to your library.
 
-### View & Edit Markers
+### View and Edit Markers
 
-1. Select a series from **View Chapter Markers**
-2. View all detected timestamps
-3. Click **Edit** to manually adjust or **Add Marker** to create new ones
-4. Use **Detect Missing** to process episodes without markers
+1. Use the **View Chapter Markers** section to browse detected timestamps by series
+2. Click **Edit** to adjust a timestamp manually, or **Add Marker** to create one
+3. Click **Detect Missing** to run detection only on episodes without existing markers
 
-### Backup & Restore
+### Backup and Restore
 
-- **Export**: Click **Export Credits Backup** to download all markers
-- **Import**: Click **Import Credits Backup** and select JSON file(s)
-- **Bulk Export**: Export individual files per series for granular backup management
+- **Export**: Click **Export Credits Backup** to download all markers as a JSON file
+- **Import**: Click **Import Credits Backup** and select one or more JSON files
+- Individual per-series export is also available for more granular backup management
 
 ## Detection Modes
 
-The plugin supports multiple detection methods, configurable per series using the Rules system:
+- **OCR Only**: Analyzes on-screen text for credit keywords. Recommended for most content.
+- **Hash Only**: Uses audio fingerprinting (Chromaprint) to compare episode audio. Beta.
+- **OCR with Hash Fallback**: Tries OCR first; falls back to audio fingerprinting if no result.
+- **Hash with OCR Fallback**: Tries audio fingerprinting first; falls back to OCR if no result.
 
-- **OCR Only**: Analyzes on-screen text for credit keywords (recommended for most content)
-- **Hash Only**: Uses audio fingerprinting to compare episodes (beta)
-- **OCR with Hash Fallback**: Tries OCR first, then audio fingerprinting
-- **Hash with OCR Fallback**: Tries audio fingerprinting first, then OCR
+**Anime**: Black frame detection or specialized OCR patterns can be enabled for anime content.
 
-**Anime Detection**: Automatically detects black frames or uses specialized OCR patterns common in anime credits.
+## Key Settings
 
-## Configuration
-
-Most settings can be adjusted in the plugin configuration page. Key settings include:
-
-- **Detection Mode**: Choose detection method (OCR/Hash/Combined)
-- **OCR Endpoint**: URL for OCR server (default: `http://localhost:8884`)
-- **Search Start Position**: Where to begin looking for credits (minutes from end or percentage)
-- **Frame Rate**: Frames per second to analyze (lower = faster, higher = more accurate)
-- **Keywords**: Text to search for in credits
-- **Episode Comparison**: Compare timestamps across episodes for validation
-- **CPU Throttling**: Limit CPU usage to prevent system slowdown
-- **Auto-Detection**: Automatically process new episodes
-- **Detection Rules**: Configure different detection methods for specific series, studios, or tags
-
-For detailed configuration options, explore the plugin settings page in Emby.
+| Setting | Description |
+|---|---|
+| Detection Mode | OCR, audio hash, or combined |
+| OCR Endpoint | URL of the OCR server (default: `http://localhost:8884`) |
+| OCR Engine | Tesseract or PaddleOCR |
+| Search Start Position | Where to start looking for credits (minutes from end or percentage) |
+| Frame Rate | Frames per second to analyze |
+| Keywords | Text strings to match in OCR output |
+| Episode Comparison | Validate timestamps against other episodes in the same season |
+| CPU Throttling | Limit CPU usage during processing |
+| Auto-Detection | Process new episodes automatically |
+| Detection Rules | Override settings for specific series, studios, or tags |
 
 ## License
 
