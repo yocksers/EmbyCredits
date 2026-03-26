@@ -13,12 +13,6 @@ Automatically detects and marks end credits in TV show episodes using OCR, audio
 - **Batch Processing** - Process entire series or individual seasons at once
 - **Notifications** - Receive alerts when detection is complete
 
-## Requirements
-
-- Emby Server 4.8 or later
-- FFmpeg (bundled with Emby)
-- OCR server (required only for OCR detection mode; Docker recommended)
-
 ## Installation
 
 ### 1. Install the OCR Server (Optional)
@@ -28,23 +22,6 @@ Only required if you plan to use OCR-based detection:
 ```bash
 docker run -d --name tesseract-ocr -p 8884:8884 --restart unless-stopped yock1/embycreditocr
 ```
-
-### 2. Install the Plugin
-
-1. Download `EmbyCredits.dll` from [Releases](../../releases)
-2. Copy the file to your Emby plugins folder:
-   - **Windows**: `C:\Users\[YourUser]\AppData\Roaming\Emby-Server\plugins`
-   - **Linux**: `/var/lib/emby/plugins`
-   - **Docker**: `/config/plugins`
-3. Restart Emby Server
-
-### 3. Configure
-
-1. Go to **Dashboard** > **Plugins** > **Credits Detector**
-2. Choose a detection mode (default: OCR Only)
-3. If using OCR, set the **OCR Endpoint** to `http://localhost:8884` and test the connection
-4. Docker users: set **Custom Temp Folder Path** to `/tmp` to prevent container disk bloat
-5. Save settings
 
 ## Usage
 
