@@ -1,4 +1,5 @@
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
@@ -2353,15 +2354,10 @@ namespace EmbyCredits.Services
                         if (bytes[0] == 192 && bytes[1] == 168) return true;
                         if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true;
                     }
-
-                    // Host is a public IP address — reject
-                    _logger?.Warn($"Rejected OCR endpoint test for public IP address: {endpoint}");
-                    return false;
                 }
 
-                // Host is a non-IP hostname (e.g. Docker container name, service hostname).
-                // These are always internal network names so we allow them.
-                return true;
+                _logger?.Warn($"Rejected OCR endpoint test for public address: {endpoint}");
+                return false;
             }
             catch (Exception ex)
             {
@@ -2393,15 +2389,15 @@ namespace EmbyCredits.Services
                 if (!Guid.TryParse(request.EpisodeId, out var guid))
                     return new { Success = false, Message = "Invalid EpisodeId format" };
 
-                var episode = _libraryManager.GetItemById(guid) as Episode;
-                if (episode == null)
-                    return new { Success = false, Message = "Episode not found" };
+                var item = _libraryManager.GetItemById(guid);
+                if (item == null || (!(item is Episode) && !(item is Movie)))
+                    return new { Success = false, Message = "Item not found" };
 
                 var chapterService = Plugin.ChapterMarkerService;
                 if (chapterService == null)
                     return new { Success = false, Message = "Chapter service not available" };
 
-                var chapters = chapterService.GetChapters(episode);
+                var chapters = chapterService.GetChapters(item);
                 var result = chapters.Select((c, i) => new
                 {
                     Index = i,
@@ -2411,16 +2407,17 @@ namespace EmbyCredits.Services
                     MarkerType = chapterService.GetChapterMarkerType(c)
                 }).ToList();
 
+                var episode = item as Episode;
                 return new
                 {
                     Success = true,
                     EpisodeId = request.EpisodeId,
-                    EpisodeName = episode.Name,
-                    SeriesName = episode.SeriesName,
-                    SeasonNumber = episode.ParentIndexNumber,
-                    EpisodeNumber = episode.IndexNumber,
-                    DurationSeconds = episode.RunTimeTicks.HasValue
-                        ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond
+                    EpisodeName = item.Name,
+                    SeriesName = episode?.SeriesName,
+                    SeasonNumber = episode?.ParentIndexNumber,
+                    EpisodeNumber = episode?.IndexNumber,
+                    DurationSeconds = item.RunTimeTicks.HasValue
+                        ? item.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond
                         : 0,
                     Chapters = result
                 };
@@ -2439,9 +2436,12 @@ namespace EmbyCredits.Services
                 if (string.IsNullOrEmpty(request.EpisodeId))
                     return new { Success = false, Message = "EpisodeId is required" };
 
-                var episode = _libraryManager.GetItemById(request.EpisodeId) as Episode;
-                if (episode == null)
-                    return new { Success = false, Message = "Episode not found" };
+                if (!Guid.TryParse(request.EpisodeId, out var guid))
+                    return new { Success = false, Message = "Invalid EpisodeId format" };
+
+                var item = _libraryManager.GetItemById(guid);
+                if (item == null || (!(item is Episode) && !(item is Movie)))
+                    return new { Success = false, Message = "Item not found" };
 
                 var chapterService = Plugin.ChapterMarkerService;
                 if (chapterService == null)
@@ -2451,17 +2451,17 @@ namespace EmbyCredits.Services
                     .Select(c => (c.Name ?? string.Empty, c.StartPositionTicks, c.MarkerType ?? "Chapter"))
                     .ToList();
 
-                chapterService.SaveChapterList(episode, entries);
+                chapterService.SaveChapterList(item, entries);
 
-                // Auto-backup if a CreditsStart marker was included in the saved chapter list
+                // Auto-backup if a CreditsStart marker was included and item is an episode
                 var creditsEntry = entries.FirstOrDefault(e => e.Item3 == "CreditsStart");
-                if (creditsEntry.Item3 == "CreditsStart")
-                    TryAutoBackupEpisode(episode, creditsEntry.Item2);
+                if (creditsEntry.Item3 == "CreditsStart" && item is Episode ep)
+                    TryAutoBackupEpisode(ep, creditsEntry.Item2);
 
                 return new
                 {
                     Success = true,
-                    Message = $"Saved {entries.Count} chapter(s) for '{episode.Name}'",
+                    Message = $"Saved {entries.Count} chapter(s) for '{item.Name}'",
                     ChapterCount = entries.Count
                 };
             }

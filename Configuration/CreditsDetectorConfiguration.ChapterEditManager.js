@@ -140,6 +140,27 @@ define(['loading', 'toast'], function (loading, toast) {
         });
     }
 
+    function fetchAllItems(params, onDone, onError) {
+        var pageSize = 1000;
+        var allItems = [];
+        function fetchPage(startIndex) {
+            var pageParams = Object.assign({}, params, { Limit: pageSize, StartIndex: startIndex });
+            ApiClient.getJSON(ApiClient.getUrl('Items', pageParams))
+                .then(function (response) {
+                    var items = response.Items || [];
+                    allItems = allItems.concat(items);
+                    var total = response.TotalRecordCount || allItems.length;
+                    if (allItems.length < total && items.length > 0) {
+                        fetchPage(allItems.length);
+                    } else {
+                        onDone(allItems);
+                    }
+                })
+                .catch(onError || function () { onDone(allItems); });
+        }
+        fetchPage(0);
+    }
+
     function loadCurrentLevel() {
         renderPath();
         var listEl = q('chapterBrowserList');
@@ -178,7 +199,7 @@ define(['loading', 'toast'], function (loading, toast) {
         var includeTypes;
         var sortBy = 'SortName';
 
-        if (current.type === 'CollectionFolder') {
+        if (current.type === 'CollectionFolder' || current.type === 'UserView') {
             includeTypes = isAllLibraries() ? 'Series,Movie' : 'Series';
         } else if (current.type === 'Series') {
             includeTypes = 'Season';
@@ -209,30 +230,26 @@ define(['loading', 'toast'], function (loading, toast) {
             Recursive: isMixedLeafLevel,
             SortBy: sortBy,
             SortOrder: 'Ascending',
-            Fields: (isEpisodeLevel || isMixedLeafLevel) ? 'ParentIndexNumber,IndexNumber,Chapters' : 'ParentIndexNumber,IndexNumber',
-            Limit: 1000
+            Fields: (isEpisodeLevel || isMixedLeafLevel) ? 'ParentIndexNumber,IndexNumber,Chapters' : 'ParentIndexNumber,IndexNumber'
         };
 
-        ApiClient.getJSON(ApiClient.getUrl('Items', params))
-            .then(function (response) {
-                var items = response.Items || [];
-                if (isEpisodeLevel) {
-                    _allEpisodeItems = items;
-                    applyBrowserFilter();
-                } else if (isMixedLeafLevel) {
-                    var movies = items.filter(function (i) { return i.Type === 'Movie'; });
-                    var nonMovies = items.filter(function (i) { return i.Type !== 'Movie'; });
-                    if (anyFilterActive) {
-                        _allEpisodeItems = movies;
-                        applyBrowserFilter(nonMovies);
-                    } else {
-                        renderBrowserList(items);
-                    }
+        fetchAllItems(params, function (items) {
+            if (isEpisodeLevel) {
+                _allEpisodeItems = items.slice().sort(sortEpisodes);
+                applyBrowserFilter();
+            } else if (isMixedLeafLevel) {
+                var movies = items.filter(function (i) { return i.Type === 'Movie'; });
+                var nonMovies = items.filter(function (i) { return i.Type !== 'Movie'; });
+                if (anyFilterActive) {
+                    _allEpisodeItems = movies;
+                    applyBrowserFilter(nonMovies);
                 } else {
                     renderBrowserList(items);
                 }
-            })
-            .catch(function () { renderBrowserList([]); });
+            } else {
+                renderBrowserList(items);
+            }
+        }, function () { renderBrowserList([]); });
     }
 
     function fetchAllEpisodesAndFilter(parentId) {
@@ -246,20 +263,17 @@ define(['loading', 'toast'], function (loading, toast) {
             Recursive: true,
             SortBy: 'SeriesName,ParentIndexNumber,IndexNumber',
             SortOrder: 'Ascending',
-            Fields: 'ParentIndexNumber,IndexNumber,SeriesName,Chapters',
-            Limit: 5000
+            Fields: 'ParentIndexNumber,IndexNumber,SeriesName,Chapters'
         };
         if (parentId) params.ParentId = parentId;
 
-        ApiClient.getJSON(ApiClient.getUrl('Items', params))
-            .then(function (response) {
-                _allEpisodeItems = (response.Items || []).filter(function (e) {
-                    if (e.Type === 'Movie') return true;
-                    return e.ParentIndexNumber != null && e.ParentIndexNumber !== 0;
-                });
-                applyBrowserFilter();
-            })
-            .catch(function () { renderBrowserList([]); });
+        fetchAllItems(params, function (items) {
+            _allEpisodeItems = items.filter(function (e) {
+                if (e.Type === 'Movie') return true;
+                return e.Type === 'Episode';
+            });
+            applyBrowserFilter();
+        }, function () { renderBrowserList([]); });
     }
 
     function applyBrowserFilter(prependItems) {
@@ -278,7 +292,7 @@ define(['loading', 'toast'], function (loading, toast) {
         var anyFilterActive = noChaptersOnly || hasMaxCount || hasMinGap || introFilter !== '' || creditsFilter !== '';
 
         if (!anyFilterActive) {
-            renderBrowserList((prependItems || []).concat(_allEpisodeItems));
+            renderBrowserList((prependItems || []).concat(_allEpisodeItems.slice().sort(sortEpisodes)));
             return;
         }
 
@@ -306,11 +320,72 @@ define(['loading', 'toast'], function (loading, toast) {
             return true;
         });
 
-        renderBrowserList((prependItems || []).concat(filtered));
+        renderBrowserList((prependItems || []).concat(filtered.sort(sortEpisodes)));
+    }
+
+    function sortEpisodes(a, b) {
+        var sn1 = a.ParentIndexNumber != null ? a.ParentIndexNumber : 9999;
+        var sn2 = b.ParentIndexNumber != null ? b.ParentIndexNumber : 9999;
+        if (sn1 !== sn2) return sn1 - sn2;
+        var ep1 = a.IndexNumber != null ? a.IndexNumber : 9999;
+        var ep2 = b.IndexNumber != null ? b.IndexNumber : 9999;
+        return ep1 - ep2;
+    }
+
+    function closeSearchDropdown() {
+        var dd = q('chapterSearchDropdown');
+        if (dd) {
+            dd.classList.remove('open');
+            dd.innerHTML = '';
+        }
+    }
+
+    function renderSearchDropdown(items) {
+        var dd = q('chapterSearchDropdown');
+        if (!dd) return;
+        dd.innerHTML = '';
+
+        if (!items || items.length === 0) {
+            var empty = document.createElement('div');
+            empty.className = 'chapter-search-option';
+            empty.style.opacity = '0.45';
+            empty.style.cursor = 'default';
+            empty.textContent = 'No results found';
+            dd.appendChild(empty);
+            dd.classList.add('open');
+            return;
+        }
+
+        items.forEach(function (item) {
+            var opt = document.createElement('div');
+            opt.className = 'chapter-search-option';
+            opt.textContent = item.Name || '';
+            opt.title = item.Name || '';
+            opt.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                clearTimeout(_searchTimeout);
+                closeSearchDropdown();
+                _isSearchMode = false;
+                q('chapterBrowserSearch').value = '';
+                if (item.Type === 'Movie' || item.Type === 'Episode') {
+                    _view.querySelectorAll('.chapter-browser-item').forEach(function (el) {
+                        el.classList.remove('selected');
+                    });
+                    loadEpisodeChapters(item.Id, item.Name);
+                } else {
+                    _navStack = [{ id: item.Id, name: item.Name, type: item.Type }];
+                    loadCurrentLevel();
+                }
+            });
+            dd.appendChild(opt);
+        });
+
+        dd.classList.add('open');
     }
 
     function handleSearch(query) {
         if (!query || query.trim().length < 2) {
+            closeSearchDropdown();
             if (_isSearchMode) {
                 _isSearchMode = false;
                 loadCurrentLevel();
@@ -319,25 +394,27 @@ define(['loading', 'toast'], function (loading, toast) {
         }
 
         _isSearchMode = true;
-        var listEl = q('chapterBrowserList');
-        listEl.innerHTML = '<div style="text-align:center;padding:2em 0.5em;opacity:0.38;font-size:0.85em;">Searching...</div>';
 
         var params = {
             SearchTerm: query.trim(),
-            IncludeItemTypes: isAllLibraries() ? 'Episode,Movie' : 'Episode',
+            IncludeItemTypes: isAllLibraries() ? 'Series,Movie' : 'Series',
             Recursive: true,
             SortBy: 'SortName',
             SortOrder: 'Ascending',
-            Fields: 'ParentIndexNumber,IndexNumber,SeriesName',
+            Fields: 'SortName',
             Limit: 100
         };
 
         ApiClient.getJSON(ApiClient.getUrl('Items', params))
             .then(function (response) {
-                if (_isSearchMode) renderBrowserList(response.Items || []);
+                if (!_isSearchMode) return;
+                var items = (response.Items || []).sort(function (a, b) {
+                    return (a.Name || '').localeCompare(b.Name || '');
+                });
+                renderSearchDropdown(items);
             })
             .catch(function () {
-                if (_isSearchMode) renderBrowserList([]);
+                if (_isSearchMode) closeSearchDropdown();
             });
     }
 
@@ -361,15 +438,30 @@ define(['loading', 'toast'], function (loading, toast) {
 
         // Use the native Emby Items API — this is the authoritative source for chapter data
         var userId = ApiClient.getCurrentUserId();
+        var capturedId = episodeId;
         ApiClient.getJSON(ApiClient.getUrl('Users/' + userId + '/Items/' + episodeId, {
             Fields: 'Chapters'
         }))
         .then(function (response) {
+            if (_currentEpisodeId !== capturedId) return;
             if (response.SeriesName) {
                 var sub = response.SeriesName;
                 if (response.ParentIndexNumber != null) sub += ' · Season ' + response.ParentIndexNumber;
                 if (response.IndexNumber != null) sub += ' · Episode ' + response.IndexNumber;
                 q('chapterEpisodeSubtitle').textContent = sub;
+            } else if (response.Type === 'Movie') {
+                q('chapterEpisodeSubtitle').textContent = 'Movie';
+                ApiClient.getJSON(ApiClient.getUrl('Items/' + capturedId + '/Ancestors', { UserId: userId }))
+                    .then(function (ancestors) {
+                        if (_currentEpisodeId !== capturedId) return;
+                        var library = (ancestors || []).find(function (a) {
+                            return a.Type === 'CollectionFolder' || a.Type === 'UserView';
+                        });
+                        if (library) {
+                            q('chapterEpisodeSubtitle').textContent = 'Movie · ' + library.Name;
+                        }
+                    })
+                    .catch(function () {});
             }
             if (response.RunTimeTicks) {
                 _currentEpisodeRuntimeTicks = response.RunTimeTicks;
@@ -648,9 +740,14 @@ define(['loading', 'toast'], function (loading, toast) {
             _searchTimeout = setTimeout(function () { handleSearch(val); }, 400);
         });
 
+        searchEl.addEventListener('blur', function () {
+            setTimeout(closeSearchDropdown, 150);
+        });
+
         // Clear search on Escape
         searchEl.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
+                closeSearchDropdown();
                 searchEl.value = '';
                 if (_isSearchMode) {
                     _isSearchMode = false;

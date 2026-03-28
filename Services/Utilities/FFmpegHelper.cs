@@ -1,6 +1,7 @@
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Model.MediaInfo;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -317,11 +318,19 @@ namespace EmbyCredits.Services.Utilities
             try
             {
                 using var ms = new MemoryStream();
-                var buf = new byte[8192];
-                int bytesRead;
-                while ((bytesRead = process.StandardOutput.BaseStream.Read(buf, 0, buf.Length)) > 0)
+                const int BufSize = 8192;
+                var buf = ArrayPool<byte>.Shared.Rent(BufSize);
+                try
                 {
-                    ms.Write(buf, 0, bytesRead);
+                    int bytesRead;
+                    while ((bytesRead = process.StandardOutput.BaseStream.Read(buf, 0, BufSize)) > 0)
+                    {
+                        ms.Write(buf, 0, bytesRead);
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buf);
                 }
 
                 if (!process.WaitForExit(60000))

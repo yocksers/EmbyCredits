@@ -1,3 +1,4 @@
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Model.Entities;
@@ -167,9 +168,9 @@ namespace EmbyCredits.Services
             return result;
         }
 
-        public List<ChapterInfo> GetChapters(Episode episode)
+        public List<ChapterInfo> GetChapters(BaseItem item)
         {
-            return _itemRepository.GetChapters(episode)?.ToList() ?? new List<ChapterInfo>();
+            return _itemRepository.GetChapters(item)?.ToList() ?? new List<ChapterInfo>();
         }
 
         private string? GetMarkerType(ChapterInfo chapter)
@@ -237,7 +238,7 @@ namespace EmbyCredits.Services
             return GetMarkerType(chapter) ?? "Chapter";
         }
 
-        public void SaveChapterList(Episode episode, IList<(string Name, long StartPositionTicks, string MarkerType)> entries)
+        public void SaveChapterList(BaseItem item, IList<(string Name, long StartPositionTicks, string MarkerType)> entries)
         {
             try
             {
@@ -257,12 +258,12 @@ namespace EmbyCredits.Services
                     chapters.Add(chapter);
                 }
                 chapters = chapters.OrderBy(c => c.StartPositionTicks).ToList();
-                _itemRepository.SaveChapters(episode.InternalId, chapters);
-                _logger.Info($"Chapter editor: saved {chapters.Count} chapter(s) for '{episode.Name}'");
+                _itemRepository.SaveChapters(item.InternalId, chapters);
+                _logger.Info($"Chapter editor: saved {chapters.Count} chapter(s) for '{item.Name}'");
             }
             catch (Exception ex)
             {
-                _logger.ErrorException($"Error saving chapter list for '{episode.Name}'", ex);
+                _logger.ErrorException($"Error saving chapter list for '{item.Name}'", ex);
                 throw;
             }
         }

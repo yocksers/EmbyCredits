@@ -132,16 +132,22 @@ namespace EmbyCredits.Services
             _logger.Info("Credits Detection Service started");
 
             _previousItemAddedHandlerState = configuration.EnableAutoDetection || configuration.EnableTracerMode || configuration.OnlyProcessNewEpisodes;
-            if (_libraryManager != null && _previousItemAddedHandlerState)
+            if (_libraryManager != null)
             {
-                _libraryManager.ItemAdded += OnItemAdded;
-                _logger.Info("ItemAdded event handler registered (auto-detection, tracer, or OnlyProcessNewEpisodes enabled)");
-            }
+                _libraryManager.ItemAdded -= OnItemAdded;
+                if (_previousItemAddedHandlerState)
+                {
+                    _libraryManager.ItemAdded += OnItemAdded;
+                    _logger.Info("ItemAdded event handler registered (auto-detection, tracer, or OnlyProcessNewEpisodes enabled)");
+                }
 
-            if (_libraryManager != null && configuration.EnableAutoRestoreAfterScan)
-            {
-                _libraryManager.ItemUpdated += OnItemUpdated;
-                _logger.Info("Auto-restore enabled: ItemUpdated event handler registered");
+                _libraryManager.ItemUpdated -= OnItemUpdated;
+                _previousRestoreAfterScanState = configuration.EnableAutoRestoreAfterScan;
+                if (configuration.EnableAutoRestoreAfterScan)
+                {
+                    _libraryManager.ItemUpdated += OnItemUpdated;
+                    _logger.Info("Auto-restore enabled: ItemUpdated event handler registered");
+                }
             }
         }
 

@@ -43,6 +43,54 @@
             background: rgba(82, 181, 75, 0.06);
         }
 
+        .chapter-search-wrap {
+            position: relative;
+            margin-bottom: 0.6em;
+        }
+
+        .chapter-search-wrap .chapter-browser-search {
+            margin-bottom: 0;
+        }
+
+        .chapter-search-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 2px);
+            left: 0;
+            right: 0;
+            z-index: 999;
+            background: Canvas;
+            color: CanvasText;
+            border: 1px solid ButtonBorder;
+            border-radius: 5px;
+            max-height: 260px;
+            overflow-y: auto;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.3);
+        }
+
+        .chapter-search-dropdown.open {
+            display: block;
+        }
+
+        .chapter-search-option {
+            padding: 0.45em 0.75em;
+            font-size: 0.87em;
+            cursor: pointer;
+            border-bottom: 1px solid ButtonBorder;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chapter-search-option:last-child {
+            border-bottom: none;
+        }
+
+        .chapter-search-option:hover,
+        .chapter-search-option.focused {
+            background: rgba(82, 181, 75, 0.22);
+        }
+
         .chapter-browser-path {
             font-size: 0.78em;
             opacity: 0.72;
@@ -292,7 +340,10 @@
             </label>
 
             <label style="font-size:0.8em;opacity:0.65;display:block;margin-bottom:0.25em;">Search</label>
-            <input type="text" id="chapterBrowserSearch" class="chapter-browser-search" placeholder="Search..." autocomplete="off" />
+            <div class="chapter-search-wrap">
+                <input type="text" id="chapterBrowserSearch" class="chapter-browser-search" placeholder="Search..." autocomplete="off" />
+                <div id="chapterSearchDropdown" class="chapter-search-dropdown"></div>
+            </div>
 
             <div id="chapterBrowserPath" class="chapter-browser-path">Path &nbsp;</div>
 

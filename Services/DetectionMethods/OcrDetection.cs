@@ -1,5 +1,6 @@
 using MediaBrowser.Model.Logging;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -7,6 +8,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -47,6 +49,11 @@ namespace EmbyCredits.Services.DetectionMethods
 
         private static readonly Regex _multipleWhitespaceRegex = new Regex(@"\s{2,}", RegexOptions.Compiled);
 
+        private static readonly byte[] _jpegStartMarker = { 0xFF, 0xD8, 0xFF };
+        private static readonly byte[] _jpegEndMarker = { 0xFF, 0xD9 };
+
+        private (string lower, string lowerCollapsed)[] _normalizedKeywordCache = Array.Empty<(string, string)>();
+
         private static readonly ConcurrentDictionary<string, List<double>> _seriesCreditsTimestamps = new ConcurrentDictionary<string, List<double>>();
         private static readonly ConcurrentDictionary<string, DateTime> _cacheLastAccess = new ConcurrentDictionary<string, DateTime>();
         private const int MaxCacheEntries = 100;
@@ -81,7 +88,7 @@ namespace EmbyCredits.Services.DetectionMethods
             var cacheKey = $"{seriesId}_S{seasonNumber:D2}";
             _cacheLastAccess[cacheKey] = DateTime.UtcNow;
 
-            if (_seriesCreditsTimestamps.Count > MaxCacheEntries)
+            if (_seriesCreditsTimestamps.Count > MaxCacheEntries || _cacheLastAccess.Count > MaxCacheEntries)
             {
                 CleanupExpiredCacheEntries();
             }
@@ -218,6 +225,21 @@ namespace EmbyCredits.Services.DetectionMethods
                 foreach (var key in oldestKeys)
                 {
                     _seriesCreditsTimestamps.TryRemove(key, out _);
+                    _cacheLastAccess.TryRemove(key, out _);
+                }
+            }
+
+            if (_cacheLastAccess.Count > MaxCacheEntries)
+            {
+                var orphanKeys = _cacheLastAccess
+                    .Where(kvp => !_seriesCreditsTimestamps.ContainsKey(kvp.Key))
+                    .OrderBy(kvp => kvp.Value)
+                    .Take(_cacheLastAccess.Count - MaxCacheEntries)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                foreach (var key in orphanKeys)
+                {
                     _cacheLastAccess.TryRemove(key, out _);
                 }
             }
@@ -554,35 +576,33 @@ namespace EmbyCredits.Services.DetectionMethods
                 // Declare outside try block so they're accessible in catch block for cleanup
                 List<byte>? buffer = null;
                 List<(byte[] data, double timestamp, int index)>? frameQueue = null;
+                byte[]? readBuffer = null;
 
                 try
                 {
                     var stdoutStream = process.StandardOutput.BaseStream;
                     
-                    byte[] imageSignature = new byte[] { 0xFF, 0xD8, 0xFF };
-                    byte[] imageEndMarker = new byte[] { 0xFF, 0xD9 };
-                    
                     buffer = new List<byte>();
-                    var readBuffer = new byte[65536];
+                    readBuffer = ArrayPool<byte>.Shared.Rent(65536);
                     frameQueue = new List<(byte[] data, double timestamp, int index)>();
                     var batchSize = Configuration.OcrEnableParallelProcessing ? Configuration.OcrParallelBatchSize : 1;
                     const int MaxBufferSize = 20 * 1024 * 1024;
                     
                     while (!effectiveToken.IsCancellationRequested && frameIndex < maxFramesToProcess)
                     {
-                        int bytesRead = await stdoutStream.ReadAsync(readBuffer, 0, readBuffer.Length, effectiveToken).ConfigureAwait(false);
+                        int bytesRead = await stdoutStream.ReadAsync(readBuffer, 0, 65536, effectiveToken).ConfigureAwait(false);
                         
                         if (bytesRead == 0)
                         {
                             if (buffer.Count > 0)
                             {
-                                int imageStart = FindSequence(buffer, imageSignature, 0);
+                                int imageStart = FindSequence(buffer, _jpegStartMarker, 0);
                                 if (imageStart >= 0)
                                 {
-                                    int endMarker = FindSequence(buffer, imageEndMarker, imageStart);
+                                    int endMarker = FindSequence(buffer, _jpegEndMarker, imageStart);
                                     if (endMarker >= 0)
                                     {
-                                        var frameData = buffer.GetRange(imageStart, endMarker + imageEndMarker.Length - imageStart).ToArray();
+                                        var frameData = buffer.GetRange(imageStart, endMarker + _jpegEndMarker.Length - imageStart).ToArray();
                                         var timestamp = startTime + (frameIndex / fps);
                                         frameQueue.Add((frameData, timestamp, frameIndex));
                                         frameIndex++;
@@ -599,16 +619,16 @@ namespace EmbyCredits.Services.DetectionMethods
                             break;
                         }
 
-                        buffer.AddRange(readBuffer.Take(bytesRead));
+                        buffer.AddRange(new ArraySegment<byte>(readBuffer, 0, bytesRead));
 
-                        while (buffer.Count > imageSignature.Length && !effectiveToken.IsCancellationRequested && frameIndex < maxFramesToProcess)
+                        while (buffer.Count > _jpegStartMarker.Length && !effectiveToken.IsCancellationRequested && frameIndex < maxFramesToProcess)
                         {
-                            int imageStart = FindSequence(buffer, imageSignature, 0);
+                            int imageStart = FindSequence(buffer, _jpegStartMarker, 0);
                             if (imageStart == -1)
                             {
-                                if (buffer.Count > imageSignature.Length)
+                                if (buffer.Count > _jpegStartMarker.Length)
                                 {
-                                    buffer.RemoveRange(0, buffer.Count - imageSignature.Length);
+                                    buffer.RemoveRange(0, buffer.Count - _jpegStartMarker.Length);
                                 }
                                 break;
                             }
@@ -619,7 +639,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                 imageStart = 0;
                             }
 
-                            int endMarker = FindSequence(buffer, imageEndMarker, imageStart + imageSignature.Length);
+                            int endMarker = FindSequence(buffer, _jpegEndMarker, imageStart + _jpegStartMarker.Length);
                             
                             if (endMarker == -1)
                             {
@@ -631,7 +651,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                 break;
                             }
 
-                            var frameLength = endMarker + imageEndMarker.Length - imageStart;
+                            var frameLength = endMarker + _jpegEndMarker.Length - imageStart;
                             var frameData = buffer.GetRange(imageStart, frameLength).ToArray();
                             buffer.RemoveRange(0, imageStart + frameLength);
 
@@ -667,6 +687,11 @@ namespace EmbyCredits.Services.DetectionMethods
                         buffer.TrimExcess();
                     }
                     buffer = null;
+                    if (readBuffer != null)
+                    {
+                        ArrayPool<byte>.Shared.Return(readBuffer);
+                        readBuffer = null;
+                    }
                     if (frameQueue != null)
                     {
                         frameQueue.Clear();
@@ -699,6 +724,11 @@ namespace EmbyCredits.Services.DetectionMethods
                         buffer.Clear();
                         buffer.TrimExcess();
                         buffer = null;
+                    }
+                    if (readBuffer != null)
+                    {
+                        ArrayPool<byte>.Shared.Return(readBuffer);
+                        readBuffer = null;
                     }
                     if (frameQueue != null)
                     {
@@ -976,6 +1006,8 @@ namespace EmbyCredits.Services.DetectionMethods
                 {
                     process.Start();
                     Utilities.FFmpegHelper.RegisterProcess(process, $"OCR Disk: {System.IO.Path.GetFileName(videoPath)}");
+                    try
+                    {
                     Utilities.CpuThrottler.SetProcessPriority(process, Configuration);
 
                     var timeoutMinutes = Configuration.OcrMaxAnalysisDuration > 0 
@@ -1491,7 +1523,6 @@ namespace EmbyCredits.Services.DetectionMethods
 
                     if (creditsFound)
                     {
-                        Utilities.FFmpegHelper.UnregisterProcess(process);
                         return creditsTimestamp;
                     }
 
@@ -1520,7 +1551,6 @@ namespace EmbyCredits.Services.DetectionMethods
                         {
                             LogError($"FFmpeg error output: {ffmpegError}");
                         }
-                        Utilities.FFmpegHelper.UnregisterProcess(process);
                         return 0;
                     }
 
@@ -1528,7 +1558,6 @@ namespace EmbyCredits.Services.DetectionMethods
                     {
                         LastError = "No frames extracted for OCR analysis";
                         LogWarn("No frames extracted for OCR analysis");
-                        Utilities.FFmpegHelper.UnregisterProcess(process);
                         return 0;
                     }
 
@@ -1553,7 +1582,6 @@ namespace EmbyCredits.Services.DetectionMethods
                             recentTextFrames.Clear();
                             recentTextFrames.TrimExcess();
                             
-                            Utilities.FFmpegHelper.UnregisterProcess(process);
                             return creditsStart;
                         }
                     }
@@ -1568,8 +1596,12 @@ namespace EmbyCredits.Services.DetectionMethods
                     recentTextFrames.Clear();
                     recentTextFrames.TrimExcess();
                     
-                    Utilities.FFmpegHelper.UnregisterProcess(process);
                     return 0;
+                    }
+                    finally
+                    {
+                        Utilities.FFmpegHelper.UnregisterProcess(process);
+                    }
                 }
             }
             catch (Exception ex)
@@ -1580,30 +1612,14 @@ namespace EmbyCredits.Services.DetectionMethods
             }
         }
 
-        private int FindSequence(List<byte> haystack, byte[] needle, int startIndex)
+        private static int FindSequence(List<byte> haystack, ReadOnlySpan<byte> needle, int startIndex)
         {
-            if (needle.Length == 0 || haystack.Count < needle.Length)
+            if (needle.Length == 0 || haystack.Count < needle.Length + startIndex)
                 return -1;
 
-            var searchLimit = haystack.Count - needle.Length + 1;
-            for (int i = startIndex; i < searchLimit; i++)
-            {
-                if (haystack[i] == needle[0])
-                {
-                    bool found = true;
-                    for (int j = 1; j < needle.Length; j++)
-                    {
-                        if (haystack[i + j] != needle[j])
-                        {
-                            found = false;
-                            break;
-                        }
-                    }
-                    if (found)
-                        return i;
-                }
-            }
-            return -1;
+            var span = CollectionsMarshal.AsSpan(haystack);
+            var idx = span.Slice(startIndex).IndexOf(needle);
+            return idx == -1 ? -1 : idx + startIndex;
         }
 
         private async Task<(string text, double confidence)> PerformOcrOnFrameData(byte[] frameData, CancellationToken cancellationToken)
@@ -2395,14 +2411,26 @@ namespace EmbyCredits.Services.DetectionMethods
         private List<string> ParseKeywords(string keywordString)
         {
             if (string.IsNullOrWhiteSpace(keywordString))
+            {
+                _normalizedKeywordCache = Array.Empty<(string, string)>();
                 return new List<string>();
+            }
 
-            return keywordString
+            var keywords = keywordString
                 .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(k => k.Trim())
                 .Where(k => !string.IsNullOrWhiteSpace(k))
                 .Distinct()
                 .ToList();
+
+            _normalizedKeywordCache = keywords.Select(k =>
+            {
+                var lower = k.ToLowerInvariant();
+                var lowerCollapsed = _multipleWhitespaceRegex.Replace(lower, "");
+                return (lower, lowerCollapsed);
+            }).ToArray();
+
+            return keywords;
         }
 
         private List<string> FindKeywordMatches(string text, List<string> keywords)
@@ -2414,23 +2442,22 @@ namespace EmbyCredits.Services.DetectionMethods
             var lowerText = text.ToLowerInvariant();
             string? textCollapsedSpaces = null;
 
-            foreach (var keyword in keywords)
+            for (int i = 0; i < keywords.Count; i++)
             {
-                var lowerKeyword = keyword.ToLowerInvariant();
+                var (lowerKeyword, lowerKeywordCollapsed) = _normalizedKeywordCache[i];
                 
                 if (lowerText.Contains(lowerKeyword))
                 {
-                    matches.Add(keyword);
+                    matches.Add(keywords[i]);
                 }
                 else
                 {
                     if (textCollapsedSpaces == null)
                         textCollapsedSpaces = _multipleWhitespaceRegex.Replace(text, "").ToLowerInvariant();
                         
-                    var keywordCollapsedSpaces = _multipleWhitespaceRegex.Replace(keyword, "");
-                    if (textCollapsedSpaces.Contains(keywordCollapsedSpaces.ToLowerInvariant()))
+                    if (textCollapsedSpaces.Contains(lowerKeywordCollapsed))
                     {
-                        matches.Add(keyword);
+                        matches.Add(keywords[i]);
                     }
                 }
             }
@@ -2463,20 +2490,19 @@ namespace EmbyCredits.Services.DetectionMethods
             var textCollapsedSpaces = _multipleWhitespaceRegex.Replace(text, "").ToLowerInvariant();
             var words = lowerText.Split(new[] { ' ', '\n', '\r', '\t', ',', '.', ';', ':', '-' }, StringSplitOptions.RemoveEmptyEntries);
 
-            foreach (var keyword in keywords)
+            for (int i = 0; i < keywords.Count; i++)
             {
-                var lowerKeyword = keyword.ToLowerInvariant();
+                var (lowerKeyword, lowerKeywordCollapsed) = _normalizedKeywordCache[i];
 
                 if (lowerText.Contains(lowerKeyword))
                 {
-                    matches.Add(keyword);
+                    matches.Add(keywords[i]);
                     continue;
                 }
 
-                var keywordCollapsedSpaces = _multipleWhitespaceRegex.Replace(keyword, "");
-                if (textCollapsedSpaces.Contains(keywordCollapsedSpaces.ToLowerInvariant()))
+                if (textCollapsedSpaces.Contains(lowerKeywordCollapsed))
                 {
-                    matches.Add(keyword);
+                    matches.Add(keywords[i]);
                     continue;
                 }
 
@@ -2484,8 +2510,8 @@ namespace EmbyCredits.Services.DetectionMethods
                 {
                     if (OcrOptimizations.LevenshteinDistance(word, lowerKeyword) <= maxDistance)
                     {
-                        matches.Add(keyword);
-                        LogDebug($"Fuzzy match: '{word}' ≈ '{keyword}' (distance: {OcrOptimizations.LevenshteinDistance(word, lowerKeyword)})");
+                        matches.Add(keywords[i]);
+                        LogDebug($"Fuzzy match: '{word}' ≈ '{keywords[i]}' (distance: {OcrOptimizations.LevenshteinDistance(word, lowerKeyword)})");
                         break;
                     }
                 }
