@@ -257,8 +257,10 @@ define(['loading', 'toast'], function (loading, toast) {
         listEl.innerHTML = '<div style="text-align:center;padding:2em 0.5em;opacity:0.38;font-size:0.85em;">Filtering...</div>';
 
         var includeTypes = isAllLibraries() ? 'Episode,Movie' : 'Episode';
+        var userId = ApiClient.getCurrentUserId();
 
         var params = {
+            UserId: userId,
             IncludeItemTypes: includeTypes,
             Recursive: true,
             SortBy: 'SeriesName,ParentIndexNumber,IndexNumber',
@@ -680,7 +682,7 @@ define(['loading', 'toast'], function (loading, toast) {
         var chapters = collectChapters();
         loading.show();
 
-        fetch(ApiClient.getUrl('CreditsDetector/SaveEpisodeChapters'), {
+        fetch(ApiClient.getUrl('CreditsDetector/SaveEpisodeChapters', { EpisodeId: _currentEpisodeId }), {
             method: 'POST',
             headers: {
                 'X-Emby-Token': ApiClient.accessToken(),

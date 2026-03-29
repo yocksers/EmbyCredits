@@ -2379,6 +2379,17 @@ namespace EmbyCredits.Services
             return sanitized;
         }
 
+        private BaseItem? ResolveChapterItem(string itemId)
+        {
+            if (string.IsNullOrEmpty(itemId))
+                return null;
+            if (Guid.TryParse(itemId, out var guid))
+                return _libraryManager.GetItemById(guid);
+            if (long.TryParse(itemId, out var internalId))
+                return _libraryManager.GetItemById(internalId);
+            return null;
+        }
+
         public object Get(GetEpisodeChaptersRequest request)
         {
             try
@@ -2386,10 +2397,7 @@ namespace EmbyCredits.Services
                 if (string.IsNullOrEmpty(request.EpisodeId))
                     return new { Success = false, Message = "EpisodeId is required" };
 
-                if (!Guid.TryParse(request.EpisodeId, out var guid))
-                    return new { Success = false, Message = "Invalid EpisodeId format" };
-
-                var item = _libraryManager.GetItemById(guid);
+                var item = ResolveChapterItem(request.EpisodeId);
                 if (item == null || (!(item is Episode) && !(item is Movie)))
                     return new { Success = false, Message = "Item not found" };
 
@@ -2436,10 +2444,7 @@ namespace EmbyCredits.Services
                 if (string.IsNullOrEmpty(request.EpisodeId))
                     return new { Success = false, Message = "EpisodeId is required" };
 
-                if (!Guid.TryParse(request.EpisodeId, out var guid))
-                    return new { Success = false, Message = "Invalid EpisodeId format" };
-
-                var item = _libraryManager.GetItemById(guid);
+                var item = ResolveChapterItem(request.EpisodeId);
                 if (item == null || (!(item is Episode) && !(item is Movie)))
                     return new { Success = false, Message = "Item not found" };
 

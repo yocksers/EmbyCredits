@@ -17,7 +17,7 @@ define([], function () {
 
         const promises = parts.map(p => {
             const cacheBuster = new Date().getTime();
-            return fetch('/web/configurationpage?name=' + p.page + '&_=' + cacheBuster, {
+            return fetch(ApiClient.getUrl('web/configurationpage', { name: p.page, _: cacheBuster }), {
                 cache: 'no-cache',
                 headers: {
                     'Cache-Control': 'no-cache, no-store, must-revalidate',
