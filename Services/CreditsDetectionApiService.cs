@@ -107,9 +107,9 @@ namespace EmbyCredits.Services
                     return new { Success = false, Message = "SeriesId is required" };
                 }
 
-                if (request.SeasonNumber < 0 || request.SeasonNumber > 999)
+                if (request.SeasonNumber < 0)
                 {
-                    return new { Success = false, Message = "Invalid season number. Must be between 0 and 999." };
+                    return new { Success = false, Message = "Invalid season number. Must be 0 or greater." };
                 }
 
                 var series = ItemLookupHelper.ResolveSeries(_libraryManager, request.SeriesId, _logger);
@@ -268,9 +268,9 @@ namespace EmbyCredits.Services
                     return new { Success = false, Message = "SeriesId is required" };
                 }
 
-                if (request.SeasonNumber < 0 || request.SeasonNumber > 999)
+                if (request.SeasonNumber < 0)
                 {
-                    return new { Success = false, Message = "Invalid season number. Must be between 0 and 999." };
+                    return new { Success = false, Message = "Invalid season number. Must be 0 or greater." };
                 }
 
                 if (Math.Abs(request.CreditsStartSeconds) > 86400)
