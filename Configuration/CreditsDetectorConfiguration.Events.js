@@ -12,7 +12,6 @@ define([], function () {
             'autoSkipPage': view.querySelector('#autoSkipPage'),
             'guidePage': view.querySelector('#guidePage'),
             'apiPage': view.querySelector('#apiPage'),
-            'chapterEditPage': view.querySelector('#chapterEditPage'),
             'tracerPage': view.querySelector('#tracerPage')
         };
 

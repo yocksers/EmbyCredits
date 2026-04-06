@@ -41,9 +41,6 @@ namespace EmbyCredits.Api
         public const string GetFailedEpisodes = "/CreditsDetector/GetFailedEpisodes";
         public const string ClearFailureMarkers = "/CreditsDetector/ClearFailureMarkers";
         public const string ClearAllFailureMarkers = "/CreditsDetector/ClearAllFailureMarkers";
-        public const string GetEpisodeChapters = "/CreditsDetector/GetEpisodeChapters";
-        public const string SaveEpisodeChapters = "/CreditsDetector/SaveEpisodeChapters";
-
         public const string GetTracerEpisodes = "/CreditsDetector/GetTracerEpisodes";
         public const string DismissTracerEpisode = "/CreditsDetector/DismissTracerEpisode";
         public const string ClearTracerList = "/CreditsDetector/ClearTracerList";

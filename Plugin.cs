@@ -300,16 +300,6 @@ namespace EmbyCredits
                 },
                 new PluginPageInfo
                 {
-                    Name = "CreditsDetectorConfigurationChapterEditManager",
-                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.ChapterEditManager.js"
-                },
-                new PluginPageInfo
-                {
-                    Name = "CreditsDetectorConfiguration.ChapterEdit",
-                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.ChapterEdit.html"
-                },
-                new PluginPageInfo
-                {
                     Name = "CreditsDetectorConfigurationTracerManager",
                     EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.TracerManager.js"
                 },

@@ -238,34 +238,5 @@ namespace EmbyCredits.Services
             return GetMarkerType(chapter) ?? "Chapter";
         }
 
-        public void SaveChapterList(BaseItem item, IList<(string Name, long StartPositionTicks, string MarkerType)> entries)
-        {
-            try
-            {
-                var chapters = new List<ChapterInfo>();
-                foreach (var (name, ticks, markerType) in entries)
-                {
-                    var chapter = new ChapterInfo
-                    {
-                        Name = name ?? string.Empty,
-                        StartPositionTicks = ticks
-                    };
-                    if (!string.IsNullOrEmpty(markerType) && markerType != "Chapter")
-                    {
-                        if (Enum.TryParse<MarkerType>(markerType, out var mt))
-                            SetMarkerType(chapter, mt);
-                    }
-                    chapters.Add(chapter);
-                }
-                chapters = chapters.OrderBy(c => c.StartPositionTicks).ToList();
-                _itemRepository.SaveChapters(item.InternalId, chapters);
-                _logger.Info($"Chapter editor: saved {chapters.Count} chapter(s) for '{item.Name}'");
-            }
-            catch (Exception ex)
-            {
-                _logger.ErrorException($"Error saving chapter list for '{item.Name}'", ex);
-                throw;
-            }
-        }
     }
 }
