@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -26,6 +27,19 @@ namespace EmbyCredits.Services
             WriteIndented = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
+
+        private static readonly ConcurrentDictionary<string, SemaphoreSlim> _fileLocks =
+            new ConcurrentDictionary<string, SemaphoreSlim>(StringComparer.OrdinalIgnoreCase);
+
+        private static SemaphoreSlim GetFileLock(string key) =>
+            _fileLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+
+        private static void TryEvictFileLock(string key, SemaphoreSlim semaphore)
+        {
+            if (_fileLocks.Count <= 200) return;
+            if (semaphore.CurrentCount != 1) return;
+            _fileLocks.TryRemove(new KeyValuePair<string, SemaphoreSlim>(key, semaphore));
+        }
 
         public CreditsBackupService(ILogger logger, ILibraryManager libraryManager, IItemRepository itemRepository)
         {
@@ -68,7 +82,7 @@ namespace EmbyCredits.Services
                 .FullName;
         }
 
-        public void SaveSeriesBackupToFile(Series series, List<Episode> episodes, string backupFolder, int maxBackups)
+        public async Task SaveSeriesBackupToFile(Series series, List<Episode> episodes, string backupFolder, int maxBackups)
         {
             try
             {
@@ -78,6 +92,10 @@ namespace EmbyCredits.Services
                     return;
                 }
 
+                var seriesLock = GetFileLock(series.Name);
+                await seriesLock.WaitAsync().ConfigureAwait(false);
+                try
+                {
                 if (!Directory.Exists(backupFolder))
                     Directory.CreateDirectory(backupFolder);
 
@@ -129,15 +147,19 @@ namespace EmbyCredits.Services
 
                 var json = JsonSerializer.Serialize(backup, _jsonOptions);
                 var safeName = SanitizeFileName(series.Name);
-                // Overwrite the existing backup file so auto-restore always reads current data.
-                // Only create a new timestamped file when no backup exists yet.
                 var existingBackupFile = FindLatestSeriesBackupFile(series.Name, backupFolder);
                 var filePath = existingBackupFile ?? Path.Combine(backupFolder, $"{safeName}_{DateTime.Now:yyyy-MM-dd_HHmmss}.json");
 
-                File.WriteAllText(filePath, json);
+                await File.WriteAllTextAsync(filePath, json).ConfigureAwait(false);
                 _logger.Info($"Per-series backup saved: {filePath} ({backupEntries.Count} episodes with credits)");
 
                 RotateSeriesBackups(backupFolder, series.Name, maxBackups > 0 ? maxBackups : 10);
+                }
+                finally
+                {
+                    seriesLock.Release();
+                    TryEvictFileLock(series.Name, seriesLock);
+                }
             }
             catch (Exception ex)
             {
@@ -197,7 +219,7 @@ namespace EmbyCredits.Services
         /// Updates (or creates) the series backup file with the new credits timestamp for a single episode.
         /// Call this after any single-episode marker save so the backup stays in sync.
         /// </summary>
-        public void UpsertEpisodeInSeriesBackup(Episode episode, long creditsStartTicks, string backupFolder)
+        public async Task UpsertEpisodeInSeriesBackup(Episode episode, long creditsStartTicks, string backupFolder)
         {
             try
             {
@@ -205,6 +227,10 @@ namespace EmbyCredits.Services
                 if (series == null || string.IsNullOrWhiteSpace(backupFolder))
                     return;
 
+                var seriesLock = GetFileLock(series.Name);
+                await seriesLock.WaitAsync().ConfigureAwait(false);
+                try
+                {
                 if (!Directory.Exists(backupFolder))
                     Directory.CreateDirectory(backupFolder);
 
@@ -217,7 +243,7 @@ namespace EmbyCredits.Services
                     filePath = existingFile;
                     try
                     {
-                        backup = JsonSerializer.Deserialize<CreditsBackup>(File.ReadAllText(filePath))
+                        backup = JsonSerializer.Deserialize<CreditsBackup>(await File.ReadAllTextAsync(filePath).ConfigureAwait(false))
                             ?? new CreditsBackup { Version = "1.0", BackupDate = DateTime.UtcNow, Entries = new List<CreditsBackupEntry>() };
                         backup.Entries ??= new List<CreditsBackupEntry>();
                     }
@@ -278,8 +304,14 @@ namespace EmbyCredits.Services
                 backup.BackupDate = DateTime.UtcNow;
                 backup.EpisodesWithCredits = backup.Entries.Count;
 
-                File.WriteAllText(filePath, JsonSerializer.Serialize(backup, _jsonOptions));
+                await File.WriteAllTextAsync(filePath, JsonSerializer.Serialize(backup, _jsonOptions)).ConfigureAwait(false);
                 _logger.Info($"Auto-backup: updated entry for '{episode.Name}' in '{Path.GetFileName(filePath)}'");
+                }
+                finally
+                {
+                    seriesLock.Release();
+                    TryEvictFileLock(series.Name, seriesLock);
+                }
             }
             catch (Exception ex)
             {
@@ -316,7 +348,7 @@ namespace EmbyCredits.Services
             }
         }
 
-        public bool RestoreEpisodeMarkerFromBackup(Episode episode, string backupFolder)
+        public async Task<bool> RestoreEpisodeMarkerFromBackup(Episode episode, string backupFolder)
         {
             try
             {
@@ -324,6 +356,10 @@ namespace EmbyCredits.Services
                 if (series == null || string.IsNullOrWhiteSpace(backupFolder))
                     return false;
 
+                var seriesLock = GetFileLock(series.Name);
+                await seriesLock.WaitAsync().ConfigureAwait(false);
+                try
+                {
                 var backupFile = FindLatestSeriesBackupFile(series.Name, backupFolder);
                 if (backupFile == null)
                 {
@@ -331,7 +367,7 @@ namespace EmbyCredits.Services
                     return false;
                 }
 
-                var json = File.ReadAllText(backupFile);
+                var json = await File.ReadAllTextAsync(backupFile).ConfigureAwait(false);
                 var backup = JsonSerializer.Deserialize<CreditsBackup>(json);
                 if (backup?.Entries == null || backup.Entries.Count == 0)
                     return false;
@@ -384,6 +420,12 @@ namespace EmbyCredits.Services
 
                 _logger.Warn($"Could not set MarkerType on ChapterInfo for '{episode.Name}'");
                 return false;
+                }
+                finally
+                {
+                    seriesLock.Release();
+                    TryEvictFileLock(series.Name, seriesLock);
+                }
             }
             catch (Exception ex)
             {
@@ -392,7 +434,7 @@ namespace EmbyCredits.Services
             }
         }
 
-        public Task<CreditsBackupResult> ExportCreditsMarkers(
+        public async Task<CreditsBackupResult> ExportCreditsMarkers(
             List<string>? libraryIds,
             List<string>? seriesIds,
             CancellationToken cancellationToken = default,
@@ -444,7 +486,7 @@ namespace EmbyCredits.Services
                         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
                     });
                     
-                    return Task.FromResult(result);
+                    return result;
                 }
 
                 if (libraryIds != null && libraryIds.Count > 0)
@@ -597,7 +639,7 @@ namespace EmbyCredits.Services
                         var seriesJson = JsonSerializer.Serialize(seriesBackup, jsonOptions);
                         var safeName = SanitizeFileName(seriesGroup.Key);
                         var filePath = Path.Combine(backupFolder, $"{safeName}_{timestamp}.json");
-                        File.WriteAllText(filePath, seriesJson);
+                        await File.WriteAllTextAsync(filePath, seriesJson, cancellationToken).ConfigureAwait(false);
                         _logger.Debug($"Saved series backup: {filePath}");
 
                         RotateSeriesBackups(backupFolder, seriesGroup.Key, maxBackupsPerSeries);
@@ -628,9 +670,8 @@ namespace EmbyCredits.Services
                 }
                 
                 backupData.Clear();
-                GC.Collect(1, GCCollectionMode.Optimized, false);
 
-                return Task.FromResult(result);
+                return result;
             }
             catch (Exception ex)
             {
@@ -646,7 +687,7 @@ namespace EmbyCredits.Services
                     progress.CurrentItem = "Export Failed";
                 }
                 
-                return Task.FromResult(result);
+                return result;
             }
         }
 
@@ -933,7 +974,6 @@ namespace EmbyCredits.Services
                 episodesBySeriesAndNumber.Clear();
                 episodesByPath.Clear();
                 allEpisodes.Clear();
-                GC.Collect(1, GCCollectionMode.Optimized, false);
 
                 return Task.FromResult(result);
             }

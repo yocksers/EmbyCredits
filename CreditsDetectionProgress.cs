@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace EmbyCredits
 {
@@ -9,11 +10,38 @@ namespace EmbyCredits
         private const int MaxDictionarySize = 5000;
         
         public bool IsRunning { get; set; }
-        public int TotalItems { get; set; }
-        public int ProcessedItems { get; set; }
-        public int SuccessfulItems { get; set; }
-        public int FailedItems { get; set; }
-        public int SkippedItems { get; set; }
+
+        private int _totalItems;
+        private int _processedItems;
+        private int _successfulItems;
+        private int _failedItems;
+        private int _skippedItems;
+
+        public int TotalItems
+        {
+            get => Volatile.Read(ref _totalItems);
+            set => Volatile.Write(ref _totalItems, value);
+        }
+        public int ProcessedItems
+        {
+            get => Volatile.Read(ref _processedItems);
+            set => Volatile.Write(ref _processedItems, value);
+        }
+        public int SuccessfulItems
+        {
+            get => Volatile.Read(ref _successfulItems);
+            set => Volatile.Write(ref _successfulItems, value);
+        }
+        public int FailedItems
+        {
+            get => Volatile.Read(ref _failedItems);
+            set => Volatile.Write(ref _failedItems, value);
+        }
+        public int SkippedItems
+        {
+            get => Volatile.Read(ref _skippedItems);
+            set => Volatile.Write(ref _skippedItems, value);
+        }
         public string CurrentItem { get; set; } = string.Empty;
         public int CurrentItemProgress { get; set; }
         public DateTime? StartTime { get; set; }
@@ -21,7 +49,10 @@ namespace EmbyCredits
         public string CurrentMethod { get; set; } = string.Empty;
         public double AverageProcessingTimeSeconds { get; set; }
         
-        private readonly List<double> _processingTimes = new List<double>();
+        private readonly Queue<double> _processingTimes = new Queue<double>();
+        private double _processingTimesSum = 0.0;
+        private readonly object _processingTimesLock = new object();
+        private readonly object _dictionariesLock = new object();
         private DateTime? _currentItemStartTime;
         
         private Dictionary<string, string> _failureReasons = new Dictionary<string, string>();
@@ -30,58 +61,69 @@ namespace EmbyCredits
         private Dictionary<string, double> _confidenceScores = new Dictionary<string, double>();
         private Dictionary<string, string> _thumbnailPaths = new Dictionary<string, string>();
         private Dictionary<string, string> _episodeIds = new Dictionary<string, string>();
+        private Dictionary<string, string> _appliedRules = new Dictionary<string, string>();
         
         public Dictionary<string, string> FailureReasons 
         { 
             get => _failureReasons;
-            set => _failureReasons = value;
+            set { lock (_dictionariesLock) { _failureReasons = value; } }
         }
         
         public Dictionary<string, string> SuccessDetails 
         { 
             get => _successDetails;
-            set => _successDetails = value;
+            set { lock (_dictionariesLock) { _successDetails = value; } }
         }
         
         public Dictionary<string, string> SkipReasons 
         { 
             get => _skipReasons;
-            set => _skipReasons = value;
+            set { lock (_dictionariesLock) { _skipReasons = value; } }
         }
         
         public Dictionary<string, double> ConfidenceScores 
         { 
             get => _confidenceScores;
-            set => _confidenceScores = value;
+            set { lock (_dictionariesLock) { _confidenceScores = value; } }
         }
 
         public Dictionary<string, string> ThumbnailPaths 
         { 
             get => _thumbnailPaths;
-            set => _thumbnailPaths = value;
+            set { lock (_dictionariesLock) { _thumbnailPaths = value; } }
         }
 
         public Dictionary<string, string> EpisodeIds 
         { 
             get => _episodeIds;
-            set => _episodeIds = value;
+            set { lock (_dictionariesLock) { _episodeIds = value; } }
+        }
+
+        public Dictionary<string, string> AppliedRules 
+        { 
+            get => _appliedRules;
+            set { lock (_dictionariesLock) { _appliedRules = value; } }
         }
 
         public void Reset()
         {
             IsRunning = false;
-            TotalItems = 0;
-            ProcessedItems = 0;
-            SuccessfulItems = 0;
-            FailedItems = 0;
-            SkippedItems = 0;
+            Volatile.Write(ref _totalItems, 0);
+            Volatile.Write(ref _processedItems, 0);
+            Volatile.Write(ref _successfulItems, 0);
+            Volatile.Write(ref _failedItems, 0);
+            Volatile.Write(ref _skippedItems, 0);
             CurrentItem = string.Empty;
             CurrentItemProgress = 0;
             StartTime = null;
             EndTime = null;
             CurrentMethod = string.Empty;
             AverageProcessingTimeSeconds = 0;
-            _processingTimes.Clear();
+            lock (_processingTimesLock) 
+            { 
+                _processingTimes.Clear();
+                _processingTimesSum = 0.0;
+            }
             _currentItemStartTime = null;
             DeleteOldThumbnails();
             CleanupDictionaries();
@@ -94,39 +136,44 @@ namespace EmbyCredits
             _currentItemStartTime = DateTime.UtcNow;
         }
         
+        public void IncrementSkipped() => Interlocked.Increment(ref _skippedItems);
+
         public void CompleteProcessingItem(bool success)
         {
             if (_currentItemStartTime.HasValue)
             {
                 var elapsed = (DateTime.UtcNow - _currentItemStartTime.Value).TotalSeconds;
-                _processingTimes.Add(elapsed);
-                
-                if (_processingTimes.Count > 100)
+                lock (_processingTimesLock)
                 {
-                    _processingTimes.RemoveAt(0);
+                    _processingTimesSum += elapsed;
+                    _processingTimes.Enqueue(elapsed);
+                    if (_processingTimes.Count > 100)
+                        _processingTimesSum -= _processingTimes.Dequeue();
+                    AverageProcessingTimeSeconds = _processingTimesSum / _processingTimes.Count;
                 }
-                
-                AverageProcessingTimeSeconds = _processingTimes.Average();
                 _currentItemStartTime = null;
             }
             
             if (success)
-            {
-                SuccessfulItems++;
-            }
+                Interlocked.Increment(ref _successfulItems);
             else
-            {
-                FailedItems++;
-            }
-            ProcessedItems++;
+                Interlocked.Increment(ref _failedItems);
+            Interlocked.Increment(ref _processedItems);
+            
+            CheckAndLimitDictionarySize();
         }
         
         private void DeleteOldThumbnails()
         {
             try
             {
-                if (_thumbnailPaths.Count == 0)
-                    return;
+                List<string> thumbnailValues;
+                lock (_dictionariesLock)
+                {
+                    if (_thumbnailPaths.Count == 0)
+                        return;
+                    thumbnailValues = _thumbnailPaths.Values.ToList();
+                }
 
                 var pluginDataPath = Plugin.Instance?.AppPaths?.PluginConfigurationsPath;
                 if (string.IsNullOrEmpty(pluginDataPath))
@@ -136,7 +183,7 @@ namespace EmbyCredits
                 if (!System.IO.Directory.Exists(thumbnailDir))
                     return;
 
-                foreach (var thumbnailFile in _thumbnailPaths.Values)
+                foreach (var thumbnailFile in thumbnailValues)
                 {
                     try
                     {
@@ -158,75 +205,104 @@ namespace EmbyCredits
         
         private void CleanupDictionaries()
         {
-            _failureReasons.Clear();
-            _failureReasons.TrimExcess();
-            _successDetails.Clear();
-            _successDetails.TrimExcess();
-            _skipReasons.Clear();
-            _skipReasons.TrimExcess();
-            _confidenceScores.Clear();
-            _confidenceScores.TrimExcess();
-            _thumbnailPaths.Clear();
-            _thumbnailPaths.TrimExcess();
-            _episodeIds.Clear();
-            _episodeIds.TrimExcess();
+            lock (_dictionariesLock)
+            {
+                _failureReasons.Clear();
+                _failureReasons.TrimExcess();
+                _successDetails.Clear();
+                _successDetails.TrimExcess();
+                _skipReasons.Clear();
+                _skipReasons.TrimExcess();
+                _confidenceScores.Clear();
+                _confidenceScores.TrimExcess();
+                _thumbnailPaths.Clear();
+                _thumbnailPaths.TrimExcess();
+                _episodeIds.Clear();
+                _episodeIds.TrimExcess();
+                _appliedRules.Clear();
+                _appliedRules.TrimExcess();
+            }
         }
         
         internal void CheckAndLimitDictionarySize()
         {
-            if (_failureReasons.Count > MaxDictionarySize)
+            List<string>? thumbnailFilesToDelete = null;
+
+            lock (_dictionariesLock)
             {
-                var toRemove = _failureReasons.Keys.Take(_failureReasons.Count - MaxDictionarySize).ToList();
-                foreach (var key in toRemove)
-                    _failureReasons.Remove(key);
+                if (_failureReasons.Count > MaxDictionarySize)
+                {
+                    var toRemove = _failureReasons.Keys.Take(_failureReasons.Count - MaxDictionarySize).ToList();
+                    foreach (var key in toRemove)
+                        _failureReasons.Remove(key);
+                }
+
+                if (_successDetails.Count > MaxDictionarySize)
+                {
+                    var toRemove = _successDetails.Keys.Take(_successDetails.Count - MaxDictionarySize).ToList();
+                    foreach (var key in toRemove)
+                        _successDetails.Remove(key);
+                }
+
+                if (_skipReasons.Count > MaxDictionarySize)
+                {
+                    var toRemove = _skipReasons.Keys.Take(_skipReasons.Count - MaxDictionarySize).ToList();
+                    foreach (var key in toRemove)
+                        _skipReasons.Remove(key);
+                }
+
+                if (_confidenceScores.Count > MaxDictionarySize)
+                {
+                    var toRemove = _confidenceScores.Keys.Take(_confidenceScores.Count - MaxDictionarySize).ToList();
+                    foreach (var key in toRemove)
+                        _confidenceScores.Remove(key);
+                }
+
+                if (_thumbnailPaths.Count > MaxDictionarySize)
+                {
+                    var toRemove = _thumbnailPaths.Keys.Take(_thumbnailPaths.Count - MaxDictionarySize).ToList();
+                    thumbnailFilesToDelete = new List<string>(toRemove.Count);
+                    foreach (var key in toRemove)
+                    {
+                        if (_thumbnailPaths.TryGetValue(key, out var thumbnailFile))
+                            thumbnailFilesToDelete.Add(thumbnailFile);
+                        _thumbnailPaths.Remove(key);
+                    }
+                }
+
+                if (_episodeIds.Count > MaxDictionarySize)
+                {
+                    var toRemove = _episodeIds.Keys.Take(_episodeIds.Count - MaxDictionarySize).ToList();
+                    foreach (var key in toRemove)
+                        _episodeIds.Remove(key);
+                }
+
+                if (_appliedRules.Count > MaxDictionarySize)
+                {
+                    var toRemove = _appliedRules.Keys.Take(_appliedRules.Count - MaxDictionarySize).ToList();
+                    foreach (var key in toRemove)
+                        _appliedRules.Remove(key);
+                }
             }
-            
-            if (_successDetails.Count > MaxDictionarySize)
+
+            if (thumbnailFilesToDelete != null && thumbnailFilesToDelete.Count > 0)
             {
-                var toRemove = _successDetails.Keys.Take(_successDetails.Count - MaxDictionarySize).ToList();
-                foreach (var key in toRemove)
-                    _successDetails.Remove(key);
-            }
-            
-            if (_skipReasons.Count > MaxDictionarySize)
-            {
-                var toRemove = _skipReasons.Keys.Take(_skipReasons.Count - MaxDictionarySize).ToList();
-                foreach (var key in toRemove)
-                    _skipReasons.Remove(key);
-            }
-            
-            if (_confidenceScores.Count > MaxDictionarySize)
-            {
-                var toRemove = _confidenceScores.Keys.Take(_confidenceScores.Count - MaxDictionarySize).ToList();
-                foreach (var key in toRemove)
-                    _confidenceScores.Remove(key);
-            }
-            
-            if (_thumbnailPaths.Count > MaxDictionarySize)
-            {
-                var toRemove = _thumbnailPaths.Keys.Take(_thumbnailPaths.Count - MaxDictionarySize).ToList();
-                
                 try
                 {
                     var pluginDataPath = Plugin.Instance?.AppPaths?.PluginConfigurationsPath;
                     if (!string.IsNullOrEmpty(pluginDataPath))
                     {
                         var thumbnailDir = System.IO.Path.Combine(pluginDataPath, "EmbyCredits", "Thumbnails");
-                        foreach (var key in toRemove)
+                        foreach (var thumbnailFile in thumbnailFilesToDelete)
                         {
-                            if (_thumbnailPaths.TryGetValue(key, out var thumbnailFile))
+                            try
                             {
-                                try
-                                {
-                                    var fullPath = System.IO.Path.Combine(thumbnailDir, thumbnailFile);
-                                    if (System.IO.File.Exists(fullPath))
-                                    {
-                                        System.IO.File.Delete(fullPath);
-                                    }
-                                }
-                                catch
-                                {
-                                }
+                                var fullPath = System.IO.Path.Combine(thumbnailDir, thumbnailFile);
+                                if (System.IO.File.Exists(fullPath))
+                                    System.IO.File.Delete(fullPath);
+                            }
+                            catch
+                            {
                             }
                         }
                     }
@@ -234,16 +310,6 @@ namespace EmbyCredits
                 catch
                 {
                 }
-                
-                foreach (var key in toRemove)
-                    _thumbnailPaths.Remove(key);
-            }
-            
-            if (_episodeIds.Count > MaxDictionarySize)
-            {
-                var toRemove = _episodeIds.Keys.Take(_episodeIds.Count - MaxDictionarySize).ToList();
-                foreach (var key in toRemove)
-                    _episodeIds.Remove(key);
             }
         }
 

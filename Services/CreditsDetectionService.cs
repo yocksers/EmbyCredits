@@ -28,12 +28,12 @@ namespace EmbyCredits.Services
         private static ILibraryManager? _libraryManager;
         private static IItemRepository? _itemRepository;
         private static IFfmpegManager? _ffmpegManager;
-        private static bool _isRunning;
+        private static volatile bool _isRunning;
         private static ConcurrentDictionary<string, DateTime> _processedEpisodes = new ConcurrentDictionary<string, DateTime>();
         private static EpisodeQueue _processingQueue = new EpisodeQueue(MaxQueueSize);
-        private static SemaphoreSlim _processingSemaphore = new SemaphoreSlim(1, 1);
-        private static bool _isProcessing = false;
-        private static bool _cancellationRequested = false;
+        private static SemaphoreSlim? _processingSemaphore = new SemaphoreSlim(1, 1);
+        private static volatile bool _isProcessing = false;
+        private static volatile bool _cancellationRequested = false;
         private static CancellationTokenSource? _cancellationTokenSource = null;
         private static bool _isDryRun = false;
         private static bool _previousRestoreAfterScanState = false;
@@ -58,7 +58,7 @@ namespace EmbyCredits.Services
         private static ConcurrentDictionary<string, List<(string method, double timestamp)>> _batchDetectionCache = new ConcurrentDictionary<string, List<(string method, double timestamp)>>();
         private static bool _isBatchMode = false;
         
-        private static ConcurrentDictionary<string, List<string>> _episodeStatusMessages = new ConcurrentDictionary<string, List<string>>();
+        private static ConcurrentDictionary<string, ConcurrentQueue<string>> _episodeStatusMessages = new ConcurrentDictionary<string, ConcurrentQueue<string>>();
 
         private static void LogInfo(string message)
         {
@@ -77,6 +77,11 @@ namespace EmbyCredits.Services
 
         private static void LogError(string message, Exception? ex = null)
         {
+            if (ex is OperationCanceledException || ex is TaskCanceledException)
+            {
+                _debugLogger?.LogInfo($"{message} (Task was canceled)");
+                return;
+            }
             _debugLogger?.LogError(message, ex);
         }
 
@@ -87,10 +92,12 @@ namespace EmbyCredits.Services
         
         public static void AddEpisodeStatusMessage(string episodeId, string message)
         {
-            var messages = _episodeStatusMessages.GetOrAdd(episodeId, _ => new List<string>());
-            lock (messages)
+            var messages = _episodeStatusMessages.GetOrAdd(episodeId, _ => new ConcurrentQueue<string>());
+            
+            messages.Enqueue(message);
+            while (messages.Count > 50)
             {
-                messages.Add(message);
+                messages.TryDequeue(out _);
             }
             
             CleanupEpisodeStatusMessages();
@@ -100,7 +107,7 @@ namespace EmbyCredits.Services
         {
             if (_episodeStatusMessages.TryRemove(episodeId, out var messages))
             {
-                return messages;
+                return messages.ToList();
             }
             return new List<string>();
         }
@@ -163,13 +170,17 @@ namespace EmbyCredits.Services
 
             if (_logger != null && _appPaths != null)
             {
-                _detectionCoordinator?.Dispose();
+                var oldDetectionCoordinator = _detectionCoordinator;
                 _detectionCoordinator = new DetectionCoordinator(_logger, configuration);
-
-                _debugLogger?.Dispose();
+                
+                var oldDebugLogger = _debugLogger;
                 _debugLogger = new DebugLogger(_logger, configuration);
-                _pluginCoordination?.Dispose();
+                
+                var oldPluginCoordination = _pluginCoordination;
                 _pluginCoordination = new PluginCoordinationService(_logger, configuration);
+                
+                var oldChapterMarkerService = _chapterMarkerService;
+                var oldEpisodeProcessor = _episodeProcessor;
                 
                 if (_itemRepository != null)
                 {
@@ -177,6 +188,18 @@ namespace EmbyCredits.Services
                     _episodeProcessor = new EpisodeProcessor(_logger, _libraryManager, _detectionCoordinator, 
                         _chapterMarkerService, _debugLogger, configuration);
                 }
+
+                // Delay disposal of old services to allow in-flight background tasks to finish using them
+                Task.Delay(10000).ContinueWith(_ =>
+                {
+                    try
+                    {
+                        oldDetectionCoordinator?.Dispose();
+                        oldDebugLogger?.Dispose();
+                        oldPluginCoordination?.Dispose();
+                    }
+                    catch { }
+                });
             }
 
             if (_libraryManager != null && _isRunning)
@@ -236,7 +259,7 @@ namespace EmbyCredits.Services
                 while (_processingQueue.TryDequeue(out _)) { }
                 
                 _episodeStatusMessages.Clear();
-                System.Threading.Interlocked.Exchange(ref _episodeStatusMessages, new ConcurrentDictionary<string, List<string>>());
+                System.Threading.Interlocked.Exchange(ref _episodeStatusMessages, new ConcurrentDictionary<string, ConcurrentQueue<string>>());
                 
                 _logger?.Info("Cleared in-memory batch detection cache and processing queue for fresh detection");
             }
@@ -252,14 +275,13 @@ namespace EmbyCredits.Services
                 return;
 
             var cutoffTime = DateTime.UtcNow.AddDays(-7);
-            var keysToRemove = _processedEpisodes
-                .Where(kvp => kvp.Value < cutoffTime)
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            foreach (var key in keysToRemove)
+            
+            foreach (var kvp in _processedEpisodes)
             {
-                _processedEpisodes.TryRemove(key, out _);
+                if (kvp.Value < cutoffTime)
+                {
+                    _processedEpisodes.TryRemove(kvp.Key, out _);
+                }
             }
 
             if (_processedEpisodes.Count > MaxProcessedEpisodesCache)
@@ -285,12 +307,12 @@ namespace EmbyCredits.Services
             var entriesToRemove = _batchDetectionCache.Count - MaxBatchDetectionCacheSize;
             var removed = 0;
             
-            foreach (var key in _batchDetectionCache.Keys)
+            foreach (var kvp in _batchDetectionCache)
             {
                 if (removed >= entriesToRemove)
                     break;
                     
-                if (_batchDetectionCache.TryRemove(key, out _))
+                if (_batchDetectionCache.TryRemove(kvp.Key, out _))
                     removed++;
             }
             
@@ -305,12 +327,12 @@ namespace EmbyCredits.Services
             var entriesToRemove = _episodeStatusMessages.Count - MaxEpisodeStatusMessagesCache;
             var removed = 0;
             
-            foreach (var key in _episodeStatusMessages.Keys)
+            foreach (var kvp in _episodeStatusMessages)
             {
                 if (removed >= entriesToRemove)
                     break;
                     
-                if (_episodeStatusMessages.TryRemove(key, out _))
+                if (_episodeStatusMessages.TryRemove(kvp.Key, out _))
                     removed++;
             }
             
@@ -340,8 +362,14 @@ namespace EmbyCredits.Services
 
             try
             {
-                _processingSemaphore?.Dispose();
-                _processingSemaphore = new SemaphoreSlim(1, 1);
+                var cts = Interlocked.Exchange(ref _cancellationTokenSource, null);
+                if (cts != null)
+                {
+                    cts.Cancel();
+                    cts.Dispose();
+                }
+                var oldSemaphore = Interlocked.Exchange(ref _processingSemaphore, new SemaphoreSlim(1, 1));
+                oldSemaphore?.Dispose();
             }
             catch (Exception ex)
             {
@@ -362,9 +390,7 @@ namespace EmbyCredits.Services
             System.Threading.Interlocked.Exchange(ref _processedEpisodes, new ConcurrentDictionary<string, DateTime>());
             
             _episodeStatusMessages.Clear();
-            System.Threading.Interlocked.Exchange(ref _episodeStatusMessages, new ConcurrentDictionary<string, List<string>>());
-            
-            GC.Collect(2, GCCollectionMode.Forced, true);
+            System.Threading.Interlocked.Exchange(ref _episodeStatusMessages, new ConcurrentDictionary<string, ConcurrentQueue<string>>());
 
             LogInfo("Credits Detection Service stopped");
         }
@@ -376,9 +402,9 @@ namespace EmbyCredits.Services
 
             var autoDetect = _configuration.EnableAutoDetection;
             var tracerEnabled = _configuration.EnableTracerMode;
+            var trackPending = _configuration.OnlyProcessNewEpisodes;
 
-            // Nothing to do if neither feature is on
-            if (!autoDetect && !tracerEnabled)
+            if (!autoDetect && !tracerEnabled && !trackPending)
                 return;
 
             try
@@ -397,47 +423,33 @@ namespace EmbyCredits.Services
                         return;
                     }
 
+                    // Track in Tracer and pending queue before library filter — these apply to all new episodes
+                    if (tracerEnabled && Plugin.TracerService != null)
+                        Plugin.TracerService.TrackEpisode(episode);
+
+                    if (trackPending && Plugin.PendingEpisodesService != null)
+                        Plugin.PendingEpisodesService.TrackEpisode(episode);
+
+                    // Library filter applies only to auto-detection.
+                    // CollectionFolders (virtual library roots) are NOT physical ancestors — they never
+                    // appear in GetParent() chains. Use path-based matching via GetVirtualFolders().
                     var libraryIds = _configuration.LibraryIds ?? Array.Empty<string>();
-                    if (libraryIds.Length > 0)
+                    if (libraryIds.Length > 0 && _libraryManager != null)
                     {
-                        var topParent = episode.GetTopParent();
-                        var internalId = topParent?.InternalId.ToString();
-                        
-                        LogDebug($"Episode {episode.Name} - TopParent: {topParent?.Name} (InternalId: {internalId}), Type: {topParent?.GetType().Name}, Configured libraries: [{string.Join(", ", libraryIds)}]");
-                        
-                        bool isInConfiguredLibrary = false;
-                        if (!string.IsNullOrEmpty(internalId))
+                        string? matchedLibrary = null;
+                        if (!string.IsNullOrEmpty(episode.Path))
+                            matchedLibrary = RuleMatchingService.FindLibraryNameForPath(episode.Path, libraryIds, _libraryManager);
+
+                        LogDebug($"Episode {episode.Name} - library match={matchedLibrary != null} (library={matchedLibrary ?? "none"}), Configured: [{string.Join(", ", libraryIds)}]");
+
+                        if (matchedLibrary == null)
                         {
-                            if (libraryIds.Contains(internalId))
-                            {
-                                isInConfiguredLibrary = true;
-                            }
-                            else if (long.TryParse(internalId, out var id) && id > 0)
-                            {
-                                var collectionId = (id - 1).ToString();
-                                if (libraryIds.Contains(collectionId))
-                                {
-                                    isInConfiguredLibrary = true;
-                                }
-                            }
-                        }
-                        
-                        if (!isInConfiguredLibrary)
-                        {
-                            LogDebug($"Skipping episode {episode.Name} - not in configured libraries");
+                            LogDebug($"Skipping auto-detection for {episode.Name} - not in configured libraries");
                             return;
                         }
                     }
 
                     LogInfo($"New episode detected: {episode.SeriesName} - {episode.Name}");
-
-                    // Track in Tracer if enabled (independent of auto-detection)
-                    if (tracerEnabled && Plugin.TracerService != null)
-                        Plugin.TracerService.TrackEpisode(episode);
-
-                    // Track in pending queue if OnlyProcessNewEpisodes is enabled
-                    if (_configuration.OnlyProcessNewEpisodes && Plugin.PendingEpisodesService != null)
-                        Plugin.PendingEpisodesService.TrackEpisode(episode);
 
                     // Stop here if auto-detection is off
                     if (!autoDetect)
@@ -446,13 +458,17 @@ namespace EmbyCredits.Services
                     var episodeId = episode.Id;
                     var episodeName = episode.Name;
                     var episodePath = episode.Path;
+                    var cancellationToken = _cancellationTokenSource?.Token ?? CancellationToken.None;
 
                     Task.Run(async () =>
                     {
                         try
                         {
-                            await Task.Delay(15000).ConfigureAwait(false);
+                            await Task.Delay(15000, cancellationToken).ConfigureAwait(false);
                             
+                            if (cancellationToken.IsCancellationRequested)
+                                return;
+
                             if (_libraryManager == null)
                             {
                                 LogWarn($"LibraryManager not available for delayed processing of {episodeName}");
@@ -472,16 +488,41 @@ namespace EmbyCredits.Services
                                 return;
                             }
 
-                            if (!File.Exists(refreshedEpisode.Path))
+                            if (refreshedEpisode.Path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                                refreshedEpisode.Path.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                             {
-                                LogDebug($"File does not exist for {refreshedEpisode.Name}: {refreshedEpisode.Path}");
+                                LogDebug($"Skipping remote media path for {refreshedEpisode.Name}");
                                 return;
                             }
 
-                            var fileInfo = new FileInfo(refreshedEpisode.Path);
-                            if ((DateTime.UtcNow - fileInfo.LastWriteTimeUtc).TotalSeconds < 5)
+                            try 
                             {
-                                LogDebug($"File still being modified: {refreshedEpisode.Name}");
+                                if (!File.Exists(refreshedEpisode.Path))
+                                {
+                                    LogDebug($"File does not exist for {refreshedEpisode.Name}: {refreshedEpisode.Path}");
+                                    return;
+                                }
+
+                                var fileInfo = new FileInfo(refreshedEpisode.Path);
+                                // Try opening the file to check for write locks before checking LastWriteTime
+                                using (var stream = fileInfo.Open(FileMode.Open, FileAccess.Read, FileShare.Read))
+                                {
+                                }
+
+                                if ((DateTime.UtcNow - fileInfo.LastWriteTimeUtc).TotalSeconds < 5)
+                                {
+                                    LogDebug($"File still being modified: {refreshedEpisode.Name}");
+                                    return;
+                                }
+                            }
+                            catch (IOException)
+                            {
+                                LogDebug($"File is locked and still being written to: {refreshedEpisode.Name}");
+                                return;
+                            }
+                            catch (Exception ex)
+                            {
+                                LogDebug($"Skipping {refreshedEpisode.Name} due to file access error: {ex.Message}");
                                 return;
                             }
 
@@ -546,22 +587,31 @@ namespace EmbyCredits.Services
                 if (Plugin.CreditsBackupService == null)
                     return;
 
-                var restored = Plugin.CreditsBackupService.RestoreEpisodeMarkerFromBackup(episode, _configuration.BackupFolderPath);
-
-                if (restored)
+                var backupService = Plugin.CreditsBackupService;
+                var backupFolder = _configuration.BackupFolderPath;
+                _ = Task.Run(async () =>
                 {
-                    _recentlyRestoredEpisodes[episodeId] = DateTime.UtcNow;
-
-                    var cutoff = DateTime.UtcNow.AddSeconds(-RestoreGuardSeconds * 2);
-                    foreach (var key in _recentlyRestoredEpisodes.Where(kvp => kvp.Value < cutoff).Select(kvp => kvp.Key).ToList())
-                        _recentlyRestoredEpisodes.TryRemove(key, out _);
-
-                    ScheduleDeferredRestoreCheck(episode, episodeId);
-                }
+                    try
+                    {
+                        var restored = await backupService.RestoreEpisodeMarkerFromBackup(episode, backupFolder).ConfigureAwait(false);
+                        if (restored)
+                        {
+                            _recentlyRestoredEpisodes[episodeId] = DateTime.UtcNow;
+                            var cutoff = DateTime.UtcNow.AddSeconds(-RestoreGuardSeconds * 2);
+                            foreach (var key in _recentlyRestoredEpisodes.Where(kvp => kvp.Value < cutoff).Select(kvp => kvp.Key).ToList())
+                                _recentlyRestoredEpisodes.TryRemove(key, out _);
+                            ScheduleDeferredRestoreCheck(episode, episodeId);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"Error in OnItemUpdated restore handler for '{episode.Name}'", ex);
+                    }
+                });
             }
             catch (Exception ex)
             {
-                LogError($"Error in OnItemUpdated restore handler for '{e.Item?.Name}'", ex);
+                LogError($"Error in OnItemUpdated for '{episode.Name}'", ex);
             }
         }
 
@@ -592,7 +642,7 @@ namespace EmbyCredits.Services
                     if (!stillHasMarker)
                     {
                         LogInfo($"Deferred restore check: credits marker was removed for '{episode.Name}', restoring from backup...");
-                        var restored = Plugin.CreditsBackupService.RestoreEpisodeMarkerFromBackup(episode, _configuration.BackupFolderPath);
+                        var restored = await Plugin.CreditsBackupService.RestoreEpisodeMarkerFromBackup(episode, _configuration.BackupFolderPath).ConfigureAwait(false);
                         if (restored)
                         {
                             _recentlyRestoredEpisodes[episodeId] = DateTime.UtcNow;
@@ -755,47 +805,43 @@ namespace EmbyCredits.Services
                 }
             }
 
-            if (true)
+            if (_processingQueue.Count >= MaxQueueSize)
             {
+                LogWarn($"Queue is full ({_processingQueue.Count} episodes). Skipping {episode.Name} to prevent memory issues.");
+                return;
+            }
 
-                if (_processingQueue.Count >= MaxQueueSize)
+            if (!_processingQueue.TryEnqueue(episode))
+            {
+                LogWarn($"Failed to enqueue episode: {episode.Name}");
+                return;
+            }
+            LogInfo($"Queued episode: {episode.Name} (Queue size: {_processingQueue.Count})");
+
+            if (!_isProcessing && Plugin.Instance != null)
+            {
+                Plugin.Progress.Reset();
+                Plugin.Progress.IsRunning = true;
+                Plugin.Progress.TotalItems = 1;
+                Plugin.Progress.StartTime = DateTime.Now;
+
+                LogInfo("Starting ProcessQueue task");
+                _ = Task.Run(ProcessQueue).ContinueWith(t =>
                 {
-                    LogWarn($"Queue is full ({_processingQueue.Count} episodes). Skipping {episode.Name} to prevent memory issues.");
-                    return;
-                }
-
-                if (!_processingQueue.TryEnqueue(episode))
-                {
-                    LogWarn($"Failed to enqueue episode: {episode.Name}");
-                    return;
-                }
-                LogInfo($"Queued episode: {episode.Name} (Queue size: {_processingQueue.Count})");
-
-                if (!_isProcessing && Plugin.Instance != null)
-                {
-                    Plugin.Progress.Reset();
-                    Plugin.Progress.IsRunning = true;
-                    Plugin.Progress.TotalItems = 1;
-                    Plugin.Progress.StartTime = DateTime.Now;
-
-                    LogInfo("Starting ProcessQueue task");
-                    _ = Task.Run(ProcessQueue).ContinueWith(t =>
+                    if (t.IsFaulted && t.Exception != null)
                     {
-                        if (t.IsFaulted && t.Exception != null)
-                        {
-                            LogError("ProcessQueue task failed", t.Exception.GetBaseException());
-                        }
-                    }, TaskScheduler.Default);
-                }
-                else if (_isProcessing && Plugin.Instance != null)
-                {
-                    Plugin.Progress.TotalItems++;
-                    LogInfo($"Added to existing processing queue (total: {Plugin.Progress.TotalItems})");
-                }
-                else
-                {
-                    LogWarn($"Episode queued but not starting processing: isProcessing={_isProcessing}, PluginInstance={Plugin.Instance != null}");
-                }
+                        LogError("ProcessQueue task failed", t.Exception.GetBaseException());
+                    }
+                }, TaskScheduler.Default);
+            }
+            else if (_isProcessing && Plugin.Instance != null)
+            {
+                Plugin.Progress.TotalItems++;
+                LogInfo($"Added to existing processing queue (total: {Plugin.Progress.TotalItems})");
+            }
+            else
+            {
+                LogWarn($"Episode queued but not starting processing: isProcessing={_isProcessing}, PluginInstance={Plugin.Instance != null}");
             }
         }
 
@@ -938,7 +984,7 @@ namespace EmbyCredits.Services
             System.Threading.Interlocked.Exchange(ref _processedEpisodes, new ConcurrentDictionary<string, DateTime>());
             
             _episodeStatusMessages.Clear();
-            System.Threading.Interlocked.Exchange(ref _episodeStatusMessages, new ConcurrentDictionary<string, List<string>>());
+            System.Threading.Interlocked.Exchange(ref _episodeStatusMessages, new ConcurrentDictionary<string, ConcurrentQueue<string>>());
             
             EmbyCredits.Services.DetectionMethods.OcrDetection.ClearAllCache();
             EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearAllCache();
@@ -1280,9 +1326,9 @@ namespace EmbyCredits.Services
             _debugLogger?.ScheduleDebugLogCleanup();
         }
 
-        public static System.Collections.Generic.List<object> GetSeriesMarkers(System.Collections.Generic.List<Episode> episodes)
+        public static List<EpisodeMarkerInfo> GetSeriesMarkers(System.Collections.Generic.List<Episode> episodes)
         {
-            return _chapterMarkerService?.GetSeriesMarkers(episodes) ?? new System.Collections.Generic.List<object>();
+            return _chapterMarkerService?.GetSeriesMarkers(episodes) ?? new List<EpisodeMarkerInfo>();
         }
 
         public static ChapterMarkerService? GetChapterMarkerService()
@@ -1294,7 +1340,7 @@ namespace EmbyCredits.Services
         {
             LogInfo($"ProcessQueue started. Queue count: {_processingQueue.Count}");
 
-            if (!await _processingSemaphore.WaitAsync(0))
+            if (_processingSemaphore == null || !await _processingSemaphore.WaitAsync(0))
             {
                 LogInfo("ProcessQueue: already processing, skipping");
                 return;
@@ -1303,9 +1349,14 @@ namespace EmbyCredits.Services
             _isProcessing = true;
             LogInfo("ProcessQueue: acquired semaphore, starting processing");
 
+            if (Plugin.Instance != null)
+            {
+                Plugin.Progress.CurrentItem = "Preparing...";
+            }
+
             // Create a new cancellation token source for this processing session
-            _cancellationTokenSource?.Dispose();
-            _cancellationTokenSource = new CancellationTokenSource();
+            var newCts = new CancellationTokenSource();
+            Interlocked.Exchange(ref _cancellationTokenSource, newCts)?.Dispose();
 
             if (Plugin.Instance != null)
             {
@@ -1334,6 +1385,11 @@ namespace EmbyCredits.Services
                     .ToList();
 
                 LogInfo($"Grouped {allEpisodes.Count} episodes into {episodesBySeason.Count} seasons for batch processing");
+
+                // Build one rule-matching service for pre-filtering (reused across all season groups)
+                RuleMatchingService? queueRuleService = (_configuration != null && _logger != null && _configuration.DetectionRules?.Count > 0)
+                    ? new RuleMatchingService(_logger, _configuration)
+                    : null;
 
                 foreach (var seasonGroup in episodesBySeason)
                 {
@@ -1364,7 +1420,37 @@ namespace EmbyCredits.Services
                     var seasonEpisodes = seasonGroup.OrderBy(e => e.IndexNumber).ToList();
                     var firstEpisode = seasonEpisodes.First();
                     var seriesName = firstEpisode.Series?.Name ?? "Unknown Series";
-                    
+
+                    // Pre-filter: evaluate rules before any detection work starts
+                    if (queueRuleService != null)
+                    {
+                        var preCheckConfig = queueRuleService.GetEffectiveConfiguration(firstEpisode);
+                        if (preCheckConfig.DisableDetection)
+                        {
+                            var preCheckRuleName = queueRuleService.GetMatchingRuleName(firstEpisode);
+                            _logger?.Info($"[RuleMatching] Detection disabled by rule for '{seriesName}' Season {seasonGroup.Key.SeasonNumber} - skipping {seasonEpisodes.Count} episode(s)");
+                            if (Plugin.Instance != null)
+                            {
+                                foreach (var ep in seasonEpisodes)
+                                {
+                                    var epKey = $"{seriesName} S{ep.ParentIndexNumber:00}E{ep.IndexNumber:00}";
+                                    Plugin.Progress.SkipReasons[epKey] = "Detection disabled by rule";
+                                    if (!string.IsNullOrEmpty(preCheckRuleName))
+                                        Plugin.Progress.AppliedRules[epKey] = preCheckRuleName;
+                                    Plugin.Progress.SkippedItems++;
+                                    Plugin.Progress.ProcessedItems++;
+                                }
+                            }
+                            processedCount += seasonEpisodes.Count;
+                            continue;
+                        }
+                    }
+
+                    if (Plugin.Instance != null)
+                    {
+                        Plugin.Progress.CurrentItem = $"Preparing: {seriesName} Season {seasonGroup.Key.SeasonNumber} ({seasonEpisodes.Count} episodes)";
+                    }
+
                     LogInfo($"Processing season batch: {seriesName} Season {seasonGroup.Key.SeasonNumber} ({seasonEpisodes.Count} episodes)");
 
                     _isBatchMode = true;
@@ -1433,11 +1519,11 @@ namespace EmbyCredits.Services
                                         AncestorIds = new[] { series.InternalId }
                                     }).OfType<Episode>().ToList() ?? new List<Episode>();
 
-                                    Plugin.CreditsBackupService.SaveSeriesBackupToFile(
+                                    await Plugin.CreditsBackupService.SaveSeriesBackupToFile(
                                         series,
                                         seriesEpisodes,
                                         _configuration.BackupFolderPath,
-                                        _configuration.MaxScheduledBackups > 0 ? _configuration.MaxScheduledBackups : 10);
+                                        _configuration.MaxScheduledBackups > 0 ? _configuration.MaxScheduledBackups : 10).ConfigureAwait(false);
                                 }
                             }
                             catch (Exception backupEx)
@@ -1499,6 +1585,9 @@ namespace EmbyCredits.Services
             {
                 _isProcessing = false;
                 _processingSemaphore.Release();
+                
+                var cts = Interlocked.Exchange(ref _cancellationTokenSource, null);
+                cts?.Dispose();
             }
         }
 
@@ -1515,13 +1604,28 @@ namespace EmbyCredits.Services
             _logger?.Info($"Starting batch processing for {seriesName} Season {seasonNumber} ({seasonEpisodes.Count} episodes)");
 
             var ruleMatchingService = _logger != null ? new RuleMatchingService(_logger, _configuration) : null;
-            var effectiveConfig = firstEpisode.Series != null && ruleMatchingService != null
-                ? ruleMatchingService.GetEffectiveConfiguration(firstEpisode.Series) 
+            var effectiveConfig = ruleMatchingService != null
+                ? ruleMatchingService.GetEffectiveConfiguration(firstEpisode)
                 : _configuration;
+
+            var matchedRuleName = (effectiveConfig != _configuration && ruleMatchingService != null)
+                ? ruleMatchingService.GetMatchingRuleName(firstEpisode)
+                : null;
 
             if (effectiveConfig != _configuration)
             {
                 _logger?.Info($"Using rule-based configuration for series '{seriesName}'");
+            }
+
+            if (effectiveConfig.DisableDetection)
+            {
+                _logger?.Info($"Detection disabled by rule for series '{seriesName}', skipping {seasonEpisodes.Count} episode(s)");
+                return;
+            }
+
+            if (Plugin.Instance != null)
+            {
+                Plugin.Progress.CurrentItem = $"Preparing: {seriesName} Season {seasonNumber} ({seasonEpisodes.Count} episodes)";
             }
 
             bool isAnime = false;
@@ -1580,6 +1684,10 @@ namespace EmbyCredits.Services
                 )).ToList();
 
                 _logger?.Info($"Using batch chromaprint detection for {episodeData.Count} episodes (DetectionMode: {effectiveConfig.DetectionMode})");
+                if (Plugin.Instance != null)
+                {
+                    Plugin.Progress.CurrentItem = $"Audio fingerprinting: {seriesName} Season {seasonNumber} ({episodeData.Count} episodes)";
+                }
                 batchResults = await chromaprintMethod.DetectCreditsForSeason(episodeData, seriesId, seasonNumber, cancellationToken);
                 _logger?.Info($"Batch detection found credits for {batchResults.Count} episodes");
             }
@@ -1593,198 +1701,59 @@ namespace EmbyCredits.Services
             }
 
             // Process each episode with the batch results
-            foreach (var episode in seasonEpisodes)
+            var blackFrameParallelSessions = _configuration?.BlackFrameParallelSessions ?? 1;
+            var shouldRunParallel = isAnime && blackFrameParallelSessions > 1 && seasonEpisodes.Count > 2;
+
+            if (shouldRunParallel)
             {
-                if (cancellationToken.IsCancellationRequested || _cancellationRequested)
-                    break;
+                const int seedCount = 2;
+                var seedEpisodes = seasonEpisodes.Take(seedCount).ToList();
+                var remainingEpisodes = seasonEpisodes.Skip(seedCount).ToList();
 
-                var episodeId = episode.Id.ToString();
+                _logger?.Info($"[BlackFrame] Parallel mode: processing {seedCount} seed episodes sequentially, then {remainingEpisodes.Count} in parallel (max {blackFrameParallelSessions} concurrent)");
 
-                if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && !_configuration.IgnoreFailureMarkers)
+                // Sequential seed phase — builds the comparison cache
+                foreach (var episode in seedEpisodes)
                 {
-                    var hasFailed = episode.ProviderIds?.TryGetValue("EmbyCredits.Fail", out var failValue) == true && failValue == "true";
-                    if (hasFailed)
-                    {
-                        _logger?.Info($"Skipping {episode.Name} - previously failed detection (SkipPreviouslyFailedEpisodes is enabled)");
-                        if (Plugin.Instance != null)
-                        {
-                            var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
-                            Plugin.Progress.SkipReasons[episodeKey] = "Previously failed detection";
-                            Plugin.Progress.SkippedItems++;
-                        }
-                        continue;
-                    }
+                    if (cancellationToken.IsCancellationRequested || _cancellationRequested) break;
+                    await ProcessSingleEpisodeInBatch(episode, seriesName, matchedRuleName, batchResults, chromaprintMethod, tempCoordinator, cancellationToken);
                 }
 
-                try
+                // Parallel phase — all remaining episodes benefit from the seeded cache
+                if (!cancellationToken.IsCancellationRequested && !_cancellationRequested)
                 {
-                    if (Plugin.Instance != null)
+                    using var bfSemaphore = new SemaphoreSlim(blackFrameParallelSessions, blackFrameParallelSessions);
+                    var parallelTasks = remainingEpisodes.Select(async episode =>
                     {
-                        var episodeDisplayName = $"{seriesName} - S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2} - {episode.Name}";
-                        Plugin.Progress.StartProcessingItem(episodeDisplayName, "Detecting");
-                    }
-
-                    _logger?.Debug($"Processing episode {episode.Name}");
-
-                    double? batchCreditsStart = null;
-                    if (batchResults != null && batchResults.ContainsKey(episodeId))
-                    {
-                        batchCreditsStart = batchResults[episodeId];
-                    }
-
-                    var (success, creditsStart, failureReason, confidence, methodName, detectionReason) = await _episodeProcessor.ProcessEpisodeWithBatchResult(
-                        episode, _isDryRun, batchCreditsStart, chromaprintMethod, tempCoordinator);
-
-                    if (success && creditsStart > 0)
-                    {
-                        if (Plugin.Instance != null)
+                        if (cancellationToken.IsCancellationRequested || _cancellationRequested) return;
+                        try
                         {
-                            Plugin.Progress.CompleteProcessingItem(true);
-
-                            var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
-                            var statusMessages = GetAndClearEpisodeStatusMessages(episodeId);
-                            var duration = episode.RunTimeTicks.HasValue ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond : 0;
-                            var offsetSeconds = _configuration?.TimestampOffsetSeconds ?? 0;
-                            var finalTimestamp = creditsStart + offsetSeconds;
-                            var successDetail = $"{FormatTime(creditsStart)} / {FormatTime(duration)}";
-                            
-                            if (!string.IsNullOrEmpty(methodName))
-                            {
-                                successDetail += $" [{methodName}]";
-                            }
-                            
-                            if (!string.IsNullOrEmpty(detectionReason))
-                            {
-                                successDetail += $" - {detectionReason}";
-                            }
-                            
-                            if (offsetSeconds != 0)
-                            {
-                                successDetail += $" (offset: {offsetSeconds:+0;-0}s, final: {FormatTime(finalTimestamp)})";
-                            }
-                            
-                            if (statusMessages.Count > 0)
-                            {
-                                successDetail += " (" + string.Join(", ", statusMessages) + ")";
-                            }
-                            
-                            Plugin.Progress.SuccessDetails[episodeKey] = successDetail;
-                            Plugin.Progress.ConfidenceScores[episodeKey] = confidence;
-                            Plugin.Progress.EpisodeIds[episodeKey] = episodeId;
-
-                            // Generate thumbnail if enabled
-                            if (Plugin.Instance.Configuration.EnableThumbnailGeneration)
-                            {
-                                try
-                                {
-                                    var thumbnailPath = await GenerateThumbnail(episode, creditsStart, episodeKey);
-                                    if (!string.IsNullOrEmpty(thumbnailPath))
-                                    {
-                                        Plugin.Progress.ThumbnailPaths[episodeKey] = thumbnailPath;
-                                    }
-                                }
-                                catch (Exception thumbEx)
-                                {
-                                    _logger?.Debug($"Failed to generate thumbnail for {episodeKey}: {thumbEx.Message}");
-                                }
-                            }
+                            await bfSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
                         }
-
-                        if (!_isDryRun)
+                        catch (OperationCanceledException) { return; }
+                        try
                         {
-                            _processedEpisodes.TryAdd(episodeId, DateTime.UtcNow);
-
-                            // Remove from Tracer and pending queue now that detection has run
-                            Plugin.TracerService?.MarkDetected(episodeId);
-                            Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
-
-                            // Record file fingerprint so "skip if unchanged" works on next run
-                            if (_configuration != null &&
-                                _configuration.SkipDetectionIfFileUnchanged &&
-                                !string.IsNullOrWhiteSpace(_configuration.BackupFolderPath) &&
-                                Plugin.CreditsBackupService != null)
-                            {
-                                try
-                                {
-                                    var fpTicks = (long)(creditsStart * TimeSpan.TicksPerSecond);
-                                    Plugin.CreditsBackupService.UpsertEpisodeInSeriesBackup(
-                                        episode, fpTicks, _configuration.BackupFolderPath);
-                                }
-                                catch (Exception fpEx)
-                                {
-                                    _logger?.Debug($"Failed to record file fingerprint for {episode.Name}: {fpEx.Message}");
-                                }
-                            }
+                            await ProcessSingleEpisodeInBatch(episode, seriesName, matchedRuleName, batchResults, chromaprintMethod, tempCoordinator, cancellationToken);
                         }
-                        
-                        _logger?.Debug($"Successfully detected credits at {FormatTime(creditsStart)} for {episode.Name}");
-                    }
-                    else
-                    {
-                        if (Plugin.Instance != null)
+                        finally
                         {
-                            Plugin.Progress.CompleteProcessingItem(false);
-
-                            var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
-                            Plugin.Progress.FailureReasons[episodeKey] = failureReason;
+                            bfSemaphore.Release();
                         }
-                        
-                        GetAndClearEpisodeStatusMessages(episodeId);
-
-                        // Record file fingerprint on failure so "skip if unchanged" prevents re-queuing
-                        // this episode on subsequent scheduled runs when the file hasn't changed.
-                        // Chromaprint is unaffected: it routes through QueueSeries which bypasses
-                        // all QueueEpisode skip checks before the fingerprint check is reached.
-                        if (!_isDryRun &&
-                            _configuration != null &&
-                            _configuration.SkipDetectionIfFileUnchanged &&
-                            !string.IsNullOrWhiteSpace(_configuration.BackupFolderPath) &&
-                            Plugin.CreditsBackupService != null)
-                        {
-                            try
-                            {
-                                Plugin.CreditsBackupService.UpsertEpisodeInSeriesBackup(
-                                    episode, 0L, _configuration.BackupFolderPath);
-                            }
-                            catch (Exception fpEx)
-                            {
-                                _logger?.Debug($"Failed to record file fingerprint for {episode.Name}: {fpEx.Message}");
-                            }
-                        }
-
-                        if (!_isDryRun)
-                            Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger?.ErrorException($"Error processing episode {episode.Name}", ex);
-                    Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
-                    if (Plugin.Instance != null)
-                    {
-                        Plugin.Progress.CompleteProcessingItem(false);
-                        var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
-                        Plugin.Progress.FailureReasons[episodeKey] = ex.Message;
-                    }
-                }
-
-                // Update progress tracking
-                if (Plugin.Instance != null)
-                {
-                    Plugin.Progress.CheckAndLimitDictionarySize();
-
-                    if (Plugin.Progress.ProcessedItems >= Plugin.Progress.TotalItems)
-                    {
-                        Plugin.Progress.IsRunning = false;
-                        Plugin.Progress.EndTime = DateTime.Now;
-                        Plugin.Progress.CurrentItem = "Complete";
-                        
-                        EmbyCredits.Services.DetectionMethods.OcrDetection.ClearAllCache();
-                        EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearAllCache();
-                        EmbyCredits.Services.DetectionMethods.BlackFrameDetection.ClearAllCache();
-                    }
+                    }).ToList();
+                    await Task.WhenAll(parallelTasks).ConfigureAwait(false);
                 }
             }
+            else
+            {
+                // Sequential (existing behaviour)
+                foreach (var episode in seasonEpisodes)
+                {
+                    if (cancellationToken.IsCancellationRequested || _cancellationRequested) break;
+                    await ProcessSingleEpisodeInBatch(episode, seriesName, matchedRuleName, batchResults, chromaprintMethod, tempCoordinator, cancellationToken);
+                }
+            }
+
+
 
             tempCoordinator?.Dispose();
             
@@ -1792,6 +1761,188 @@ namespace EmbyCredits.Services
         }
 
 
+
+        private static async Task ProcessSingleEpisodeInBatch(
+            Episode episode,
+            string seriesName,
+            string? matchedRuleName,
+            Dictionary<string, double>? batchResults,
+            DetectionMethods.ChromaprintDetection? chromaprintMethod,
+            DetectionCoordinator? tempCoordinator,
+            CancellationToken cancellationToken)
+        {
+            var episodeId = episode.Id.ToString();
+
+            if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && !_configuration.IgnoreFailureMarkers)
+            {
+                var hasFailed = episode.ProviderIds?.TryGetValue("EmbyCredits.Fail", out var failValue) == true && failValue == "true";
+                if (hasFailed)
+                {
+                    _logger?.Info($"Skipping {episode.Name} - previously failed detection (SkipPreviouslyFailedEpisodes is enabled)");
+                    if (Plugin.Instance != null)
+                    {
+                        var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
+                        Plugin.Progress.SkipReasons[episodeKey] = "Previously failed detection";
+                        Plugin.Progress.IncrementSkipped();
+                    }
+                    return;
+                }
+            }
+
+            try
+            {
+                if (Plugin.Instance != null)
+                {
+                    var episodeDisplayName = $"{seriesName} - S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2} - {episode.Name}";
+                    Plugin.Progress.StartProcessingItem(episodeDisplayName, "Detecting");
+                }
+
+                _logger?.Debug($"Processing episode {episode.Name}");
+
+                double? batchCreditsStart = null;
+                if (batchResults != null && batchResults.ContainsKey(episodeId))
+                {
+                    batchCreditsStart = batchResults[episodeId];
+                }
+
+                if (_episodeProcessor == null) return;
+                var (success, creditsStart, failureReason, confidence, methodName, detectionReason) = await _episodeProcessor.ProcessEpisodeWithBatchResult(
+                    episode, _isDryRun, batchCreditsStart, chromaprintMethod, tempCoordinator);
+
+                if (success && creditsStart > 0)
+                {
+                    if (Plugin.Instance != null)
+                    {
+                        Plugin.Progress.CompleteProcessingItem(true);
+
+                        var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
+                        var statusMessages = GetAndClearEpisodeStatusMessages(episodeId);
+                        var duration = episode.RunTimeTicks.HasValue ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond : 0;
+                        var offsetSeconds = _configuration?.TimestampOffsetSeconds ?? 0;
+                        var finalTimestamp = creditsStart + offsetSeconds;
+                        var successDetail = $"{FormatTime(creditsStart)} / {FormatTime(duration)}";
+
+                        if (!string.IsNullOrEmpty(methodName))
+                            successDetail += $" [{methodName}]";
+
+                        if (!string.IsNullOrEmpty(detectionReason))
+                            successDetail += $" - {detectionReason}";
+
+                        if (offsetSeconds != 0)
+                            successDetail += $" (offset: {offsetSeconds:+0;-0}s, final: {FormatTime(finalTimestamp)})";
+
+                        if (statusMessages.Count > 0)
+                            successDetail += " (" + string.Join(", ", statusMessages) + ")";
+
+                        Plugin.Progress.SuccessDetails[episodeKey] = successDetail;
+                        Plugin.Progress.ConfidenceScores[episodeKey] = confidence;
+                        Plugin.Progress.EpisodeIds[episodeKey] = episodeId;
+                        if (!string.IsNullOrEmpty(matchedRuleName))
+                            Plugin.Progress.AppliedRules[episodeKey] = matchedRuleName;
+
+                        if (Plugin.Instance.Configuration.EnableThumbnailGeneration)
+                        {
+                            try
+                            {
+                                var thumbnailPath = await GenerateThumbnail(episode, creditsStart, episodeKey);
+                                if (!string.IsNullOrEmpty(thumbnailPath))
+                                    Plugin.Progress.ThumbnailPaths[episodeKey] = thumbnailPath;
+                            }
+                            catch (Exception thumbEx)
+                            {
+                                _logger?.Debug($"Failed to generate thumbnail for {episodeKey}: {thumbEx.Message}");
+                            }
+                        }
+                    }
+
+                    if (!_isDryRun)
+                    {
+                        _processedEpisodes.TryAdd(episodeId, DateTime.UtcNow);
+                        Plugin.TracerService?.MarkDetected(episodeId);
+                        Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
+
+                        if (_configuration != null &&
+                            _configuration.SkipDetectionIfFileUnchanged &&
+                            !string.IsNullOrWhiteSpace(_configuration.BackupFolderPath) &&
+                            Plugin.CreditsBackupService != null)
+                        {
+                            try
+                            {
+                                var fpTicks = (long)(creditsStart * TimeSpan.TicksPerSecond);
+                                await Plugin.CreditsBackupService.UpsertEpisodeInSeriesBackup(
+                                    episode, fpTicks, _configuration.BackupFolderPath).ConfigureAwait(false);
+                            }
+                            catch (Exception fpEx)
+                            {
+                                _logger?.Debug($"Failed to record file fingerprint for {episode.Name}: {fpEx.Message}");
+                            }
+                        }
+                    }
+
+                    _logger?.Debug($"Successfully detected credits at {FormatTime(creditsStart)} for {episode.Name}");
+                }
+                else
+                {
+                    if (Plugin.Instance != null)
+                    {
+                        Plugin.Progress.CompleteProcessingItem(false);
+                        var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
+                        Plugin.Progress.FailureReasons[episodeKey] = failureReason;
+                        if (!string.IsNullOrEmpty(matchedRuleName))
+                            Plugin.Progress.AppliedRules[episodeKey] = matchedRuleName;
+                    }
+
+                    GetAndClearEpisodeStatusMessages(episodeId);
+
+                    if (!_isDryRun &&
+                        _configuration != null &&
+                        _configuration.SkipDetectionIfFileUnchanged &&
+                        !string.IsNullOrWhiteSpace(_configuration.BackupFolderPath) &&
+                        Plugin.CreditsBackupService != null)
+                    {
+                        try
+                        {
+                            await Plugin.CreditsBackupService.UpsertEpisodeInSeriesBackup(
+                                episode, 0L, _configuration.BackupFolderPath).ConfigureAwait(false);
+                        }
+                        catch (Exception fpEx)
+                        {
+                            _logger?.Debug($"Failed to record file fingerprint for {episode.Name}: {fpEx.Message}");
+                        }
+                    }
+
+                    if (!_isDryRun)
+                        Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException($"Error processing episode {episode.Name}", ex);
+                Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
+                if (Plugin.Instance != null)
+                {
+                    Plugin.Progress.CompleteProcessingItem(false);
+                    var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
+                    Plugin.Progress.FailureReasons[episodeKey] = ex.Message;
+                    if (!string.IsNullOrEmpty(matchedRuleName))
+                        Plugin.Progress.AppliedRules[episodeKey] = matchedRuleName;
+                }
+            }
+
+            if (Plugin.Instance != null)
+            {
+                Plugin.Progress.CheckAndLimitDictionarySize();
+                if (Plugin.Progress.ProcessedItems >= Plugin.Progress.TotalItems)
+                {
+                    Plugin.Progress.IsRunning = false;
+                    Plugin.Progress.EndTime = DateTime.Now;
+                    Plugin.Progress.CurrentItem = "Complete";
+                    EmbyCredits.Services.DetectionMethods.OcrDetection.ClearAllCache();
+                    EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearAllCache();
+                    EmbyCredits.Services.DetectionMethods.BlackFrameDetection.ClearAllCache();
+                }
+            }
+        }
 
         public static async Task ProcessEpisode(Episode episode)
         {
@@ -1975,24 +2126,30 @@ namespace EmbyCredits.Services
                 
                 var ffmpegQuality = Math.Max(2, Math.Min(31, 31 - ((quality - 50) * 29 / 50)));
                 
-                var arguments = $"-ss {timestamp.ToString(CultureInfo.InvariantCulture)} -i \"{videoPath}\" " +
-                               $"-vframes 1 -vf scale={width}:-1 -q:v {ffmpegQuality} " +
-                               $"\"{thumbnailPath}\" -y";
-
-                LogDebug($"FFmpeg command: {ffmpegPath} {arguments}");
-
-                using (var process = new Process
+                var thumbnailStartInfo = new ProcessStartInfo
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = ffmpegPath,
-                        Arguments = arguments,
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
-                })
+                    FileName = ffmpegPath,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                thumbnailStartInfo.ArgumentList.Add("-ss");
+                thumbnailStartInfo.ArgumentList.Add(timestamp.ToString(CultureInfo.InvariantCulture));
+                thumbnailStartInfo.ArgumentList.Add("-i");
+                thumbnailStartInfo.ArgumentList.Add(videoPath);
+                thumbnailStartInfo.ArgumentList.Add("-vframes");
+                thumbnailStartInfo.ArgumentList.Add("1");
+                thumbnailStartInfo.ArgumentList.Add("-vf");
+                thumbnailStartInfo.ArgumentList.Add($"scale={width}:-1");
+                thumbnailStartInfo.ArgumentList.Add("-q:v");
+                thumbnailStartInfo.ArgumentList.Add(ffmpegQuality.ToString(CultureInfo.InvariantCulture));
+                thumbnailStartInfo.ArgumentList.Add(thumbnailPath);
+                thumbnailStartInfo.ArgumentList.Add("-y");
+
+                LogDebug($"FFmpeg command: {ffmpegPath} -ss {timestamp} -i <path> -vframes 1 -vf scale={width}:-1 -q:v {ffmpegQuality}");
+
+                using (var process = new Process { StartInfo = thumbnailStartInfo })
                 {
                     var errorOutput = new System.Text.StringBuilder();
                     DataReceivedEventHandler errorHandler = (sender, e) =>
@@ -2045,10 +2202,6 @@ namespace EmbyCredits.Services
                 LogDebug($"✗ Error generating thumbnail for {episodeKey}: {ex.Message}");
                 _logger?.ErrorException($"Thumbnail generation error for {episodeKey}", ex);
                 return string.Empty;
-            }
-            finally
-            {
-                GC.Collect(1, GCCollectionMode.Optimized, false);
             }
         }
 

@@ -66,6 +66,37 @@
             font-size: 0.9em;
         }
         
+        .series-suggestion-list {
+            position: absolute;
+            z-index: 200;
+            background: var(--theme-body-background-color, var(--background-color, #fff));
+            color: var(--foreground-color, inherit);
+            border: 1px solid rgba(82, 181, 75, 0.6);
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            width: 100%;
+            left: 0;
+            top: 100%;
+            margin-top: 2px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .series-suggestion-item {
+            padding: 0.5em 0.8em;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .series-suggestion-item:hover,
+        .series-suggestion-item.is-active {
+            background: rgba(82, 181, 75, 0.25);
+        }
+
+        .series-names-wrapper {
+            position: relative;
+        }
+
         .collapsible-section-rules {
             margin-top: 1em;
             border: 1px solid rgba(82, 181, 75, 0.2);
@@ -98,7 +129,7 @@
 
     <div style="margin-top: 1em;">
         <h2>Detection Rules</h2>
-    <p>Create custom detection settings for specific tags or studios. When a video matches a rule's tag or studio, those settings will be used instead of the default settings.</p>
+    <p>Create custom detection settings for specific series, tags, studios, or libraries. When a series matches a rule it uses those settings instead of the defaults. Adding a library to a rule alongside studios, tags, or series names limits the rule to shows in that library only; it does not make the rule match every show in the library.</p>
     
     <div style="display: flex; gap: 1em; margin-bottom: 1.5em;">
         <button is="emby-button" type="button" class="raised button-submit" id="btnAddRule" style="background-color: #52B54B;">
@@ -117,11 +148,17 @@
     <div style="margin-top: 2em; padding: 1em; background: rgba(82, 181, 75, 0.1); border-radius: 4px; border-left: 4px solid #52B54B;">
         <h3 style="margin-top: 0;">How Rules Work</h3>
         <ul>
-            <li>Rules are matched against TV series tags and studios</li>
-            <li>If multiple rules match, the first matching rule is used</li>
-            <li>Only settings specified in a rule will override defaults (unconfigured settings use default values)</li>
+            <li>Rules match TV series by name, tags, studios, and/or libraries</li>
+            <li>Series name matching has the highest priority, followed by tags and studios (equal priority), then library-only rules</li>
+            <li>If multiple rules match at the same priority, the rule listed first wins</li>
+            <li>Only settings specified in a rule will override defaults; everything else uses default values</li>
             <li>Rules work for both batch processing and single episode scanning</li>
-            <li>Tags and studios are case-insensitive</li>
+            <li>Series names, tags, and studios are case-insensitive</li>
+        </ul>
+        <h3 style="margin-top: 0.8em;">How Libraries Work in Rules</h3>
+        <ul>
+            <li><strong>Combined with studios, tags, or series names:</strong> the library acts as a scope filter — the series must match the studio/tag/name AND be in the selected library</li>
+            <li><strong>Used alone (no other matchers):</strong> matches every show inside the selected library</li>
         </ul>
     </div>
 </div>
@@ -144,6 +181,15 @@
         </div>
         
         <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused">Series Names</label>
+            <div class="fieldDescription" style="margin-bottom: 0.5em; font-size: 0.9em;">Please remember to press Return after having entered text.</div>
+            <div class="tags-input-container series-names-container">
+                <input type="text" class="tag-input" placeholder="Type series name and press Enter..." />
+            </div>
+            <div class="fieldDescription">Add exact series names that should trigger this rule (e.g., Breaking Bad, The Wire)</div>
+        </div>
+        
+        <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused">Tags</label>
             <div class="fieldDescription" style="margin-bottom: 0.5em; font-size: 0.9em;">Please remember to press Return after having entered text.</div>
             <div class="tags-input-container tags-container">
@@ -161,6 +207,13 @@
             <div class="fieldDescription">Add studios that should trigger this rule (e.g., HBO, Netflix)</div>
         </div>
         
+        <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused">Libraries</label>
+            <div class="rule-libraries-container"></div>
+            <div class="fieldDescription">When combined with studios, tags, or series names: limits the rule to shows <em>inside</em> those libraries only. When used alone (no other matchers): matches all shows in those libraries.</div>
+        </div>
+        <div class="rule-warning" style="display:none; margin-top: 0.5em; padding: 0.6em 0.9em; background: rgba(255,160,0,0.15); border-left: 3px solid #FFA000; border-radius: 4px; font-size: 0.9em;"></div>
+        
         <div class="collapsible-section-rules">
             <div class="collapsible-header-rules">
                 <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
@@ -168,6 +221,16 @@
             </div>
             <div class="collapsible-content-rules" style="display: none;">
                 <p style="margin-top: 0; font-style: italic; opacity: 0.8;">Only configure settings you want to override. Leave blank to use default values.</p>
+                
+                <div class="selectContainer">
+                    <label class="selectLabel">Disable Detection</label>
+                    <select class="emby-select rule-disable-detection">
+                        <option value="">Use Default</option>
+                        <option value="true">Disable (skip detection entirely)</option>
+                        <option value="false">Enable</option>
+                    </select>
+                    <div class="fieldDescription">When disabled, episodes are skipped without any analysis</div>
+                </div>
                 
                 <div class="selectContainer">
                     <label class="selectLabel">Detection Mode</label>
@@ -345,6 +408,229 @@
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused">Density Style Consistency Threshold</label>
                     <input is="emby-input" type="number" step="0.1" class="rule-density-style-threshold" placeholder="Default" />
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Fingerprint Analysis Percent</label>
+                    <input is="emby-input" type="number" step="1" min="1" max="100" class="rule-chromaprint-analysis-percent" placeholder="Default" />
+                    <div class="fieldDescription">Percentage of episode duration to analyse for fingerprinting (e.g. 25). Increase for very long credits.</div>
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Min Credit Length (seconds)</label>
+                    <input is="emby-input" type="number" step="1" class="rule-chromaprint-min-duration" placeholder="Default" />
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Max Credit Length (seconds)</label>
+                    <input is="emby-input" type="number" step="1" class="rule-chromaprint-max-duration" placeholder="Default" />
+                    <div class="fieldDescription">Increase for shows with unusually long credits (e.g. Netflix multilingual translations).</div>
+                </div>
+                
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Fingerprint Duration (seconds)</label>
+                    <input is="emby-input" type="number" step="1" class="rule-chromaprint-fingerprint-duration" placeholder="Default" />
+                    <div class="fieldDescription">Audio duration used to build each fingerprint.</div>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Fingerprint Similarity Threshold</label>
+                    <input is="emby-input" type="number" step="0.01" min="0" max="1" class="rule-chromaprint-similarity-threshold" placeholder="Default" />
+                    <div class="fieldDescription">Minimum similarity score required to consider two audio segments a match (0.0–1.0).</div>
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel">Enable Fingerprint Episode Comparison</label>
+                    <select class="emby-select rule-chromaprint-enable-episode-comparison">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Fingerprint Episode Comparison Tolerance (seconds)</label>
+                    <input is="emby-input" type="number" step="1" class="rule-chromaprint-comparison-tolerance" placeholder="Default" />
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Fingerprint Episode Comparison Minimum Episodes</label>
+                    <input is="emby-input" type="number" class="rule-chromaprint-comparison-min-episodes" placeholder="Default" />
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Fingerprint Stop Seconds From End</label>
+                    <input is="emby-input" type="number" step="1" class="rule-chromaprint-stop-seconds" placeholder="Default" />
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Timestamp Offset (seconds)</label>
+                    <input is="emby-input" type="number" step="1" class="rule-timestamp-offset" placeholder="Default" />
+                    <div class="fieldDescription">Shift all detected timestamps by this amount. Positive moves forward, negative moves backward.</div>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Black Frame Minimum Duration (seconds)</label>
+                    <input is="emby-input" type="number" step="0.1" class="rule-black-frame-min-duration" placeholder="Default" />
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">OCR Languages</label>
+                    <input is="emby-input" type="text" class="rule-ocr-languages" placeholder="Default (e.g. eng+jpn)" />
+                    <div class="fieldDescription">Tesseract language codes separated by + (e.g. eng+jpn+kor). Only applies when Tesseract is selected.</div>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">OCR Page Segmentation Mode (PSM)</label>
+                    <input is="emby-input" type="number" min="0" max="13" class="rule-ocr-page-segmentation-mode" placeholder="Default" />
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">OCR Engine Mode (OEM)</label>
+                    <input is="emby-input" type="number" min="0" max="3" class="rule-ocr-engine-mode" placeholder="Default" />
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel">Preserve Spaces Between Characters</label>
+                    <select class="emby-select rule-ocr-preserve-interword-spaces">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">OCR Minimum Confidence</label>
+                    <input is="emby-input" type="number" step="0.01" min="0" max="1" class="rule-ocr-minimum-confidence" placeholder="Default" />
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel">Enable Smart Frame Skipping</label>
+                    <select class="emby-select rule-ocr-enable-smart-frame-skipping">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Consecutive Matches For Early Stop</label>
+                    <input is="emby-input" type="number" class="rule-ocr-consecutive-matches-early-stop" placeholder="Default" />
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel">Enable Image Preprocessing</label>
+                    <select class="emby-select rule-ocr-enable-image-preprocessing">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Contrast Enhancement</label>
+                    <input is="emby-input" type="number" step="0.1" min="0.5" max="3.0" class="rule-ocr-contrast-enhancement" placeholder="Default" />
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Brightness Adjustment</label>
+                    <input is="emby-input" type="number" step="0.01" min="-0.5" max="0.5" class="rule-ocr-brightness-adjustment" placeholder="Default" />
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel">Enable Sharpening</label>
+                    <select class="emby-select rule-ocr-enable-sharpening">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Sharpen Amount</label>
+                    <input is="emby-input" type="number" step="0.1" min="0" max="2.0" class="rule-ocr-sharpen-amount" placeholder="Default" />
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel">Enable ROI Detection</label>
+                    <select class="emby-select rule-ocr-enable-roi-detection">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel">ROI Region</label>
+                    <select class="emby-select rule-ocr-roi-region">
+                        <option value="">Use Default</option>
+                        <option value="full">Full Frame</option>
+                        <option value="bottom_third">Bottom Third</option>
+                        <option value="bottom_half">Bottom Half</option>
+                        <option value="center">Center 60%</option>
+                        <option value="top_third">Top Third</option>
+                    </select>
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel">Enable Fuzzy Matching</label>
+                    <select class="emby-select rule-ocr-enable-fuzzy-matching">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Fuzzy Match Max Distance</label>
+                    <input is="emby-input" type="number" min="1" max="3" class="rule-ocr-fuzzy-match-max-distance" placeholder="Default" />
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel">Enable Scrolling Detection</label>
+                    <select class="emby-select rule-ocr-enable-scrolling-detection">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Scrolling Minimum Frames</label>
+                    <input is="emby-input" type="number" min="3" max="10" class="rule-ocr-scrolling-min-frames" placeholder="Default" />
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Scrolling Text Overlap Threshold</label>
+                    <input is="emby-input" type="number" step="0.05" min="0.1" max="0.9" class="rule-ocr-scrolling-overlap-threshold" placeholder="Default" />
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel">Enable Adaptive Frame Rate</label>
+                    <select class="emby-select rule-ocr-enable-adaptive-frame-rate">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Adaptive Frame Rate Minimum</label>
+                    <input is="emby-input" type="number" step="0.05" min="0.1" max="1.0" class="rule-ocr-adaptive-frame-rate-min" placeholder="Default" />
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel">Enable Credit Structure Detection</label>
+                    <select class="emby-select rule-ocr-enable-credit-structure-detection">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Minimum Structure Lines</label>
+                    <input is="emby-input" type="number" min="2" max="10" class="rule-ocr-minimum-structure-lines" placeholder="Default" />
                 </div>
             </div>
         </div>

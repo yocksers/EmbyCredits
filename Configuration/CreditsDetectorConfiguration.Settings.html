@@ -284,6 +284,12 @@
                 <input is="emby-input" type="number" id="txtBlackFrameThreshold" data-config-key="BlackFrameThreshold" step="1" min="0" max="255" value="28" />
                 <div class="fieldDescription"><strong>Default: 28.</strong> Pixel brightness threshold (0-255) - pixels darker than this are considered black. Lower values require darker pixels. 0 = completely black, 255 = white.</div>
             </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameMinDuration">Black Frame Minimum Duration (seconds)</label>
+                <input is="emby-input" type="number" id="txtBlackFrameMinDuration" data-config-key="BlackFrameMinDuration" step="0.1" min="0.1" />
+                <div class="fieldDescription"><strong>Default: 0.5 seconds.</strong> Minimum duration a black frame sequence must last to be detected as a credits boundary. Increase if false positives occur on brief black frames (e.g. cuts); decrease if the credits transition is very short.</div>
+            </div>
         </div>
     </div>
 
@@ -323,6 +329,14 @@
                     <span>Enable Audio Fingerprinting</span>
                 </label>
                 <div class="fieldDescription"><strong>Recommended: Disabled (default).</strong> Use chromaprint audio fingerprinting to compare audio patterns across episodes. This is more accurate than black frame/silence detection but requires more processing. Falls back to black frame/silence detection if fingerprinting fails.</div>
+            </div>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkChromaprintEnableBlackFrameFallback" data-config-key="ChromaprintEnableBlackFrameFallback" />
+                    <span>Enable Black Frame Fallback</span>
+                </label>
+                <div class="fieldDescription"><strong>Recommended: Enabled (default).</strong> When chromaprint fingerprint detection fails, fall back to black frame detection to find credits. Disable this to prevent black frame detection from running as a fallback.</div>
             </div>
 
             <div class="inputContainer">
@@ -404,6 +418,12 @@
             <h3 style="margin-top: 1.5em; margin-bottom: 1em;">Advanced Settings</h3>
             
             <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintMinimumScoreFloor">Minimum Match Score Floor</label>
+                <input is="emby-input" type="number" id="txtChromaprintMinimumScoreFloor" data-config-key="ChromaprintMinimumScoreFloor" step="0.01" min="0.50" max="0.85" />
+                <div class="fieldDescription"><strong>Default: 0.55.</strong> The lowest similarity score the dynamic threshold is allowed to fall to when comparing episode fingerprints. Raise this if unrelated episodes are falsely matching; lower it if a series has consistent credits music but low similarity scores (as seen in the log: <em>final threshold=0.700</em> filtering all results).</div>
+            </div>
+
+            <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintMinConfidence">Minimum Confidence</label>
                 <input is="emby-input" type="number" id="txtChromaprintMinConfidence" data-config-key="ChromaprintMinConfidence" step="0.05" />
                 <div class="fieldDescription"><strong>Default: 0.85.</strong> Minimum confidence level (0.0-1.0) required for detection result to be accepted.</div>
@@ -484,15 +504,35 @@
             </div>
 
             <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtChromaprintParallelSessions">Parallel FFmpeg Sessions</label>
+                <input is="emby-input" type="number" id="txtChromaprintParallelSessions" data-config-key="ChromaprintParallelSessions" min="1" />
+                <div class="fieldDescription"><strong>Recommended: 1-2 for smaller machines, 4 (default) for normal systems.</strong> Controls how many FFmpeg fingerprinting processes run simultaneously. Lower this to reduce CPU and I/O load.</div>
+            </div>
+
+            <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintFfmpegThreads">FFmpeg Thread Limit</label>
                 <input is="emby-input" type="number" id="txtChromaprintFfmpegThreads" data-config-key="ChromaprintFfmpegThreads" />
-                <div class="fieldDescription"><strong>Recommended: 2-4 for smaller machines, 0 for unlimited (default).</strong> Limits CPU threads FFmpeg uses. Set to 2-4 to prevent saturating all cores. 0 = no limit.</div>
+                <div class="fieldDescription"><strong>Recommended: 2-4 for smaller machines, 0 for unlimited (default).</strong> Limits CPU threads each FFmpeg process uses. Set to 2-4 to prevent saturating all cores. 0 = no limit.</div>
             </div>
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintDelayBetweenOperationsMs">Delay Between Operations (ms)</label>
                 <input is="emby-input" type="number" id="txtChromaprintDelayBetweenOperationsMs" data-config-key="ChromaprintDelayBetweenOperationsMs" step="100" />
                 <div class="fieldDescription"><strong>Recommended: 0 (no delay) for normal systems, 500-1000ms for smaller machines.</strong> Adds delay between FFmpeg operations to reduce sustained CPU load.</div>
+            </div>
+
+            <h3 style="margin-top: 2em; margin-bottom: 1em;">Black Frame Detection Performance</h3>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameParallelSessions">Parallel FFmpeg Sessions</label>
+                <input is="emby-input" type="number" id="txtBlackFrameParallelSessions" data-config-key="BlackFrameParallelSessions" min="1" />
+                <div class="fieldDescription"><strong>Recommended: 1 (default).</strong> How many black frame FFmpeg processes run simultaneously for anime detection. The first 2 episodes always run sequentially to seed the comparison cache; the rest can then run in parallel. Only has effect with 3+ episodes in a season.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameFfmpegThreads">FFmpeg Thread Limit</label>
+                <input is="emby-input" type="number" id="txtBlackFrameFfmpegThreads" data-config-key="BlackFrameFfmpegThreads" min="0" />
+                <div class="fieldDescription"><strong>Recommended: 2-4 for smaller machines, 0 for unlimited (default).</strong> Limits CPU threads each FFmpeg process uses during black frame detection. 0 = no limit.</div>
             </div>
 
             <h3 style="margin-top: 2em; margin-bottom: 1em;">FFmpeg Performance & Hardware Acceleration</h3>
@@ -794,17 +834,7 @@
             <div class="fieldDescription">Capture a frame from the video at the detected credits timestamp</div>
         </div>
 
-        <div class="inputContainer">
-            <label class="inputLabel inputLabelUnfocused" for="txtThumbnailWidth">Thumbnail Width (pixels)</label>
-            <input is="emby-input" type="number" id="txtThumbnailWidth" data-config-key="ThumbnailWidth" step="10" />
-            <div class="fieldDescription"><strong>Default: 320.</strong> Width of generated thumbnails (height is auto-scaled). Larger sizes provide better quality but use more disk space.</div>
-        </div>
 
-        <div class="inputContainer">
-            <label class="inputLabel inputLabelUnfocused" for="txtThumbnailQuality">Thumbnail JPEG Quality</label>
-            <input is="emby-input" type="number" id="txtThumbnailQuality" data-config-key="ThumbnailQuality" step="5" />
-            <div class="fieldDescription"><strong>Default: 85.</strong> JPEG quality (50-100). Higher values = better quality but larger file sizes.</div>
-        </div>
         </div>
     </div>
 

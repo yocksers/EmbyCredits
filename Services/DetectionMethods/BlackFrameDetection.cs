@@ -43,12 +43,11 @@ namespace EmbyCredits.Services.DetectionMethods
 
         public static void ClearAllCache()
         {
-            foreach (var timestamps in _seriesCreditsTimestamps.Values)
+            foreach (var key in _seriesCreditsTimestamps.Keys.ToArray())
             {
-                timestamps?.Clear();
+                _seriesCreditsTimestamps.TryRemove(key, out _);
+                _cacheLastAccess.TryRemove(key, out _);
             }
-            _seriesCreditsTimestamps.Clear();
-            _cacheLastAccess.Clear();
         }
 
         public override async Task<double> DetectCredits(string videoPath, double duration, CancellationToken cancellationToken = default)
@@ -62,7 +61,8 @@ namespace EmbyCredits.Services.DetectionMethods
                 var minimumCreditsDuration = 30.0;
                 var maxCreditsDuration = 240.0;
                 
-                var analysisStartTime = Math.Max(duration * 0.75, duration - 240);
+                var analysisPercent = Configuration.ChromaprintAnalysisPercent / 100.0;
+                var analysisStartTime = duration * (1.0 - analysisPercent);
                 var endTime = duration - 5.0;
                 
                 if (endTime <= analysisStartTime)
@@ -126,50 +126,63 @@ namespace EmbyCredits.Services.DetectionMethods
                 CleanupExpiredCacheEntries();
             }
 
-            double result;
+            double result = 0;
             
-            if (_seriesCreditsTimestamps.TryGetValue(cacheKey, out var cachedTimestamps) && cachedTimestamps.Count >= 2)
+            bool usedCache = false;
+            if (_seriesCreditsTimestamps.TryGetValue(cacheKey, out var cachedTimestamps))
             {
-                double averageTimestamp;
-                double standardDeviation;
+                double averageTimestamp = 0;
+                double standardDeviation = 0;
+                bool cacheReady;
                 lock (cachedTimestamps)
                 {
-                    averageTimestamp = cachedTimestamps.Average();
-                    var variance = cachedTimestamps.Select(t => Math.Pow(t - averageTimestamp, 2)).Average();
-                    standardDeviation = Math.Sqrt(variance);
+                    cacheReady = cachedTimestamps.Count >= 2;
+                    if (cacheReady)
+                    {
+                        var snapshot = cachedTimestamps.ToList();
+                        averageTimestamp = snapshot.Average();
+                        var variance = snapshot.Select(t => Math.Pow(t - averageTimestamp, 2)).Average();
+                        standardDeviation = Math.Sqrt(variance);
+                    }
                 }
 
-                var tolerance = Math.Max(30.0, standardDeviation * 4);
-                var narrowStartTime = Math.Max(0, averageTimestamp - tolerance);
-                var narrowEndTime = duration - 5.0;
-
-                LogInfo($"BlackFrame Episode comparison for {cacheKey} E{episodeNumber:D2}: Using {cachedTimestamps.Count} episodes, avg={FormatTime(averageTimestamp)}, stdDev={standardDeviation:F1}s");
-                LogInfo($"BlackFrame Narrowing start time to {FormatTime(narrowStartTime)} (skipping {FormatTime(narrowStartTime)}), scanning to {FormatTime(narrowEndTime)} (tolerance: -{tolerance:F0}s from avg)");
-
-                result = await DetectBlackFrameInRange(videoPath, duration, narrowStartTime, narrowEndTime, cancellationToken);
-
-                if (result > 0)
+                if (cacheReady)
                 {
-                    _calculatedConfidence = 0.95;
-                }
-                else
-                {
-                    LogWarn($"BlackFrame Episode comparison failed to detect in narrowed window for {cacheKey} E{episodeNumber:D2}");
-                    LogInfo($"Retrying with full search window (keeping cache)...");
-                    
-                    EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Retrying with full window");
-                    
-                    result = await DetectCredits(videoPath, duration, cancellationToken);
-                    
+                    usedCache = true;
+
+                    var tolerance = Math.Max(30.0, standardDeviation * 4);
+                    var narrowStartTime = Math.Max(0, averageTimestamp - tolerance);
+                    var narrowEndTime = duration - 5.0;
+
+                    LogInfo($"BlackFrame Episode comparison for {cacheKey} E{episodeNumber:D2}: Using {cachedTimestamps.Count} episodes, avg={FormatTime(averageTimestamp)}, stdDev={standardDeviation:F1}s");
+                    LogInfo($"BlackFrame Narrowing start time to {FormatTime(narrowStartTime)} (skipping {FormatTime(narrowStartTime)}), scanning to {FormatTime(narrowEndTime)} (tolerance: -{tolerance:F0}s from avg)");
+
+                    result = await DetectBlackFrameInRange(videoPath, duration, narrowStartTime, narrowEndTime, cancellationToken);
+
                     if (result > 0)
                     {
-                        LogInfo($"BlackFrame Retry successful - credits found at {FormatTime(result)} (was outside comparison window)");
-                        LogInfo($"Adding new timestamp to cache - this will widen tolerance for future episodes");
-                        EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Retry successful");
+                        _calculatedConfidence = 0.95;
+                    }
+                    else
+                    {
+                        LogWarn($"BlackFrame Episode comparison failed to detect in narrowed window for {cacheKey} E{episodeNumber:D2}");
+                        LogInfo($"Retrying with full search window (keeping cache)...");
+
+                        EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Retrying with full window");
+
+                        result = await DetectCredits(videoPath, duration, cancellationToken);
+
+                        if (result > 0)
+                        {
+                            LogInfo($"BlackFrame Retry successful - credits found at {FormatTime(result)} (was outside comparison window)");
+                            LogInfo($"Adding new timestamp to cache - this will widen tolerance for future episodes");
+                            EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Retry successful");
+                        }
                     }
                 }
             }
-            else
+
+            if (!usedCache)
             {
                 result = await DetectCredits(videoPath, duration, cancellationToken);
             }
@@ -180,12 +193,12 @@ namespace EmbyCredits.Services.DetectionMethods
                 lock (episodeTimestamps)
                 {
                     episodeTimestamps.Add(result);
-                    
-                    if (episodeTimestamps.Count > 1)
+                    var snap = episodeTimestamps.ToList();
+                    if (snap.Count > 1)
                     {
-                        var newAvg = episodeTimestamps.Average();
-                        var newStdDev = Math.Sqrt(episodeTimestamps.Average(t => Math.Pow(t - newAvg, 2)));
-                        LogInfo($"Stored BlackFrame timestamp {FormatTime(result)} for {cacheKey} E{episodeNumber:D2} (total: {episodeTimestamps.Count} episodes, new avg: {FormatTime(newAvg)}, stdDev: {newStdDev:F1}s)");
+                        var newAvg = snap.Average();
+                        var newStdDev = Math.Sqrt(snap.Average(t => Math.Pow(t - newAvg, 2)));
+                        LogInfo($"Stored BlackFrame timestamp {FormatTime(result)} for {cacheKey} E{episodeNumber:D2} (total: {snap.Count} episodes, new avg: {FormatTime(newAvg)}, stdDev: {newStdDev:F1}s)");
                     }
                     else
                     {
@@ -270,7 +283,7 @@ namespace EmbyCredits.Services.DetectionMethods
             try
             {
                 var blackThreshold = Configuration.BlackFrameThreshold / 100.0;
-                var minDuration = 0.5;
+                var minDuration = Configuration.BlackFrameMinDuration;
                 
                 LogDebug($"Detecting black frames (threshold: {blackThreshold:F2}, min duration: {minDuration}s)");
                 
@@ -290,30 +303,37 @@ namespace EmbyCredits.Services.DetectionMethods
                     return 0;
                 }
                 
-                var threadArgs = Configuration.ChromaprintFfmpegThreads > 0 
-                    ? $"-threads {Configuration.ChromaprintFfmpegThreads} " 
-                    : "";
-                
-                var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
-                
-                var arguments = $"{threadArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} " +
-                               $"-vf \"blackdetect=d={minDuration.ToString(CultureInfo.InvariantCulture)}:pix_th={blackThreshold.ToString(CultureInfo.InvariantCulture)}\" " +
-                               $"-an -f null -";
-                
-                Logger.Info($"[{MethodName}] Executing FFmpeg black detection: {ffmpegPath} {arguments}");
-                
-                using (var process = new Process
+                var normalizedVideoPath = FFmpegHelper.NormalizeFilePath(videoPath);
+
+                var blackFrameStartInfo = new ProcessStartInfo
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = ffmpegPath,
-                        Arguments = arguments,
-                        UseShellExecute = false,
-                        RedirectStandardError = true,
-                        RedirectStandardOutput = true,
-                        CreateNoWindow = true
-                    }
-                })
+                    FileName = ffmpegPath,
+                    UseShellExecute = false,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+                if (Configuration.BlackFrameFfmpegThreads > 0)
+                {
+                    blackFrameStartInfo.ArgumentList.Add("-threads");
+                    blackFrameStartInfo.ArgumentList.Add(Configuration.BlackFrameFfmpegThreads.ToString(CultureInfo.InvariantCulture));
+                }
+                blackFrameStartInfo.ArgumentList.Add("-ss");
+                blackFrameStartInfo.ArgumentList.Add(startTime.ToString(CultureInfo.InvariantCulture));
+                blackFrameStartInfo.ArgumentList.Add("-t");
+                blackFrameStartInfo.ArgumentList.Add(analysisDuration.ToString(CultureInfo.InvariantCulture));
+                blackFrameStartInfo.ArgumentList.Add("-i");
+                blackFrameStartInfo.ArgumentList.Add(normalizedVideoPath);
+                blackFrameStartInfo.ArgumentList.Add("-vf");
+                blackFrameStartInfo.ArgumentList.Add($"blackdetect=d={minDuration.ToString(CultureInfo.InvariantCulture)}:pix_th={blackThreshold.ToString(CultureInfo.InvariantCulture)}");
+                blackFrameStartInfo.ArgumentList.Add("-an");
+                blackFrameStartInfo.ArgumentList.Add("-f");
+                blackFrameStartInfo.ArgumentList.Add("null");
+                blackFrameStartInfo.ArgumentList.Add("-");
+                
+                Logger.Info($"[{MethodName}] Executing FFmpeg black detection: {ffmpegPath} -ss {startTime} -t {analysisDuration} -i <path> -vf blackdetect...");
+                
+                using (var process = new Process { StartInfo = blackFrameStartInfo })
                 {
                     if (Configuration.ChromaprintLowerProcessPriority)
                     {
@@ -326,6 +346,7 @@ namespace EmbyCredits.Services.DetectionMethods
                         if (!string.IsNullOrEmpty(e.Data))
                         {
                             output.Add(e.Data);
+                            FFmpegHelper.UpdateLastOutputTime(process.Id);
                         }
                     };
                     
@@ -334,6 +355,7 @@ namespace EmbyCredits.Services.DetectionMethods
                         process.ErrorDataReceived += errorHandler;
                         
                         process.Start();
+                        FFmpegHelper.RegisterProcess(process, $"BlackFrame: {System.IO.Path.GetFileName(videoPath)}");
                         
                         if (Configuration.ChromaprintLowerProcessPriority)
                         {
@@ -357,6 +379,7 @@ namespace EmbyCredits.Services.DetectionMethods
                             process.CancelErrorRead();
                         }
                         catch { }
+                        FFmpegHelper.UnregisterProcess(process);
                     }
                     
                     var blackFrames = new List<double>();

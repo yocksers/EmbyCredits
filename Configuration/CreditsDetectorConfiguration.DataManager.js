@@ -131,6 +131,7 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkEnableAutoBackupAfterDetection').checked = config.EnableAutoBackupAfterDetection || false;
             view.querySelector('#chkSkipDetectionIfFileUnchanged').checked = config.SkipDetectionIfFileUnchanged || false;
             view.querySelector('#chkEnableTracerMode').checked = config.EnableTracerMode || false;
+            view.querySelector('#chkOnlyProcessNewEpisodes').checked = config.OnlyProcessNewEpisodes || false;
             view.querySelector('#chkEnableAutoRestoreAfterScan').checked = config.EnableAutoRestoreAfterScan || false;
 
             view.querySelector('#chkEnableScheduledTaskNotifications').checked = config.EnableScheduledTaskNotifications || false;
@@ -139,10 +140,9 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtMinimumEpisodesForNotification').value = config.MinimumEpisodesForNotification !== null && config.MinimumEpisodesForNotification !== undefined ? config.MinimumEpisodesForNotification : 1;
 
             view.querySelector('#chkEnableThumbnailGeneration').checked = config.EnableThumbnailGeneration !== false;
-            view.querySelector('#txtThumbnailWidth').value = config.ThumbnailWidth || 320;
-            view.querySelector('#txtThumbnailQuality').value = config.ThumbnailQuality || 85;
 
             view.querySelector('#chkChromaprintUseAudioFingerprinting').checked = config.ChromaprintUseAudioFingerprinting || false;
+            view.querySelector('#chkChromaprintEnableBlackFrameFallback').checked = config.ChromaprintEnableBlackFrameFallback !== false;
             view.querySelector('#txtChromaprintFingerprintDuration').value = config.ChromaprintFingerprintDuration || 360;
             view.querySelector('#txtChromaprintFingerprintSimilarityThreshold').value = config.ChromaprintFingerprintSimilarityThreshold || 0.90;
             view.querySelector('#chkChromaprintEnableEpisodeComparison').checked = config.ChromaprintEnableEpisodeComparison !== false;
@@ -158,8 +158,10 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtChromaprintSilenceMinDuration').value = config.ChromaprintSilenceMinDuration || 0.5;
             view.querySelector('#txtChromaprintSilenceSearchWindow').value = config.ChromaprintSilenceSearchWindow || 30;
             view.querySelector('#txtChromaprintMinConfidence').value = config.ChromaprintMinConfidence || 0.85;
+            view.querySelector('#txtChromaprintMinimumScoreFloor').value = config.ChromaprintMinimumScoreFloor !== undefined ? config.ChromaprintMinimumScoreFloor : 0.55;
             view.querySelector('#txtChromaprintStopSecondsFromEnd').value = config.ChromaprintStopSecondsFromEnd || 20;
             view.querySelector('#chkChromaprintLowerProcessPriority').checked = config.ChromaprintLowerProcessPriority || false;
+            view.querySelector('#txtChromaprintParallelSessions').value = config.ChromaprintParallelSessions !== undefined ? config.ChromaprintParallelSessions : 4;
             view.querySelector('#txtChromaprintFfmpegThreads').value = config.ChromaprintFfmpegThreads || 0;
             view.querySelector('#txtChromaprintDelayBetweenOperationsMs').value = config.ChromaprintDelayBetweenOperationsMs || 0;
 
@@ -174,6 +176,9 @@ define(['loading', 'toast'], function (loading, toast) {
             
             view.querySelector('#txtBlackFrameMinimumPercentage').value = config.BlackFrameMinimumPercentage !== undefined ? config.BlackFrameMinimumPercentage : 85;
             view.querySelector('#txtBlackFrameThreshold').value = config.BlackFrameThreshold !== undefined ? config.BlackFrameThreshold : 28;
+            view.querySelector('#txtBlackFrameMinDuration').value = config.BlackFrameMinDuration !== undefined ? config.BlackFrameMinDuration : 0.5;
+            view.querySelector('#txtBlackFrameParallelSessions').value = config.BlackFrameParallelSessions !== undefined ? config.BlackFrameParallelSessions : 1;
+            view.querySelector('#txtBlackFrameFfmpegThreads').value = config.BlackFrameFfmpegThreads || 0;
 
             // Video Validation settings
             view.querySelector('#chkEnableVideoValidation').checked = config.EnableVideoValidation || false;
@@ -369,6 +374,7 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.EnableAutoBackupAfterDetection = view.querySelector('#chkEnableAutoBackupAfterDetection').checked;
         instance.config.SkipDetectionIfFileUnchanged = view.querySelector('#chkSkipDetectionIfFileUnchanged').checked;
         instance.config.EnableTracerMode = view.querySelector('#chkEnableTracerMode').checked;
+        instance.config.OnlyProcessNewEpisodes = view.querySelector('#chkOnlyProcessNewEpisodes').checked;
         instance.config.EnableAutoRestoreAfterScan = view.querySelector('#chkEnableAutoRestoreAfterScan').checked;
 
         instance.config.EnableScheduledTaskNotifications = view.querySelector('#chkEnableScheduledTaskNotifications').checked;
@@ -378,11 +384,10 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.MinimumEpisodesForNotification = Number.isNaN(minEpisodes) ? 1 : minEpisodes;
 
         instance.config.EnableThumbnailGeneration = view.querySelector('#chkEnableThumbnailGeneration').checked;
-        instance.config.ThumbnailWidth = Number.parseInt(view.querySelector('#txtThumbnailWidth').value, 10) || 320;
-        instance.config.ThumbnailQuality = Number.parseInt(view.querySelector('#txtThumbnailQuality').value, 10) || 85;
 
         instance.config.EnableChromaprintDetection = instance.config.EnableHashDetection;
         instance.config.ChromaprintUseAudioFingerprinting = view.querySelector('#chkChromaprintUseAudioFingerprinting').checked;
+        instance.config.ChromaprintEnableBlackFrameFallback = view.querySelector('#chkChromaprintEnableBlackFrameFallback').checked;
         instance.config.ChromaprintFingerprintDuration = Number.parseInt(view.querySelector('#txtChromaprintFingerprintDuration').value, 10) || 360;
         instance.config.ChromaprintFingerprintSimilarityThreshold = Number.parseFloat(view.querySelector('#txtChromaprintFingerprintSimilarityThreshold').value) || 0.90;
         instance.config.ChromaprintEnableEpisodeComparison = view.querySelector('#chkChromaprintEnableEpisodeComparison').checked;
@@ -398,8 +403,10 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.ChromaprintSilenceMinDuration = Number.parseFloat(view.querySelector('#txtChromaprintSilenceMinDuration').value) || 0.5;
         instance.config.ChromaprintSilenceSearchWindow = Number.parseFloat(view.querySelector('#txtChromaprintSilenceSearchWindow').value) || 30;
         instance.config.ChromaprintMinConfidence = Number.parseFloat(view.querySelector('#txtChromaprintMinConfidence').value) || 0.85;
+        instance.config.ChromaprintMinimumScoreFloor = Number.parseFloat(view.querySelector('#txtChromaprintMinimumScoreFloor').value) || 0.55;
         instance.config.ChromaprintStopSecondsFromEnd = Number.parseFloat(view.querySelector('#txtChromaprintStopSecondsFromEnd').value) || 20;
         instance.config.ChromaprintLowerProcessPriority = view.querySelector('#chkChromaprintLowerProcessPriority').checked;
+        instance.config.ChromaprintParallelSessions = Math.max(1, Number.parseInt(view.querySelector('#txtChromaprintParallelSessions').value, 10) || 4);
         instance.config.ChromaprintFfmpegThreads = Number.parseInt(view.querySelector('#txtChromaprintFfmpegThreads').value, 10) || 0;
         instance.config.ChromaprintDelayBetweenOperationsMs = Number.parseInt(view.querySelector('#txtChromaprintDelayBetweenOperationsMs').value, 10) || 0;
 
@@ -408,8 +415,9 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.AnimeDetectionMethod = view.querySelector('#selectAnimeDetectionMethod').value || 'BlackFrame';
         instance.config.BlackFrameMinimumPercentage = Number.parseInt(view.querySelector('#txtBlackFrameMinimumPercentage').value, 10) || 85;
         instance.config.BlackFrameThreshold = Number.parseInt(view.querySelector('#txtBlackFrameThreshold').value, 10) || 28;
-
-        // Video Validation settings
+        instance.config.BlackFrameMinDuration = Number.parseFloat(view.querySelector('#txtBlackFrameMinDuration').value) || 0.5;
+        instance.config.BlackFrameParallelSessions = Math.max(1, Number.parseInt(view.querySelector('#txtBlackFrameParallelSessions').value, 10) || 1);
+        instance.config.BlackFrameFfmpegThreads = Number.parseInt(view.querySelector('#txtBlackFrameFfmpegThreads').value, 10) || 0;
         instance.config.EnableVideoValidation = view.querySelector('#chkEnableVideoValidation').checked;
         instance.config.VideoValidationTimeoutSeconds = Number.parseInt(view.querySelector('#numVideoValidationTimeoutSeconds').value, 10) || 10;
 
@@ -731,6 +739,7 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#selectAnimeDetectionMethod', 'BlackFrame');
         setIfExists('#txtBlackFrameMinimumPercentage', 85);
         setIfExists('#txtBlackFrameThreshold', 28);
+        setIfExists('#txtBlackFrameMinDuration', 0.5);
 
         setIfExists('#chkEnableVideoValidation', false, true);
         setIfExists('#numVideoValidationTimeoutSeconds', 10);
@@ -829,6 +838,7 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#selectAnimeDetectionMethod', 'BlackFrame');
         setIfExists('#txtBlackFrameMinimumPercentage', 85);
         setIfExists('#txtBlackFrameThreshold', 28);
+        setIfExists('#txtBlackFrameMinDuration', 0.5);
 
         setIfExists('#chkEnableVideoValidation', false, true);
         setIfExists('#numVideoValidationTimeoutSeconds', 10);
@@ -875,6 +885,15 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#txtDelayBetweenEpisodesMs', 0);
         setIfExists('#txtMaxScheduledBackups', 10);
 
+        setIfExists('#selectDetectionMode', 'OcrOnly');
+        setIfExists('#txtTimestampOffsetSeconds', 0);
+        setIfExists('#selectOcrEngine', 'Tesseract');
+        setIfExists('#chkEnableLogToFile', false, true);
+        setIfExists('#chkEnableAutoBackupAfterDetection', false, true);
+        setIfExists('#chkSkipDetectionIfFileUnchanged', false, true);
+        setIfExists('#chkOnlyProcessNewEpisodes', false, true);
+        setIfExists('#chkEnableAutoRestoreAfterScan', false, true);
+
         setIfExists('#txtOcrEndpoint', preservedOcrEndpoint);
         setIfExists('#txtOcrDetectionKeywords', defaultKeywords);
         setIfExists('#chkOcrEnableEpisodeComparison', true, true);
@@ -904,6 +923,7 @@ define(['loading', 'toast'], function (loading, toast) {
 
         setIfExists('#chkOcrEnableParallelProcessing', false, true);
         setIfExists('#txtOcrParallelBatchSize', 4);
+        setIfExists('#txtOcrDelayBetweenBatchesMs', 200);
         setIfExists('#chkOcrEnableSmartFrameSkipping', true, true);
         setIfExists('#txtOcrConsecutiveMatchesForEarlyStop', 3);
         setIfExists('#txtOcrMinimumConfidence', 0);
@@ -951,22 +971,41 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#selectAnimeDetectionMethod', 'BlackFrame');
         setIfExists('#txtBlackFrameMinimumPercentage', 85);
         setIfExists('#txtBlackFrameThreshold', 28);
+        setIfExists('#txtBlackFrameMinDuration', 0.5);
 
         setIfExists('#chkEnableScheduledTaskNotifications', false, true);
         setIfExists('#chkEnableAutoDetectionNotifications', false, true);
         setIfExists('#chkNotifyOnSuccessOnly', false, true);
         setIfExists('#txtMinimumEpisodesForNotification', 1);
 
-        setIfExists('#chkManualSkipExistingMarkers', false, true);
+        setIfExists('#chkEnableThumbnailGeneration', false, true);
 
-        setIfExists('#chkEnableThumbnailGeneration', true, true);
-        setIfExists('#txtThumbnailWidth', 320);
-        setIfExists('#txtThumbnailQuality', 85);
+        setIfExists('#chkChromaprintUseAudioFingerprinting', false, true);
+        setIfExists('#chkChromaprintEnableBlackFrameFallback', true, true);
+        setIfExists('#txtChromaprintFingerprintDuration', 360);
+        setIfExists('#txtChromaprintFingerprintSimilarityThreshold', 0.90);
+        setIfExists('#chkChromaprintEnableEpisodeComparison', true, true);
+        setIfExists('#txtChromaprintEpisodeComparisonTolerance', 15.0);
+        setIfExists('#txtChromaprintEpisodeComparisonMinimumEpisodes', 4);
+        setIfExists('#txtChromaprintMinDuration', 10);
+        setIfExists('#txtChromaprintMaxDuration', 300);
+        setIfExists('#txtChromaprintAnalysisPercent', 25);
+        setIfExists('#txtChromaprintBlackFrameThreshold', 0.05);
+        setIfExists('#txtChromaprintBlackFrameMinDuration', 0.5);
+        setIfExists('#chkChromaprintUseSilenceDetection', true, true);
+        setIfExists('#txtChromaprintSilenceThreshold', -50);
+        setIfExists('#txtChromaprintSilenceMinDuration', 0.5);
+        setIfExists('#txtChromaprintSilenceSearchWindow', 30);
+        setIfExists('#txtChromaprintMinConfidence', 0.85);
+        setIfExists('#txtChromaprintMinimumScoreFloor', 0.55);
+        setIfExists('#txtChromaprintStopSecondsFromEnd', 20);
+        setIfExists('#chkChromaprintLowerProcessPriority', false, true);
+        setIfExists('#txtChromaprintParallelSessions', 2);
+        setIfExists('#txtChromaprintFfmpegThreads', 2);
+        setIfExists('#txtChromaprintDelayBetweenOperationsMs', 0);
 
-        setIfExists('#chkEnableAnimeDetection', true, true);
-        setIfExists('#selectAnimeDetectionMethod', 'BlackFrame');
-        setIfExists('#txtBlackFrameMinimumPercentage', 85);
-        setIfExists('#txtBlackFrameThreshold', 28);
+        setIfExists('#txtBlackFrameParallelSessions', 1);
+        setIfExists('#txtBlackFrameFfmpegThreads', 2);
 
         setIfExists('#chkEnableVideoValidation', false, true);
         setIfExists('#numVideoValidationTimeoutSeconds', 10);

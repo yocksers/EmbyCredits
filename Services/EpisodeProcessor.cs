@@ -53,25 +53,10 @@ namespace EmbyCredits.Services
             System.Collections.Concurrent.ConcurrentDictionary<string, List<(string method, double timestamp)>> batchDetectionCache)
         {
             var episodeId = episode.Id.ToString();
-            var originalPriority = Thread.CurrentThread.Priority;
-            bool priorityChanged = false;
-
-            if (_configuration.LowerThreadPriority)
-            {
-                try
-                {
-                    Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
-                    priorityChanged = true;
-                    _debugLogger.LogDebug("Thread priority set to BelowNormal for reduced system impact");
-                }
-                catch (Exception ex)
-                {
-                    _debugLogger.LogWarn($"Failed to lower thread priority: {ex.Message}");
-                }
-            }
 
             _cpuThrottler.BeginWork();
 
+            DetectionCoordinator? localCoordinator = null;
             try
             {
                 _debugLogger.LogInfo($"Processing episode: {episode.Name} (S{episode.ParentIndexNumber}E{episode.IndexNumber})");
@@ -80,22 +65,21 @@ namespace EmbyCredits.Services
 
                 if (string.IsNullOrEmpty(normalizedPath))
                 {
-                    bool fileExists = false;
-                    bool checkFailed = false;
-                    try
-                    {
-                        fileExists = File.Exists(normalizedPath);
-                    }
-                    catch
-                    {
-                        checkFailed = true;
-                    }
+                    _debugLogger.LogWarn($"Episode file path is empty: {episode.Path}");
+                    return (false, 0, "File not found", 0, string.Empty, string.Empty);
+                }
 
-                    if (!checkFailed && !fileExists)
+                try
+                {
+                    if (!File.Exists(normalizedPath))
                     {
                         _debugLogger.LogWarn($"Episode file not found: {episode.Path}");
                         return (false, 0, "File not found", 0, string.Empty, string.Empty);
                     }
+                }
+                catch (Exception ex)
+                {
+                    _debugLogger.LogWarn($"Could not check file existence for {episode.Path}: {ex.Message}");
                 }
 
                 double duration = 0;
@@ -132,17 +116,28 @@ namespace EmbyCredits.Services
                 var seasonNumber = episode.ParentIndexNumber;
                 var episodeNumber = episode.IndexNumber;
                 var effectiveConfig = _ruleMatchingService.GetEffectiveConfiguration(episode);
+
+                if (effectiveConfig.DisableDetection)
+                {
+                    _debugLogger.LogInfo($"Detection disabled by rule for {episode.Name}, skipping");
+                    return (false, 0, "Detection disabled by rule", 0, string.Empty, string.Empty);
+                }
                 
+                DetectionCoordinator coordinatorForEpisode;
                 if (effectiveConfig != _configuration)
                 {
                     _debugLogger.LogInfo("Using rule-based configuration for this episode");
-                    _detectionCoordinator?.Dispose();
-                    _detectionCoordinator = new DetectionCoordinator(_logger, effectiveConfig);
+                    localCoordinator = new DetectionCoordinator(_logger, effectiveConfig);
+                    coordinatorForEpisode = localCoordinator;
+                }
+                else
+                {
+                    coordinatorForEpisode = _detectionCoordinator;
                 }
                 
                 var result = !string.IsNullOrEmpty(seriesId) 
-                    ? await _detectionCoordinator.DetectCreditsWithContext(normalizedPath, duration, episodeId, seriesId, seasonNumber, episodeNumber)
-                    : await _detectionCoordinator.DetectCredits(normalizedPath, duration, episodeId);
+                    ? await coordinatorForEpisode.DetectCreditsWithContext(normalizedPath, duration, episodeId, seriesId, seasonNumber, episodeNumber)
+                    : await coordinatorForEpisode.DetectCredits(normalizedPath, duration, episodeId);
                 double creditsStart = result.timestamp;
                 string failureReason = result.failureReason;
                 double confidence = result.confidence;
@@ -212,27 +207,14 @@ namespace EmbyCredits.Services
             }
             finally
             {
-                await _cpuThrottler.EndWork().ConfigureAwait(false);
-
-                if (priorityChanged)
-                {
-                    try
-                    {
-                        Thread.CurrentThread.Priority = originalPriority;
-                    }
-                    catch (Exception ex)
-                    {
-                        _debugLogger.LogWarn($"Failed to restore thread priority: {ex.Message}");
-                    }
-                }
+                localCoordinator?.Dispose();
+                await _cpuThrottler.EndWork(CancellationToken.None).ConfigureAwait(false);
 
                 if (_configuration?.DelayBetweenEpisodesMs > 0)
                 {
                     _debugLogger.LogDebug($"Applying {_configuration.DelayBetweenEpisodesMs}ms delay before next episode");
-                    await Task.Delay(_configuration.DelayBetweenEpisodesMs);
+                    try { await Task.Delay(_configuration.DelayBetweenEpisodesMs).ConfigureAwait(false); } catch (OperationCanceledException) { }
                 }
-                
-                GC.Collect(2, GCCollectionMode.Optimized, false);
             }
         }
 
@@ -244,28 +226,20 @@ namespace EmbyCredits.Services
             DetectionCoordinator? overrideCoordinator = null)
         {
             var episodeId = episode.Id.ToString();
-            var originalPriority = Thread.CurrentThread.Priority;
-            bool priorityChanged = false;
-
-            if (_configuration.LowerThreadPriority)
-            {
-                try
-                {
-                    Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
-                    priorityChanged = true;
-                    _debugLogger.LogDebug("Thread priority set to BelowNormal for reduced system impact");
-                }
-                catch (Exception ex)
-                {
-                    _debugLogger.LogWarn($"Failed to lower thread priority: {ex.Message}");
-                }
-            }
 
             _cpuThrottler.BeginWork();
 
+            DetectionCoordinator? localFallbackCoordinator = null;
             try
             {
                 _debugLogger.LogInfo($"Processing episode with batch result: {episode.Name} (S{episode.ParentIndexNumber}E{episode.IndexNumber})");
+
+                var effectiveConfig = _ruleMatchingService.GetEffectiveConfiguration(episode);
+                if (effectiveConfig.DisableDetection)
+                {
+                    _debugLogger.LogInfo($"Detection disabled by rule for {episode.Name}, skipping");
+                    return (false, 0, "Detection disabled by rule", 0, string.Empty, string.Empty);
+                }
 
                 if (batchDetectedTime.HasValue && batchDetectedTime.Value > 0)
                 {
@@ -364,7 +338,21 @@ namespace EmbyCredits.Services
                     }
 
                     // Try detection methods in priority order
-                    var coordinatorToUse = overrideCoordinator ?? _detectionCoordinator;
+                    DetectionCoordinator coordinatorToUse;
+                    if (overrideCoordinator != null)
+                    {
+                        coordinatorToUse = overrideCoordinator;
+                    }
+                    else if (effectiveConfig != _configuration)
+                    {
+                        _debugLogger.LogInfo("Using rule-based configuration for fallback detection");
+                        localFallbackCoordinator = new DetectionCoordinator(_logger, effectiveConfig);
+                        coordinatorToUse = localFallbackCoordinator;
+                    }
+                    else
+                    {
+                        coordinatorToUse = _detectionCoordinator;
+                    }
                     var detectionResult = await coordinatorToUse.DetectCreditsWithContext(
                         normalizedPath,
                         duration,
@@ -449,24 +437,13 @@ namespace EmbyCredits.Services
             }
             finally
             {
-                await _cpuThrottler.EndWork().ConfigureAwait(false);
-
-                if (priorityChanged)
-                {
-                    try
-                    {
-                        Thread.CurrentThread.Priority = originalPriority;
-                    }
-                    catch (Exception ex)
-                    {
-                        _debugLogger.LogWarn($"Failed to restore thread priority: {ex.Message}");
-                    }
-                }
+                localFallbackCoordinator?.Dispose();
+                await _cpuThrottler.EndWork(CancellationToken.None).ConfigureAwait(false);
 
                 if (_configuration?.DelayBetweenEpisodesMs > 0)
                 {
                     _debugLogger.LogDebug($"Applying {_configuration.DelayBetweenEpisodesMs}ms delay before next episode");
-                    await Task.Delay(_configuration.DelayBetweenEpisodesMs);
+                    try { await Task.Delay(_configuration.DelayBetweenEpisodesMs).ConfigureAwait(false); } catch (OperationCanceledException) { }
                 }
             }
         }
@@ -482,39 +459,43 @@ namespace EmbyCredits.Services
             {
                 _debugLogger.LogDebug($"Getting video duration for: {filePath}");
 
-                var ffprobeInputPath = Utilities.FFmpegHelper.GetInputArgument(filePath);
+                var normalizedFilePath = Utilities.FFmpegHelper.NormalizeFilePath(filePath);
 
-                using (var process = new Process
+                var ffprobeStartInfo = new ProcessStartInfo
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = Utilities.FFmpegHelper.GetFfprobePath(),
-                        Arguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {ffprobeInputPath}",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
-                })
+                    FileName = Utilities.FFmpegHelper.GetFfprobePath(),
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                ffprobeStartInfo.ArgumentList.Add("-v");
+                ffprobeStartInfo.ArgumentList.Add("error");
+                ffprobeStartInfo.ArgumentList.Add("-show_entries");
+                ffprobeStartInfo.ArgumentList.Add("format=duration");
+                ffprobeStartInfo.ArgumentList.Add("-of");
+                ffprobeStartInfo.ArgumentList.Add("default=noprint_wrappers=1:nokey=1");
+                ffprobeStartInfo.ArgumentList.Add(normalizedFilePath);
+
+                using (var process = new Process { StartInfo = ffprobeStartInfo })
                 {
                     process.Start();
                     CpuThrottler.SetProcessPriority(process, _configuration);
                     
-                    using (var outputReader = process.StandardOutput)
+                    var stderrTask = process.StandardError.ReadToEndAsync();
+                    var output = await process.StandardOutput.ReadToEndAsync();
+                    await process.WaitForExitAsync();
+                    await stderrTask.ConfigureAwait(false);
+
+                    if (double.TryParse(output.Trim(), System.Globalization.NumberStyles.Any, 
+                        System.Globalization.CultureInfo.InvariantCulture, out var duration))
                     {
-                        var output = await outputReader.ReadToEndAsync();
-                        await process.WaitForExitAsync();
-
-                        if (double.TryParse(output.Trim(), System.Globalization.NumberStyles.Any, 
-                            System.Globalization.CultureInfo.InvariantCulture, out var duration))
-                        {
-                            _debugLogger.LogDebug($"Duration result: {duration} seconds");
-                            return duration;
-                        }
-
-                        _debugLogger.LogError("Failed to parse duration output", null);
-                        return 0;
+                        _debugLogger.LogDebug($"Duration result: {duration} seconds");
+                        return duration;
                     }
+
+                    _debugLogger.LogError("Failed to parse duration output", null);
+                    return 0;
                 }
             }
             catch (Exception ex)

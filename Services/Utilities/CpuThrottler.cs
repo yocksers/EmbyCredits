@@ -24,7 +24,7 @@ namespace EmbyCredits.Services.Utilities
             _lastWorkTime = DateTime.UtcNow;
         }
 
-        public async Task EndWork()
+        public async Task EndWork(CancellationToken cancellationToken = default)
         {
             _lastWorkDuration = DateTime.UtcNow - _lastWorkTime;
 
@@ -34,7 +34,8 @@ namespace EmbyCredits.Services.Utilities
             var throttleDelayMs = CalculateThrottleDelay();
             if (throttleDelayMs > 0)
             {
-                await Task.Delay(throttleDelayMs);
+                try { await Task.Delay(throttleDelayMs, cancellationToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) { }
             }
         }
 

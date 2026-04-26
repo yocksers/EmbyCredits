@@ -354,8 +354,12 @@ namespace EmbyCredits.Services.DetectionMethods
                     LogDebug($"Limiting OCR analysis to {Configuration.OcrMaxAnalysisDuration} seconds (video has {duration - startTime:F0}s remaining)");
                 }
 
-                var tempDir = Path.Combine(FFmpegHelper.GetTempPath(), $"ocr_frames_{Guid.NewGuid()}");
-                Directory.CreateDirectory(tempDir);
+                var tempDir = Configuration.OcrUseDirectMemoryPipeline
+                    ? null
+                    : Path.Combine(FFmpegHelper.GetTempPath(), $"ocr_frames_{Guid.NewGuid()}");
+
+                if (tempDir != null)
+                    Directory.CreateDirectory(tempDir);
 
                 try
                 {
@@ -366,14 +370,12 @@ namespace EmbyCredits.Services.DetectionMethods
                     {
                         LogInfo("Using direct memory pipeline (no disk I/O) for frame extraction");
                         var result = await ProcessFramesDirectFromMemory(videoPath, duration, startTime, analysisDuration, fps, keywords, recentTextFrames, cancellationToken).ConfigureAwait(false);
-                        GC.Collect(1, GCCollectionMode.Optimized, false);
                         return result;
                     }
                     else
                     {
                         LogInfo("Using disk-based frame extraction (legacy method)");
-                        var result = await ProcessFramesFromDisk(videoPath, duration, startTime, analysisDuration, fps, keywords, tempDir, recentTextFrames, cancellationToken).ConfigureAwait(false);
-                        GC.Collect(1, GCCollectionMode.Optimized, false);
+                        var result = await ProcessFramesFromDisk(videoPath, duration, startTime, analysisDuration, fps, keywords, tempDir!, recentTextFrames, cancellationToken).ConfigureAwait(false);
                         return result;
                     }
                 }
@@ -385,7 +387,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 }
                 finally
                 {
-                    if (Directory.Exists(tempDir))
+                    if (tempDir != null && Directory.Exists(tempDir))
                     {
                         try
                         {
@@ -504,32 +506,43 @@ namespace EmbyCredits.Services.DetectionMethods
             List<(double timestamp, string text)> recentTextFrames,
             CancellationToken cancellationToken)
         {
-            var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
+            var normalizedVideoPath = FFmpegHelper.NormalizeFilePath(videoPath);
             var preInputArgs = BuildPreInputArgs();
             var threadArgs = BuildThreadArgs();
             var filterChain = BuildFilterChain(fps);
             
             var vcodec = "mjpeg";
             var codecArgs = $"-q:v {Configuration.OcrJpegQuality}";
-            var outputFormat = $"-f image2pipe -vcodec {vcodec} {codecArgs} pipe:1";
-            
-            var extractArgs = $"{preInputArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} {threadArgs}-t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"{filterChain}\" {outputFormat}";
 
             UpdateProgress(10, "Starting direct memory frame extraction");
 
-            using (var process = new Process
+            var ocrMemStartInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = FFmpegHelper.GetFfmpegPath(),
-                    Arguments = extractArgs,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                    StandardOutputEncoding = null
-                }
-            })
+                FileName = FFmpegHelper.GetFfmpegPath(),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = null
+            };
+            AddTokenizedArgs(ocrMemStartInfo, preInputArgs);
+            ocrMemStartInfo.ArgumentList.Add("-ss");
+            ocrMemStartInfo.ArgumentList.Add(startTime.ToString(CultureInfo.InvariantCulture));
+            ocrMemStartInfo.ArgumentList.Add("-i");
+            ocrMemStartInfo.ArgumentList.Add(normalizedVideoPath);
+            AddTokenizedArgs(ocrMemStartInfo, threadArgs);
+            ocrMemStartInfo.ArgumentList.Add("-t");
+            ocrMemStartInfo.ArgumentList.Add(analysisDuration.ToString(CultureInfo.InvariantCulture));
+            ocrMemStartInfo.ArgumentList.Add("-vf");
+            ocrMemStartInfo.ArgumentList.Add(filterChain);
+            ocrMemStartInfo.ArgumentList.Add("-f");
+            ocrMemStartInfo.ArgumentList.Add("image2pipe");
+            ocrMemStartInfo.ArgumentList.Add("-vcodec");
+            ocrMemStartInfo.ArgumentList.Add(vcodec);
+            AddTokenizedArgs(ocrMemStartInfo, codecArgs);
+            ocrMemStartInfo.ArgumentList.Add("pipe:1");
+
+            using (var process = new Process { StartInfo = ocrMemStartInfo })
             {
                 try
                 {
@@ -675,7 +688,6 @@ namespace EmbyCredits.Services.DetectionMethods
                                 {
                                     buffer.Clear();
                                     buffer.TrimExcess();
-                                    GC.Collect(1, GCCollectionMode.Optimized, false);
                                 }
                             }
                         }
@@ -813,7 +825,6 @@ namespace EmbyCredits.Services.DetectionMethods
                     characterDensityHistory.TrimExcess();
                     recentTextFrames.Clear();
                     recentTextFrames.TrimExcess();
-                    GC.Collect(2, GCCollectionMode.Optimized, false);
                     
                     return creditsTimestamp;
                 }
@@ -921,11 +932,6 @@ namespace EmbyCredits.Services.DetectionMethods
                 ocrTasks.Clear();
                 ocrTasks = null;
                 
-                if (frameQueue.Count > 0 && frameQueue[0].index % 100 == 0)
-                {
-                    GC.Collect(1, GCCollectionMode.Optimized, false);
-                }
-                
                 if (Configuration.OcrDelayBetweenBatchesMs > 0)
                 {
                     await Task.Delay(Configuration.OcrDelayBetweenBatchesMs, cancellationToken).ConfigureAwait(false);
@@ -980,29 +986,40 @@ namespace EmbyCredits.Services.DetectionMethods
                 var ffmpegTempDir = tempDir.Replace("\\", "/");
                 var ffmpegFramePath = $"{ffmpegTempDir}/frame_%04d.{imageExtension}";
                 
-                var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
+                var normalizedVideoPathDisk = FFmpegHelper.NormalizeFilePath(videoPath);
 
                 var preInputArgs = BuildPreInputArgs();
                 var threadArgs = BuildThreadArgs();
                 var filterChain = BuildFilterChain(fps);
-                var extractArgs = $"{preInputArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} {threadArgs}-t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -vf \"{filterChain}\" {qualityParam} -f image2 \"{ffmpegFramePath}\"";
 
                 LogDebug($"Extracting frames from {FormatTime(startTime)} at {fps} fps (JPG Q{Configuration.OcrJpegQuality}) for OCR analysis");
-                LogDebug($"FFmpeg command: {FFmpegHelper.GetFfmpegPath()} {extractArgs}");
+                LogDebug($"FFmpeg command: {FFmpegHelper.GetFfmpegPath()} -ss {startTime} -i <path> -t {analysisDuration} -vf ...");
                 UpdateProgress(10, "Starting frame extraction and OCR processing");
 
-                using (var process = new Process
+                var ocrDiskStartInfo = new ProcessStartInfo
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = FFmpegHelper.GetFfmpegPath(),
-                        Arguments = extractArgs,
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
-                })
+                    FileName = FFmpegHelper.GetFfmpegPath(),
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                AddTokenizedArgs(ocrDiskStartInfo, preInputArgs);
+                ocrDiskStartInfo.ArgumentList.Add("-ss");
+                ocrDiskStartInfo.ArgumentList.Add(startTime.ToString(CultureInfo.InvariantCulture));
+                ocrDiskStartInfo.ArgumentList.Add("-i");
+                ocrDiskStartInfo.ArgumentList.Add(normalizedVideoPathDisk);
+                AddTokenizedArgs(ocrDiskStartInfo, threadArgs);
+                ocrDiskStartInfo.ArgumentList.Add("-t");
+                ocrDiskStartInfo.ArgumentList.Add(analysisDuration.ToString(CultureInfo.InvariantCulture));
+                ocrDiskStartInfo.ArgumentList.Add("-vf");
+                ocrDiskStartInfo.ArgumentList.Add(filterChain);
+                AddTokenizedArgs(ocrDiskStartInfo, qualityParam);
+                ocrDiskStartInfo.ArgumentList.Add("-f");
+                ocrDiskStartInfo.ArgumentList.Add("image2");
+                ocrDiskStartInfo.ArgumentList.Add(ffmpegFramePath);
+
+                using (var process = new Process { StartInfo = ocrDiskStartInfo })
                 {
                     process.Start();
                     Utilities.FFmpegHelper.RegisterProcess(process, $"OCR Disk: {System.IO.Path.GetFileName(videoPath)}");
@@ -1953,6 +1970,23 @@ namespace EmbyCredits.Services.DetectionMethods
             }
 
             return args.Count > 0 ? string.Join(" ", args) + " " : "";
+        }
+
+        private static void AddTokenizedArgs(ProcessStartInfo psi, string args)
+        {
+            if (string.IsNullOrWhiteSpace(args)) return;
+            bool inQuotes = false;
+            var token = new System.Text.StringBuilder();
+            foreach (var c in args)
+            {
+                if (c == '"') { inQuotes = !inQuotes; }
+                else if (c == ' ' && !inQuotes)
+                {
+                    if (token.Length > 0) { psi.ArgumentList.Add(token.ToString()); token.Clear(); }
+                }
+                else { token.Append(c); }
+            }
+            if (token.Length > 0) psi.ArgumentList.Add(token.ToString());
         }
 
         private string BuildFilterChain(double fps)

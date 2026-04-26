@@ -20,7 +20,13 @@ namespace EmbyCredits.Services.Utilities
         private static IFfmpegManager? _ffmpegManager;
         private static IMediaEncoder? _mediaEncoder;
         private static readonly ConcurrentDictionary<int, (Process process, DateTime startTime, string description)> _activeProcesses = new ConcurrentDictionary<int, (Process, DateTime, string)>();
+        private static readonly ConcurrentDictionary<int, DateTime> _lastOutputTime = new ConcurrentDictionary<int, DateTime>();
         private static readonly object _cleanupLock = new object();
+
+        public static void UpdateLastOutputTime(int pid)
+        {
+            _lastOutputTime[pid] = DateTime.UtcNow;
+        }
 
         public static void RegisterProcess(Process process, string description)
         {
@@ -43,6 +49,7 @@ namespace EmbyCredits.Services.Utilities
                 if (process != null)
                 {
                     _activeProcesses.TryRemove(process.Id, out _);
+                    _lastOutputTime.TryRemove(process.Id, out _);
                 }
             }
             catch
@@ -97,6 +104,34 @@ namespace EmbyCredits.Services.Utilities
 
                 return killedCount;
             }
+        }
+
+        private const int HungProcessTimeoutSeconds = 900;
+
+        public static IReadOnlyList<object> GetActiveProcesses()
+        {
+            var result = new List<object>();
+            var now = DateTime.UtcNow;
+            foreach (var kvp in _activeProcesses)
+            {
+                try
+                {
+                    var (process, startTime, description) = kvp.Value;
+                    if (process.HasExited) continue;
+                    var ageSeconds = (now - startTime).TotalSeconds;
+                    var percentOfTimeout = Math.Min(100.0, ageSeconds / HungProcessTimeoutSeconds * 100.0);
+                    int? secondsSinceLastOutput = null;
+                    if (_lastOutputTime.TryGetValue(kvp.Key, out var lastOutput))
+                    {
+                        secondsSinceLastOutput = (int)(now - lastOutput).TotalSeconds;
+                    }
+                    result.Add(new { Description = description, AgeSeconds = (int)ageSeconds, PercentOfTimeout = Math.Round(percentOfTimeout, 1), SecondsSinceLastOutput = secondsSinceLastOutput });
+                }
+                catch
+                {
+                }
+            }
+            return result;
         }
 
         public static string NormalizeFilePath(string path)
@@ -276,18 +311,20 @@ namespace EmbyCredits.Services.Utilities
         /// <param name="endTime">End time in seconds</param>
         /// <param name="logger">Logger instance</param>
         /// <returns>Array of chromaprint fingerprint points (uint32 values)</returns>
-        public static uint[] GenerateChromaprint(string filePath, double startTime, double endTime, MediaBrowser.Model.Logging.ILogger? logger = null)
+        public static uint[] GenerateChromaprint(string filePath, double startTime, double endTime, MediaBrowser.Model.Logging.ILogger? logger = null, int threads = 0)
         {
             var normalizedPath = NormalizeFilePath(filePath);
             var ffmpegPath = GetFfmpegPath();
             var duration = endTime - startTime;
 
+            var threadArg = threads > 0 ? $"-threads {threads} " : string.Empty;
             var args = string.Format(
                 CultureInfo.InvariantCulture,
-                "-hide_banner -loglevel warning -ss {0} -i \"{1}\" -to {2} -ac 2 -f chromaprint -fp_format raw -",
+                "-hide_banner -loglevel warning {3}-ss {0} -i \"{1}\" -to {2} -ac 2 -f chromaprint -fp_format raw -",
                 startTime,
                 normalizedPath,
-                duration);
+                duration,
+                threadArg);
 
             logger?.Debug($"FFmpeg chromaprint command: {ffmpegPath} {args}");
 
@@ -434,7 +471,7 @@ namespace EmbyCredits.Services.Utilities
         /// <param name="fp2">Second fingerprint</param>
         /// <param name="minWindowSize">Minimum window size in points (default 100 = ~13 seconds)</param>
         /// <returns>Best match info: score, offset in fp1, offset in fp2</returns>
-        public static (double score, int offsetFp1, int offsetFp2) FindBestMatchingSubsequence(uint[] fp1, uint[] fp2, int minWindowSize = 100)
+        public static (double score, int offsetFp1, int offsetFp2) FindBestMatchingSubsequence(uint[] fp1, uint[] fp2, int minWindowSize = 100, int maxDiagonalOffset = 75)
         {
             if (fp1.Length == 0 || fp2.Length == 0)
                 return (0, 0, 0);
@@ -448,13 +485,18 @@ namespace EmbyCredits.Services.Utilities
 
             for (int start1 = 0; start1 <= fp1.Length - windowSize; start1 += 10)
             {
-                // Try different starting positions in fp2
-                for (int start2 = 0; start2 <= fp2.Length - windowSize; start2 += 10)
+                // Both fingerprints are anchored to the same position relative to the end
+                // of the video, so the credits audio appears at the same index in both arrays.
+                // Restricting search to positions near the diagonal (start2 ≈ start1) avoids
+                // the O(L²) explosion that causes lockups on large batches.
+                var start2Min = Math.Max(0, start1 - maxDiagonalOffset);
+                var start2Max = Math.Min(fp2.Length - windowSize, start1 + maxDiagonalOffset);
+
+                for (int start2 = start2Min; start2 <= start2Max; start2 += 10)
                 {
                     int matchCount = 0;
                     int compareCount = 0;
 
-                    // Compare the window
                     for (int i = 0; i < windowSize; i++)
                     {
                         var xorResult = fp1[start1 + i] ^ fp2[start2 + i];

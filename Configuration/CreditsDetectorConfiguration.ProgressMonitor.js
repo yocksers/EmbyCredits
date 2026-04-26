@@ -150,6 +150,43 @@
                 etaText.textContent = '-';
             }
         }
+
+        const ffmpegSessionsContainer = view.querySelector('#ffmpegSessionsContainer');
+        const ffmpegSessionsList = view.querySelector('#ffmpegSessionsList');
+        if (ffmpegSessionsContainer && ffmpegSessionsList) {
+            const processes = progress.ActiveFfmpegProcesses;
+            if (processes && processes.length > 0) {
+                ffmpegSessionsContainer.style.display = 'block';
+                ffmpegSessionsList.innerHTML = '';
+                processes.forEach(proc => {
+                    const age = proc.AgeSeconds;
+                    const pct = proc.PercentOfTimeout;
+                    const minutes = Math.floor(age / 60);
+                    const seconds = age % 60;
+                    const ageLabel = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+                    const barColor = pct >= 80 ? '#E53935' : pct >= 50 ? '#FFA726' : '#52B54B';
+
+                    const stalled = proc.SecondsSinceLastOutput != null && proc.SecondsSinceLastOutput >= 30;
+                    const stalledBadge = stalled
+                        ? `<span style="margin-left:0.4em; font-size:0.78em; font-weight:bold; color:#E53935; background:rgba(229,57,53,0.12); border-radius:3px; padding:0 0.3em;">STALLED ${proc.SecondsSinceLastOutput}s</span>`
+                        : '';
+
+                    const row = document.createElement('div');
+                    row.style.cssText = 'margin-bottom: 0.4em;';
+                    row.innerHTML =
+                        `<div style="display:flex; justify-content:space-between; font-size:0.82em; margin-bottom:0.15em;">` +
+                        `<span style="opacity:0.85; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70%;">${proc.Description}${stalledBadge}</span>` +
+                        `<span style="opacity:0.7; white-space:nowrap; margin-left:0.5em;">${ageLabel}</span>` +
+                        `</div>` +
+                        `<div style="background:rgba(128,128,128,0.2); border-radius:3px; height:5px; overflow:hidden;">` +
+                        `<div style="background:${barColor}; height:100%; width:${pct}%; transition:width 0.5s ease;"></div>` +
+                        `</div>`;
+                    ffmpegSessionsList.appendChild(row);
+                });
+            } else {
+                ffmpegSessionsContainer.style.display = 'none';
+            }
+        }
     }
     
     function updateResults(view, progress, isDryRun = false) {
@@ -166,7 +203,9 @@
             Object.entries(progress.SkipReasons).forEach(([episode, reason]) => {
                 const item = document.createElement('div');
                 item.style.cssText = 'padding: 0.5em; margin-bottom: 0.5em;';
-                item.innerHTML = `<strong>${episode}</strong><br/><span style="font-size: 0.9em; opacity: 0.8;">${reason}</span>`;
+                const appliedRule = progress.AppliedRules && progress.AppliedRules[episode];
+                const ruleHtml = appliedRule ? `<br/><span style="font-size: 0.8em; opacity: 0.65;">Rule: ${appliedRule}</span>` : '';
+                item.innerHTML = `<strong>${episode}</strong><br/><span style="font-size: 0.9em; opacity: 0.8;">${reason}</span>${ruleHtml}`;
                 skipList.appendChild(item);
             });
         } else {
@@ -179,7 +218,9 @@
             Object.entries(progress.FailureReasons).forEach(([episode, reason]) => {
                 const item = document.createElement('div');
                 item.style.cssText = 'padding: 0.5em; margin-bottom: 0.5em;';
-                item.innerHTML = `<strong>${episode}</strong><br/><span style="font-size: 0.9em;">${reason}</span>`;
+                const appliedRule = progress.AppliedRules && progress.AppliedRules[episode];
+                const ruleHtml = appliedRule ? `<br/><span style="font-size: 0.8em; opacity: 0.65;">Rule: ${appliedRule}</span>` : '';
+                item.innerHTML = `<strong>${episode}</strong><br/><span style="font-size: 0.9em;">${reason}</span>${ruleHtml}`;
                 failureList.appendChild(item);
             });
         } else {
@@ -260,6 +301,13 @@
                 const detailsText = document.createElement('div');
                 detailsText.innerHTML = `<span style="font-size: 0.9em; font-weight: bold;">${successDetail}</span><span>${confidenceText}</span>`;
                 textContent.appendChild(detailsText);
+                
+                const appliedRule = progress.AppliedRules && progress.AppliedRules[episode];
+                if (appliedRule) {
+                    const ruleText = document.createElement('div');
+                    ruleText.innerHTML = `<span style="font-size: 0.8em; opacity: 0.65;">Rule: ${appliedRule}</span>`;
+                    textContent.appendChild(ruleText);
+                }
                 
                 item.appendChild(textContent);
                 

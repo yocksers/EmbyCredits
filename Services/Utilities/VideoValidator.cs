@@ -31,18 +31,25 @@ namespace EmbyCredits.Services.Utilities
                 var ffprobePath = FFmpegHelper.GetFfprobePath();
                 var normalizedPath = FFmpegHelper.NormalizeFilePath(videoPath);
 
-                var arguments = $"-v error -select_streams v:0 -count_packets -show_entries stream=codec_name,codec_type,duration -of default=noprint_wrappers=1 \"{normalizedPath}\"";
-
                 var processStartInfo = new ProcessStartInfo
                 {
                     FileName = ffprobePath,
-                    Arguments = arguments,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true,
                     WindowStyle = ProcessWindowStyle.Hidden
                 };
+                processStartInfo.ArgumentList.Add("-v");
+                processStartInfo.ArgumentList.Add("error");
+                processStartInfo.ArgumentList.Add("-select_streams");
+                processStartInfo.ArgumentList.Add("v:0");
+                processStartInfo.ArgumentList.Add("-count_packets");
+                processStartInfo.ArgumentList.Add("-show_entries");
+                processStartInfo.ArgumentList.Add("stream=codec_name,codec_type,duration");
+                processStartInfo.ArgumentList.Add("-of");
+                processStartInfo.ArgumentList.Add("default=noprint_wrappers=1");
+                processStartInfo.ArgumentList.Add(normalizedPath);
 
                 var outputBuilder = new StringBuilder();
                 var errorBuilder = new StringBuilder();
@@ -74,10 +81,18 @@ namespace EmbyCredits.Services.Utilities
                         process.BeginOutputReadLine();
                         process.BeginErrorReadLine();
 
-                        var completedInTime = await Task.Run(() =>
+                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+                        bool completedInTime;
+                        try
                         {
-                            return process.WaitForExit(timeoutSeconds * 1000);
-                        }, cancellationToken);
+                            await process.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+                            completedInTime = true;
+                        }
+                        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                        {
+                            completedInTime = false;
+                        }
 
                         if (!completedInTime)
                         {

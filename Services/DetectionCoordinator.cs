@@ -74,8 +74,9 @@ namespace EmbyCredits.Services
             }
         }
 
-        private void InitializeDetectionMethodsForAnime()
+        private List<IDetectionMethod> BuildAnimeMethodsList()
         {
+            var methods = new List<IDetectionMethod>();
             if (_configuration.EnableDetailedLogging)
             {
                 _logger.Debug($"[DetectionCoordinator] Initializing detection methods for anime (DetectionMode: {_configuration.DetectionMode}, AnimeDetectionMethod: {_configuration.AnimeDetectionMethod})");
@@ -84,7 +85,7 @@ namespace EmbyCredits.Services
             if (_configuration.AnimeDetectionMethod == AnimeDetectionMethod.BlackFrame)
             {
                 var blackFrameMethod = new BlackFrameDetection(_logger, _configuration);
-                _detectionMethods.Add(blackFrameMethod);
+                methods.Add(blackFrameMethod);
                 if (_configuration.EnableDetailedLogging)
                 {
                     _logger.Debug($"[DetectionCoordinator] Added BlackFrameDetection for anime. IsEnabled: {blackFrameMethod.IsEnabled}");
@@ -93,12 +94,13 @@ namespace EmbyCredits.Services
             else if (_configuration.AnimeDetectionMethod == AnimeDetectionMethod.Ocr)
             {
                 var ocrMethod = new OcrDetection(_logger, _configuration, isForAnime: true);
-                _detectionMethods.Add(ocrMethod);
+                methods.Add(ocrMethod);
                 if (_configuration.EnableDetailedLogging)
                 {
                     _logger.Debug($"[DetectionCoordinator] Added OcrDetection for anime. IsEnabled: {ocrMethod.IsEnabled}");
                 }
             }
+            return methods;
         }
 
         private void LogDebug(string message)
@@ -128,7 +130,7 @@ namespace EmbyCredits.Services
 
         public async Task<(double timestamp, string failureReason, double confidence, string methodName, string detectionReason)> DetectCredits(string videoPath, double duration, string episodeId)
         {
-            return await DetectCreditsInternal(videoPath, duration, episodeId, null!, null, null);
+            return await DetectCreditsInternal(videoPath, duration, episodeId, null, null, null);
         }
 
         public async Task<(double timestamp, string failureReason, double confidence, string methodName, string detectionReason)> DetectCreditsWithContext(string videoPath, double duration, string episodeId, string seriesId, int? seasonNumber, int? episodeNumber)
@@ -136,11 +138,12 @@ namespace EmbyCredits.Services
             return await DetectCreditsInternal(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber);
         }
 
-        private async Task<(double timestamp, string failureReason, double confidence, string methodName, string detectionReason)> DetectCreditsInternal(string videoPath, double duration, string episodeId, string seriesId, int? seasonNumber, int? episodeNumber)
+        private async Task<(double timestamp, string failureReason, double confidence, string methodName, string detectionReason)> DetectCreditsInternal(string videoPath, double duration, string episodeId, string? seriesId, int? seasonNumber, int? episodeNumber)
         {
             LogDebug($"DetectCredits called: duration={FormatTime(duration)}, seriesId={seriesId}");
 
             bool isAnime = false;
+            List<IDetectionMethod>? animeMethods = null;
             if (_configuration.EnableAnimeDetection && !string.IsNullOrEmpty(seriesId))
             {
                 _logger.Debug($"[DetectionCoordinator] Anime detection enabled, checking seriesId: {seriesId}");
@@ -149,12 +152,7 @@ namespace EmbyCredits.Services
                 {
                     _logger.Info($"[DetectionCoordinator] Series identified as anime - using anime-specific detection methods");
                     LogDebug("Series identified as anime - using anime-specific detection methods");
-                    foreach (var method in _detectionMethods)
-                    {
-                        try { method?.Dispose(); } catch { }
-                    }
-                    _detectionMethods.Clear();
-                    InitializeDetectionMethodsForAnime();
+                    animeMethods = BuildAnimeMethodsList();
                 }
                 else
                 {
@@ -173,7 +171,9 @@ namespace EmbyCredits.Services
                 }
             }
 
-            var (detectionResults, methodErrors) = await RunAllDetectionMethods(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber);
+            try
+            {
+            var (detectionResults, methodErrors) = await RunAllDetectionMethods(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber, animeMethods);
 
             // For anime: If all detection methods failed, apply mode-specific fallback logic
             if (isAnime && detectionResults.Count == 0 && _configuration.AnimeDetectionMethod == AnimeDetectionMethod.BlackFrame && seasonNumber.HasValue && episodeNumber.HasValue)
@@ -194,7 +194,7 @@ namespace EmbyCredits.Services
                             {
                                 LogDebug("Running Chromaprint fallback for anime (HashOnly mode)...");
                                 EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame failed, trying Chromaprint");
-                                double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                                double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
                                 
                                 if (timestamp > 0)
                                 {
@@ -219,7 +219,7 @@ namespace EmbyCredits.Services
                             {
                                 LogDebug("Running OCR fallback for anime (OcrOnly mode)...");
                                 EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame failed, trying OCR");
-                                double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                                double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
                                 
                                 if (timestamp > 0)
                                 {
@@ -244,7 +244,7 @@ namespace EmbyCredits.Services
                             {
                                 LogDebug("Running OCR fallback for anime (OcrWithHashFallback mode)...");
                                 EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame failed, trying OCR");
-                                double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                                double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
                                 
                                 if (timestamp > 0)
                                 {
@@ -267,7 +267,7 @@ namespace EmbyCredits.Services
                             {
                                 LogDebug("OCR failed, running Chromaprint fallback for anime...");
                                 EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "OCR failed, trying Chromaprint");
-                                double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                                double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
                                 
                                 if (timestamp > 0)
                                 {
@@ -292,7 +292,7 @@ namespace EmbyCredits.Services
                             {
                                 LogDebug("Running Chromaprint fallback for anime (HashWithOcrFallback mode)...");
                                 EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame failed, trying Chromaprint");
-                                double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                                double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
                                 
                                 if (timestamp > 0)
                                 {
@@ -315,7 +315,7 @@ namespace EmbyCredits.Services
                             {
                                 LogDebug("Chromaprint failed, running OCR fallback for anime...");
                                 EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Chromaprint failed, trying OCR");
-                                double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                                double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
                                 
                                 if (timestamp > 0)
                                 {
@@ -347,7 +347,7 @@ namespace EmbyCredits.Services
                         {
                             LogDebug("OCR detection failed, attempting Hash fallback...");
                             EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "OCR failed, trying Hash fallback");
-                            double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                            double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
                             
                             if (timestamp > 0)
                             {
@@ -377,7 +377,7 @@ namespace EmbyCredits.Services
                         {
                             LogDebug("Hash detection failed, attempting OCR fallback...");
                             EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash failed, trying OCR fallback");
-                            double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
+                            double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
                             
                             if (timestamp > 0)
                             {
@@ -399,7 +399,7 @@ namespace EmbyCredits.Services
                 }
                 else if (_configuration.DetectionMode == DetectionMode.HashOnly)
                 {
-                    if (_configuration.EnableAnimeDetection)
+                    if (_configuration.EnableAnimeDetection && _configuration.ChromaprintEnableBlackFrameFallback)
                     {
                         LogDebug("Hash detection failed for non-anime series, attempting BlackFrame detection as fallback...");
                         EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash failed, trying BlackFrame fallback");
@@ -459,24 +459,15 @@ namespace EmbyCredits.Services
             // Try fallback if needed (legacy path)
             if (shouldTryFallback)
             {
-                var originalMode = _configuration.DetectionMode;
+                var fallbackConfig = _configuration.ShallowClone();
+                fallbackConfig.DetectionMode = fallbackMode;
+
+                var fallbackCoordinator = new DetectionCoordinator(_logger, fallbackConfig);
                 try
                 {
-                    // Temporarily change mode for fallback
-                    _configuration.DetectionMode = fallbackMode;
-                    
-                    // Re-initialize detection methods with fallback mode
-                    // Dispose old detection methods before clearing
-                    foreach (var method in _detectionMethods)
-                    {
-                        try { method?.Dispose(); } catch { }
-                    }
-                    _detectionMethods.Clear();
-                    InitializeDetectionMethods();
-                    
                     LogDebug($"Running fallback detection with mode: {fallbackMode}");
-                    var (fallbackResults, fallbackErrors) = await RunAllDetectionMethods(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber);
-                    
+                    var (fallbackResults, fallbackErrors) = await fallbackCoordinator.RunAllDetectionMethods(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber);
+
                     if (fallbackResults.Count > 0)
                     {
                         LogDebug($"Fallback detection successful! Found {fallbackResults.Count} result(s)");
@@ -498,15 +489,7 @@ namespace EmbyCredits.Services
                 }
                 finally
                 {
-                    // Restore original mode
-                    _configuration.DetectionMode = originalMode;
-                    // Dispose detection methods from fallback mode
-                    foreach (var method in _detectionMethods)
-                    {
-                        try { method?.Dispose(); } catch { }
-                    }
-                    _detectionMethods.Clear();
-                    InitializeDetectionMethods();
+                    fallbackCoordinator.Dispose();
                 }
             }
 
@@ -525,7 +508,8 @@ namespace EmbyCredits.Services
                     }
                 }
                 
-                var disabledMethods = _detectionMethods.Where(m => !m.IsEnabled).ToList();
+                var effectiveMethods = animeMethods ?? _detectionMethods;
+                var disabledMethods = effectiveMethods.Where(m => !m.IsEnabled).ToList();
                 if (disabledMethods.Count > 0)
                 {
                     LogDebug($"Disabled methods: {disabledMethods.Count}");
@@ -535,7 +519,7 @@ namespace EmbyCredits.Services
                     }
                 }
                 
-                var successfulButNoResult = _detectionMethods.Where(m => m.IsEnabled).Count() - methodErrors.Count;
+                var successfulButNoResult = effectiveMethods.Where(m => m.IsEnabled).Count() - methodErrors.Count;
                 if (successfulButNoResult > 0)
                 {
                     LogDebug($"Methods that ran successfully but found no credits: {successfulButNoResult}");
@@ -578,6 +562,17 @@ namespace EmbyCredits.Services
             }
             
             return (result.timestamp, result.reason, result.confidence, selectedMethod, result.reason);
+            }
+            finally
+            {
+                if (animeMethods != null)
+                {
+                    foreach (var method in animeMethods)
+                    {
+                        try { method?.Dispose(); } catch { }
+                    }
+                }
+            }
         }
         
         private async Task<(double timestamp, string failureReason, double confidence, string methodName, string detectionReason)> ApplySilenceRefinementAndReturn(
@@ -633,24 +628,31 @@ namespace EmbyCredits.Services
                     return 0;
                 }
                 
-                var ffmpegInputPath = Utilities.FFmpegHelper.GetInputArgument(videoPath);
-                var arguments = $"-ss {startTime.ToString(System.Globalization.CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(System.Globalization.CultureInfo.InvariantCulture)} -i {ffmpegInputPath} " +
-                               $"-af \"silencedetect=noise={silenceThreshold.ToString(System.Globalization.CultureInfo.InvariantCulture)}dB:d={minDuration.ToString(System.Globalization.CultureInfo.InvariantCulture)}\" " +
-                               $"-vn -f null -";
-                
-                _logger.Info($"[DetectionCoordinator] Running silence detection: {ffmpegPath} {arguments}");
-                
-                using (var process = new System.Diagnostics.Process
+                var normalizedVideoPath = Utilities.FFmpegHelper.NormalizeFilePath(videoPath);
+
+                var silenceStartInfo = new System.Diagnostics.ProcessStartInfo
                 {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = ffmpegPath,
-                        Arguments = arguments,
-                        UseShellExecute = false,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
-                })
+                    FileName = ffmpegPath,
+                    UseShellExecute = false,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                silenceStartInfo.ArgumentList.Add("-ss");
+                silenceStartInfo.ArgumentList.Add(startTime.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                silenceStartInfo.ArgumentList.Add("-t");
+                silenceStartInfo.ArgumentList.Add(analysisDuration.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                silenceStartInfo.ArgumentList.Add("-i");
+                silenceStartInfo.ArgumentList.Add(normalizedVideoPath);
+                silenceStartInfo.ArgumentList.Add("-af");
+                silenceStartInfo.ArgumentList.Add($"silencedetect=noise={silenceThreshold.ToString(System.Globalization.CultureInfo.InvariantCulture)}dB:d={minDuration.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+                silenceStartInfo.ArgumentList.Add("-vn");
+                silenceStartInfo.ArgumentList.Add("-f");
+                silenceStartInfo.ArgumentList.Add("null");
+                silenceStartInfo.ArgumentList.Add("-");
+                
+                _logger.Info($"[DetectionCoordinator] Running silence detection: {ffmpegPath} -ss {startTime} -t {analysisDuration} -i <path> -af silencedetect...");
+                
+                using (var process = new System.Diagnostics.Process { StartInfo = silenceStartInfo })
                 {
                     process.Start();
                     var output = await process.StandardError.ReadToEndAsync();
@@ -699,13 +701,12 @@ namespace EmbyCredits.Services
         public void ClearCache()
         {
             _batchDetectionCache.Clear();
-            _batchDetectionCache.TrimExcess(); // Release capacity to prevent memory retention
+            _batchDetectionCache.TrimExcess();
             if (_batchDetectionCache.Count > 0)
             {
                 _batchDetectionCache.Clear();
                 _batchDetectionCache.TrimExcess();
             }
-            GC.Collect(1, GCCollectionMode.Optimized, false);
         }
 
         public List<IDetectionMethod> GetAllDetectionMethods()
@@ -713,22 +714,24 @@ namespace EmbyCredits.Services
             return _detectionMethods;
         }
 
-        private async Task<(List<(string method, double timestamp, double confidence, int priority, string reason)> results, Dictionary<string, string> errors)> RunAllDetectionMethods(
+        internal async Task<(List<(string method, double timestamp, double confidence, int priority, string reason)> results, Dictionary<string, string> errors)> RunAllDetectionMethods(
             string videoPath, 
             double duration,
             string episodeId,
             string? seriesId = null,
             int? seasonNumber = null,
-            int? episodeNumber = null)
+            int? episodeNumber = null,
+            IList<IDetectionMethod>? methodsOverride = null)
         {
             var results = new List<(string method, double timestamp, double confidence, int priority, string reason)>();
             var errors = new Dictionary<string, string>();
+            var methodsList = methodsOverride ?? _detectionMethods;
 
             LogDebug($"Running detection methods for video (duration: {FormatTime(duration)})");
-            LogDebug($"Total detection methods: {_detectionMethods.Count}");
-            LogDebug($"Enabled methods: {string.Join(", ", _detectionMethods.Where(m => m.IsEnabled).Select(m => m.MethodName))}");
+            LogDebug($"Total detection methods: {methodsList.Count}");
+            LogDebug($"Enabled methods: {string.Join(", ", methodsList.Where(m => m.IsEnabled).Select(m => m.MethodName))}");
 
-            foreach (var method in _detectionMethods)
+            foreach (var method in methodsList)
             {
                 if (!method.IsEnabled)
                 {
@@ -782,10 +785,18 @@ namespace EmbyCredits.Services
                         if (!string.IsNullOrEmpty(errorMsg))
                         {
                             errors[method.MethodName] = errorMsg;
+                            if (_configuration.EnableDetailedLogging)
+                            {
+                                _logger.Debug($"Skipping {method.MethodName}: {errorMsg}");
+                            }
                             LogDebug($"{method.MethodName} failed: {errorMsg}");
                         }
                         else
                         {
+                            if (_configuration.EnableDetailedLogging)
+                            {
+                                _logger.Debug($"{method.MethodName} found no credits");
+                            }
                             LogDebug($"{method.MethodName} returned 0 (no credits detected - this may be normal if no credit markers match the configured criteria)");
                         }
                     }
@@ -987,7 +998,7 @@ namespace EmbyCredits.Services
             {
                 _logger.Debug($"[DetectionCoordinator] CheckIfAnime called for seriesId: {seriesId}");
                 
-                if (Plugin.Instance?._libraryManager == null)
+                if (Plugin.Instance?.LibraryManager == null)
                 {
                     _logger.Warn($"[DetectionCoordinator] CheckIfAnime: _libraryManager is null");
                     return false;
@@ -999,7 +1010,7 @@ namespace EmbyCredits.Services
                     return false;
                 }
 
-                var item = Plugin.Instance._libraryManager.GetItemById(seriesGuid);
+                var item = Plugin.Instance.LibraryManager.GetItemById(seriesGuid);
                 if (item == null)
                 {
                     _logger.Warn($"[DetectionCoordinator] CheckIfAnime: GetItemById returned null for Guid: {seriesGuid}");

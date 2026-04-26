@@ -52,6 +52,7 @@ namespace EmbyCredits.Services.Http
         private bool _disposed;
 
         public static HttpClientPool Instance => _instance.Value;
+        public static bool IsInitialized => _instance.IsValueCreated;
 
         private HttpClientPool()
         {

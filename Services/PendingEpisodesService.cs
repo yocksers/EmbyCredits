@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -15,11 +16,13 @@ namespace EmbyCredits.Services
     /// by detection. Used by the "Only process new episodes" scheduled task mode.
     /// Thread-safe; persists to a JSON file so entries survive restarts.
     /// </summary>
-    public class PendingEpisodesService
+    public class PendingEpisodesService : IDisposable
     {
         private readonly ILogger _logger;
         private readonly string _stateFilePath;
         private readonly object _lock = new object();
+        private Timer? _saveTimer;
+        private const int SaveDebounceMs = 1000;
 
         private ConcurrentDictionary<string, PendingEntry> _pending =
             new ConcurrentDictionary<string, PendingEntry>(StringComparer.OrdinalIgnoreCase);
@@ -57,7 +60,7 @@ namespace EmbyCredits.Services
                     FilePath      = episode.Path,
                     AddedUtc      = DateTime.UtcNow
                 };
-                Save();
+                ScheduleSave();
                 _logger.Debug($"Pending: tracking new episode '{episode.SeriesName} S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2}'");
             }
             catch (Exception ex)
@@ -73,7 +76,7 @@ namespace EmbyCredits.Services
             {
                 if (_pending.TryRemove(episodeId, out _))
                 {
-                    Save();
+                    ScheduleSave();
                     _logger.Debug($"Pending: removed episode {episodeId} (detection complete)");
                 }
             }
@@ -94,7 +97,7 @@ namespace EmbyCredits.Services
         public void Clear()
         {
             _pending.Clear();
-            Save();
+            ScheduleSave();
         }
 
         // ------------------------------------------------------------------ //
@@ -125,7 +128,13 @@ namespace EmbyCredits.Services
             }
         }
 
-        private void Save()
+        private void ScheduleSave()
+        {
+            var newTimer = new Timer(_ => FlushSave(), null, SaveDebounceMs, Timeout.Infinite);
+            Interlocked.Exchange(ref _saveTimer, newTimer)?.Dispose();
+        }
+
+        private void FlushSave()
         {
             lock (_lock)
             {
@@ -142,6 +151,13 @@ namespace EmbyCredits.Services
                     _logger.ErrorException("Pending: error saving state file", ex);
                 }
             }
+        }
+
+        public void Dispose()
+        {
+            _saveTimer?.Dispose();
+            _saveTimer = null;
+            FlushSave();
         }
 
         // ------------------------------------------------------------------ //

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -69,19 +70,17 @@ namespace EmbyCredits.Services.DetectionMethods
                 return false;
             }
 
-            var lastMatches = recentMatches.TakeLast(requiredConsecutive).ToList();
-
-            if (lastMatches.Any(m => m.matchCount == 0))
+            int startIndex = recentMatches.Count - requiredConsecutive;
+            for (int i = startIndex; i < recentMatches.Count; i++)
             {
-                return false;
+                if (recentMatches[i].matchCount == 0)
+                    return false;
             }
 
-            for (int i = 1; i < lastMatches.Count; i++)
+            for (int i = startIndex + 1; i < recentMatches.Count; i++)
             {
-                if (lastMatches[i].timestamp - lastMatches[i - 1].timestamp > timestampTolerance)
-                {
+                if (recentMatches[i].timestamp - recentMatches[i - 1].timestamp > timestampTolerance)
                     return false;
-                }
             }
 
             return true;
@@ -96,7 +95,8 @@ namespace EmbyCredits.Services.DetectionMethods
                 return false;
 
             var textPositionChanges = 0;
-            for (int i = 1; i < recentFrames.Count; i++)
+            int startIndex = recentFrames.Count - minFrames;
+            for (int i = startIndex + 1; i < recentFrames.Count; i++)
             {
                 var overlap = GetTextOverlap(recentFrames[i - 1].text, recentFrames[i].text);
                 if (overlap > overlapThreshold)
@@ -114,8 +114,27 @@ namespace EmbyCredits.Services.DetectionMethods
             if (lines1.Count == 0 || lines2.Count == 0)
                 return 0;
 
-            int matches = lines1.Count(line => lines2.Any(l => l.Contains(line, StringComparison.OrdinalIgnoreCase) || 
-                                                               line.Contains(l, StringComparison.OrdinalIgnoreCase)));
+            var set2 = new HashSet<string>(lines2, StringComparer.OrdinalIgnoreCase);
+
+            int matches = 0;
+            foreach (var line in lines1)
+            {
+                if (set2.Contains(line))
+                {
+                    matches++;
+                    continue;
+                }
+                foreach (var l2 in lines2)
+                {
+                    if (l2.Contains(line, StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains(l2, StringComparison.OrdinalIgnoreCase))
+                    {
+                        matches++;
+                        break;
+                    }
+                }
+            }
+
             return (double)matches / Math.Max(lines1.Count, lines2.Count);
         }
 
@@ -134,21 +153,34 @@ namespace EmbyCredits.Services.DetectionMethods
             if (n == 0) return m;
             if (m == 0) return n;
 
-            int[,] d = new int[n + 1, m + 1];
+            int rowSize = m + 1;
+            int[] prev = ArrayPool<int>.Shared.Rent(rowSize);
+            int[] curr = ArrayPool<int>.Shared.Rent(rowSize);
 
-            for (int i = 0; i <= n; i++) d[i, 0] = i;
-            for (int j = 0; j <= m; j++) d[0, j] = j;
-
-            for (int i = 1; i <= n; i++)
+            try
             {
-                for (int j = 1; j <= m; j++)
-                {
-                    int cost = (t[j - 1] == s[i - 1]) ? 0 : 1;
-                    d[i, j] = Math.Min(Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1), d[i - 1, j - 1] + cost);
-                }
-            }
+                for (int j = 0; j <= m; j++) prev[j] = j;
 
-            return d[n, m];
+                for (int i = 1; i <= n; i++)
+                {
+                    curr[0] = i;
+                    for (int j = 1; j <= m; j++)
+                    {
+                        int cost = (t[j - 1] == s[i - 1]) ? 0 : 1;
+                        curr[j] = Math.Min(Math.Min(prev[j] + 1, curr[j - 1] + 1), prev[j - 1] + cost);
+                    }
+                    var tmp = prev;
+                    prev = curr;
+                    curr = tmp;
+                }
+
+                return prev[m];
+            }
+            finally
+            {
+                ArrayPool<int>.Shared.Return(prev);
+                ArrayPool<int>.Shared.Return(curr);
+            }
         }
     }
 }

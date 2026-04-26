@@ -1,4 +1,5 @@
-using MediaBrowser.Controller.Entities.TV;
+﻿using MediaBrowser.Controller.Entities.TV;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Logging;
 using System;
 using System.Collections.Generic;
@@ -62,11 +63,53 @@ namespace EmbyCredits.Services
             return ApplyRuleToConfiguration(matchingRule);
         }
 
+        public string? GetMatchingRuleName(Episode episode)
+        {
+            if (_baseConfig.DetectionRules == null || _baseConfig.DetectionRules.Count == 0)
+                return null;
+            var series = episode?.Series;
+            if (series == null) return null;
+            return FindMatchingRule(series)?.Name;
+        }
+
+        // Specificity scores — higher wins regardless of rule list order.
+        // Tiebreaker is list order (earlier rule wins).
+        private const int SpecificitySeriesName = 30;
+        private const int SpecificityTag        = 20;
+        private const int SpecificityStudio     = 20;
+        private const int SpecificityLibrary    = 10;
+
         private DetectionRule? FindMatchingRule(Series series)
         {
-            foreach (var rule in _baseConfig.DetectionRules)
+            DetectionRule? bestRule = null;
+            int bestScore = -1;
+            string? bestReason = null;
+
+            var libraryManager = Plugin.Instance?.LibraryManager;
+
+            for (int i = 0; i < _baseConfig.DetectionRules.Count; i++)
             {
-                if (rule.Tags != null && rule.Tags.Count > 0 && series.Tags != null && series.Tags.Length > 0)
+                var rule = _baseConfig.DetectionRules[i];
+
+                string? matchReason = null;
+                int matchScore = -1;
+
+                if (rule.SeriesNames != null && rule.SeriesNames.Count > 0)
+                {
+                    foreach (var ruleName in rule.SeriesNames)
+                    {
+                        if (string.Equals(ruleName, series.Name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            matchReason = $"series name '{ruleName}'";
+                            matchScore = SpecificitySeriesName;
+                            break;
+                        }
+                    }
+                }
+
+                if (matchScore < SpecificityTag &&
+                    rule.Tags != null && rule.Tags.Count > 0 &&
+                    series.Tags != null && series.Tags.Length > 0)
                 {
                     foreach (var ruleTag in rule.Tags)
                     {
@@ -74,14 +117,18 @@ namespace EmbyCredits.Services
                         {
                             if (string.Equals(ruleTag, seriesTag, StringComparison.OrdinalIgnoreCase))
                             {
-                                _logger.Debug($"[RuleMatching] Series '{series.Name}' matched rule '{rule.Name}' via tag '{ruleTag}'");
-                                return rule;
+                                matchReason = $"tag '{ruleTag}'";
+                                matchScore = SpecificityTag;
+                                break;
                             }
                         }
+                        if (matchScore >= SpecificityTag) break;
                     }
                 }
 
-                if (rule.Studios != null && rule.Studios.Count > 0 && series.Studios != null && series.Studios.Length > 0)
+                if (matchScore < SpecificityStudio &&
+                    rule.Studios != null && rule.Studios.Count > 0 &&
+                    series.Studios != null && series.Studios.Length > 0)
                 {
                     foreach (var ruleStudio in rule.Studios)
                     {
@@ -89,21 +136,70 @@ namespace EmbyCredits.Services
                         {
                             if (string.Equals(ruleStudio, seriesStudio, StringComparison.OrdinalIgnoreCase))
                             {
-                                _logger.Debug($"[RuleMatching] Series '{series.Name}' matched rule '{rule.Name}' via studio '{ruleStudio}'");
-                                return rule;
+                                matchReason = $"studio '{ruleStudio}'";
+                                matchScore = SpecificityStudio;
+                                break;
+                            }
+                        }
+                        if (matchScore >= SpecificityStudio) break;
+                    }
+                }
+
+                bool hasPrimaryMatchers = (rule.SeriesNames != null && rule.SeriesNames.Count > 0) ||
+                                          (rule.Tags != null && rule.Tags.Count > 0) ||
+                                          (rule.Studios != null && rule.Studios.Count > 0);
+
+                if (rule.LibraryIds != null && rule.LibraryIds.Count > 0 &&
+                    libraryManager != null && !string.IsNullOrEmpty(series.Path))
+                {
+                    if (hasPrimaryMatchers)
+                    {
+                        // Library acts as a scope constraint: a primary match is discarded
+                        // if the series is not in one of the rule's configured libraries.
+                        if (matchScore > -1)
+                        {
+                            var matchedLib = FindLibraryNameForPath(series.Path, rule.LibraryIds, libraryManager);
+                            if (matchedLib == null)
+                            {
+                                matchScore = -1;
+                                matchReason = null;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // No primary matchers: library is the sole match criterion.
+                        if (matchScore < SpecificityLibrary)
+                        {
+                            var matchedLib = FindLibraryNameForPath(series.Path, rule.LibraryIds, libraryManager);
+                            if (matchedLib != null)
+                            {
+                                matchReason = $"library '{matchedLib}'";
+                                matchScore = SpecificityLibrary;
                             }
                         }
                     }
                 }
+
+                // Accept this rule if it scores strictly higher than the current best.
+                // Equal scores preserve list order (earlier rule already stored as best).
+                if (matchScore > bestScore)
+                {
+                    bestScore = matchScore;
+                    bestRule = rule;
+                    bestReason = matchReason;
+                }
             }
 
-            return null;
+            if (bestRule != null)
+                _logger.Debug($"[RuleMatching] Series '{series.Name}' matched rule '{bestRule.Name}' via {bestReason} (score={bestScore})");
+
+            return bestRule;
         }
 
         private PluginConfiguration ApplyRuleToConfiguration(DetectionRule rule)
         {
-            var effectiveConfig = new PluginConfiguration();
-            CopyConfiguration(_baseConfig, effectiveConfig);
+            var effectiveConfig = _baseConfig.ShallowClone();
 
             _logger.Debug($"[RuleMatching] Applying rule '{rule.Name}': DetectionMode={rule.DetectionMode?.ToString() ?? "null"}");
             
@@ -117,10 +213,7 @@ namespace EmbyCredits.Services
                 effectiveConfig.OcrEngine = rule.OcrEngine.Value;
 
             if (rule.OcrSearchStartValue.HasValue)
-            {
                 effectiveConfig.OcrSearchStartValue = rule.OcrSearchStartValue.Value;
-                effectiveConfig.OcrMinutesFromEnd = rule.OcrSearchStartValue.Value;
-            }
 
             if (rule.OcrMinutesFromEnd.HasValue)
                 effectiveConfig.OcrMinutesFromEnd = rule.OcrMinutesFromEnd.Value;
@@ -194,182 +287,147 @@ namespace EmbyCredits.Services
             if (rule.OcrDensityStyleConsistencyThreshold.HasValue)
                 effectiveConfig.OcrDensityStyleConsistencyThreshold = rule.OcrDensityStyleConsistencyThreshold.Value;
 
+            if (rule.DisableDetection.HasValue)
+                effectiveConfig.DisableDetection = rule.DisableDetection.Value;
+
+            if (rule.ChromaprintAnalysisPercent.HasValue)
+                effectiveConfig.ChromaprintAnalysisPercent = rule.ChromaprintAnalysisPercent.Value;
+
+            if (rule.ChromaprintMinDuration.HasValue)
+                effectiveConfig.ChromaprintMinDuration = rule.ChromaprintMinDuration.Value;
+
+            if (rule.ChromaprintMaxDuration.HasValue)
+                effectiveConfig.ChromaprintMaxDuration = rule.ChromaprintMaxDuration.Value;
+
+            if (rule.ChromaprintFingerprintDuration.HasValue)
+                effectiveConfig.ChromaprintFingerprintDuration = rule.ChromaprintFingerprintDuration.Value;
+
+            if (rule.ChromaprintSimilarityThreshold.HasValue)
+                effectiveConfig.ChromaprintSimilarityThreshold = rule.ChromaprintSimilarityThreshold.Value;
+
+            if (rule.ChromaprintEnableEpisodeComparison.HasValue)
+                effectiveConfig.ChromaprintEnableEpisodeComparison = rule.ChromaprintEnableEpisodeComparison.Value;
+
+            if (rule.ChromaprintEpisodeComparisonTolerance.HasValue)
+                effectiveConfig.ChromaprintEpisodeComparisonTolerance = rule.ChromaprintEpisodeComparisonTolerance.Value;
+
+            if (rule.ChromaprintEpisodeComparisonMinimumEpisodes.HasValue)
+                effectiveConfig.ChromaprintEpisodeComparisonMinimumEpisodes = rule.ChromaprintEpisodeComparisonMinimumEpisodes.Value;
+
+            if (rule.ChromaprintStopSecondsFromEnd.HasValue)
+                effectiveConfig.ChromaprintStopSecondsFromEnd = rule.ChromaprintStopSecondsFromEnd.Value;
+
+            if (rule.TimestampOffsetSeconds.HasValue)
+                effectiveConfig.TimestampOffsetSeconds = rule.TimestampOffsetSeconds.Value;
+
+            if (rule.BlackFrameMinDuration.HasValue)
+                effectiveConfig.BlackFrameMinDuration = rule.BlackFrameMinDuration.Value;
+
+            if (!string.IsNullOrEmpty(rule.OcrLanguages))
+                effectiveConfig.OcrLanguages = rule.OcrLanguages;
+
+            if (rule.OcrPageSegmentationMode.HasValue)
+                effectiveConfig.OcrPageSegmentationMode = rule.OcrPageSegmentationMode.Value;
+
+            if (rule.OcrEngineMode.HasValue)
+                effectiveConfig.OcrEngineMode = rule.OcrEngineMode.Value;
+
+            if (rule.OcrPreserveInterwordSpaces.HasValue)
+                effectiveConfig.OcrPreserveInterwordSpaces = rule.OcrPreserveInterwordSpaces.Value;
+
+            if (rule.OcrMinimumConfidence.HasValue)
+                effectiveConfig.OcrMinimumConfidence = rule.OcrMinimumConfidence.Value;
+
+            if (rule.OcrEnableSmartFrameSkipping.HasValue)
+                effectiveConfig.OcrEnableSmartFrameSkipping = rule.OcrEnableSmartFrameSkipping.Value;
+
+            if (rule.OcrConsecutiveMatchesForEarlyStop.HasValue)
+                effectiveConfig.OcrConsecutiveMatchesForEarlyStop = rule.OcrConsecutiveMatchesForEarlyStop.Value;
+
+            if (rule.OcrEnableImagePreprocessing.HasValue)
+                effectiveConfig.OcrEnableImagePreprocessing = rule.OcrEnableImagePreprocessing.Value;
+
+            if (rule.OcrContrastEnhancement.HasValue)
+                effectiveConfig.OcrContrastEnhancement = rule.OcrContrastEnhancement.Value;
+
+            if (rule.OcrBrightnessAdjustment.HasValue)
+                effectiveConfig.OcrBrightnessAdjustment = rule.OcrBrightnessAdjustment.Value;
+
+            if (rule.OcrEnableSharpening.HasValue)
+                effectiveConfig.OcrEnableSharpening = rule.OcrEnableSharpening.Value;
+
+            if (rule.OcrSharpenAmount.HasValue)
+                effectiveConfig.OcrSharpenAmount = rule.OcrSharpenAmount.Value;
+
+            if (rule.OcrEnableRoiDetection.HasValue)
+                effectiveConfig.OcrEnableRoiDetection = rule.OcrEnableRoiDetection.Value;
+
+            if (!string.IsNullOrEmpty(rule.OcrRoiRegion))
+                effectiveConfig.OcrRoiRegion = rule.OcrRoiRegion;
+
+            if (rule.OcrEnableFuzzyMatching.HasValue)
+                effectiveConfig.OcrEnableFuzzyMatching = rule.OcrEnableFuzzyMatching.Value;
+
+            if (rule.OcrFuzzyMatchMaxDistance.HasValue)
+                effectiveConfig.OcrFuzzyMatchMaxDistance = rule.OcrFuzzyMatchMaxDistance.Value;
+
+            if (rule.OcrEnableScrollingDetection.HasValue)
+                effectiveConfig.OcrEnableScrollingDetection = rule.OcrEnableScrollingDetection.Value;
+
+            if (rule.OcrScrollingMinFrames.HasValue)
+                effectiveConfig.OcrScrollingMinFrames = rule.OcrScrollingMinFrames.Value;
+
+            if (rule.OcrScrollingOverlapThreshold.HasValue)
+                effectiveConfig.OcrScrollingOverlapThreshold = rule.OcrScrollingOverlapThreshold.Value;
+
+            if (rule.OcrEnableAdaptiveFrameRate.HasValue)
+                effectiveConfig.OcrEnableAdaptiveFrameRate = rule.OcrEnableAdaptiveFrameRate.Value;
+
+            if (rule.OcrAdaptiveFrameRateMin.HasValue)
+                effectiveConfig.OcrAdaptiveFrameRateMin = rule.OcrAdaptiveFrameRateMin.Value;
+
+            if (rule.OcrEnableCreditStructureDetection.HasValue)
+                effectiveConfig.OcrEnableCreditStructureDetection = rule.OcrEnableCreditStructureDetection.Value;
+
+            if (rule.OcrMinimumStructureLines.HasValue)
+                effectiveConfig.OcrMinimumStructureLines = rule.OcrMinimumStructureLines.Value;
+
             return effectiveConfig;
         }
 
-        private void CopyConfiguration(PluginConfiguration source, PluginConfiguration dest)
+        /// <summary>
+        /// Finds the name of the virtual library (CollectionFolder) whose physical Locations contain
+        /// the given path, and whose ID matches one of the configured library IDs.
+        /// Returns null if no match is found.
+        /// Supports both GUID-format IDs (current) and numeric InternalId strings (legacy).
+        /// </summary>
+        internal static string? FindLibraryNameForPath(string path, IEnumerable<string> configuredIds, ILibraryManager libraryManager)
         {
-            dest.EnableAutoDetection = source.EnableAutoDetection;
-            dest.EnableVideoPatternDetection = source.EnableVideoPatternDetection;
-            dest.EnableBlackScreenDetection = source.EnableBlackScreenDetection;
-            dest.EnableAudioSilenceDetection = source.EnableAudioSilenceDetection;
-            dest.EnableAudioPatternDetection = source.EnableAudioPatternDetection;
-            dest.EnableTextDetection = source.EnableTextDetection;
-            dest.EnableSceneChangeDetection = source.EnableSceneChangeDetection;
-            dest.EnableKeywordDetection = source.EnableKeywordDetection;
-            dest.VideoPatternSensitivity = source.VideoPatternSensitivity;
-            dest.VideoPatternWindowSize = source.VideoPatternWindowSize;
-            dest.VideoPatternSearchStart = source.VideoPatternSearchStart;
-            dest.AudioPatternSensitivity = source.AudioPatternSensitivity;
-            dest.AudioPatternWindowSize = source.AudioPatternWindowSize;
-            dest.AudioPatternSearchStart = source.AudioPatternSearchStart;
-            dest.BlackScreenThreshold = source.BlackScreenThreshold;
-            dest.BlackScreenMinDuration = source.BlackScreenMinDuration;
-            dest.BlackScreenSearchStart = source.BlackScreenSearchStart;
-            dest.TextDetectionThreshold = source.TextDetectionThreshold;
-            dest.TextDetectionMinLines = source.TextDetectionMinLines;
-            dest.TextDetectionSearchStart = source.TextDetectionSearchStart;
-            dest.AudioSilenceThreshold = source.AudioSilenceThreshold;
-            dest.AudioSilenceMinDuration = source.AudioSilenceMinDuration;
-            dest.AudioSearchStartPosition = source.AudioSearchStartPosition;
-            dest.SceneChangeThreshold = source.SceneChangeThreshold;
-            dest.SceneChangeSearchStart = source.SceneChangeSearchStart;
-            dest.SceneChangeMinDeviation = source.SceneChangeMinDeviation;
-            dest.KeywordDetectionKeywords = source.KeywordDetectionKeywords;
-            dest.KeywordDetectionSearchStart = source.KeywordDetectionSearchStart;
-            dest.KeywordDetectionMinTextScore = source.KeywordDetectionMinTextScore;
-            dest.KeywordDetectionRegionHeight = source.KeywordDetectionRegionHeight;
-            dest.DetectionMode = source.DetectionMode;
-            dest.OcrEngine = source.OcrEngine;
-            dest.OcrEndpoint = source.OcrEndpoint;
-            dest.OcrDetectionKeywords = source.OcrDetectionKeywords;
-            dest.OcrLanguages = source.OcrLanguages;
-            dest.OcrPageSegmentationMode = source.OcrPageSegmentationMode;
-            dest.OcrEngineMode = source.OcrEngineMode;
-            dest.OcrPreserveInterwordSpaces = source.OcrPreserveInterwordSpaces;
-            dest.OcrEnableEpisodeComparison = source.OcrEnableEpisodeComparison;
-            dest.OcrEpisodeComparisonTolerance = source.OcrEpisodeComparisonTolerance;
-            dest.OcrEpisodeComparisonMinimumEpisodes = source.OcrEpisodeComparisonMinimumEpisodes;
-            dest.OcrSearchStartUnit = source.OcrSearchStartUnit;
-            dest.OcrSearchStartValue = source.OcrSearchStartValue;
-            dest.OcrDetectionSearchStart = source.OcrDetectionSearchStart;
-            dest.OcrMinutesFromEnd = source.OcrMinutesFromEnd;
-            dest.OcrFrameRate = source.OcrFrameRate;
-            dest.OcrMinimumMatches = source.OcrMinimumMatches;
-            dest.OcrMaxFramesToProcess = source.OcrMaxFramesToProcess;
-            dest.OcrMaxAnalysisDuration = source.OcrMaxAnalysisDuration;
-            dest.OcrStopSecondsFromEnd = source.OcrStopSecondsFromEnd;
-            dest.OcrJpegQuality = source.OcrJpegQuality;
-            dest.OcrMaxResolutionHeight = source.OcrMaxResolutionHeight;
-            dest.OcrDelayBetweenFramesMs = source.OcrDelayBetweenFramesMs;
-            dest.OcrEnableParallelProcessing = source.OcrEnableParallelProcessing;
-            dest.OcrParallelBatchSize = source.OcrParallelBatchSize;
-            dest.OcrDelayBetweenBatchesMs = source.OcrDelayBetweenBatchesMs;
-            dest.OcrEnableSmartFrameSkipping = source.OcrEnableSmartFrameSkipping;
-            dest.OcrConsecutiveMatchesForEarlyStop = source.OcrConsecutiveMatchesForEarlyStop;
-            dest.OcrMinimumConfidence = source.OcrMinimumConfidence;
-            dest.OcrEnableCharacterDensityDetection = source.OcrEnableCharacterDensityDetection;
-            dest.OcrCharacterDensityThreshold = source.OcrCharacterDensityThreshold;
-            dest.OcrCharacterDensityConsecutiveFrames = source.OcrCharacterDensityConsecutiveFrames;
-            dest.OcrCharacterDensityPrimaryMethod = source.OcrCharacterDensityPrimaryMethod;
-            dest.OcrDensityRequireKeyword = source.OcrDensityRequireKeyword;
-            dest.OcrDensityKeywordWindowSeconds = source.OcrDensityKeywordWindowSeconds;
-            dest.OcrDensityRequireTemporalConsistency = source.OcrDensityRequireTemporalConsistency;
-            dest.OcrDensityMinimumDurationSeconds = source.OcrDensityMinimumDurationSeconds;
-            dest.OcrDensityRequireStyleConsistency = source.OcrDensityRequireStyleConsistency;
-            dest.OcrDensityStyleConsistencyThreshold = source.OcrDensityStyleConsistencyThreshold;
-            dest.OcrRetryAttempts = source.OcrRetryAttempts;
-            dest.OcrRetryDelayMs = source.OcrRetryDelayMs;
-            dest.OcrFfmpegPreInputArgs = source.OcrFfmpegPreInputArgs;
-            dest.OcrFfmpegThreads = source.OcrFfmpegThreads;
-            dest.OcrFfmpegFilterThreads = source.OcrFfmpegFilterThreads;
-            dest.OcrEnableHardwareAcceleration = source.OcrEnableHardwareAcceleration;
-            dest.OcrHardwareAccelerationType = source.OcrHardwareAccelerationType;
-            dest.OcrHardwareDevice = source.OcrHardwareDevice;
-            dest.OcrUseHardwareOutputFormat = source.OcrUseHardwareOutputFormat;
-            dest.OcrUseHardwareFilters = source.OcrUseHardwareFilters;
-            dest.OcrUseDirectMemoryPipeline = source.OcrUseDirectMemoryPipeline;
-            dest.OcrEnableImagePreprocessing = source.OcrEnableImagePreprocessing;
-            dest.OcrContrastEnhancement = source.OcrContrastEnhancement;
-            dest.OcrBrightnessAdjustment = source.OcrBrightnessAdjustment;
-            dest.OcrEnableSharpening = source.OcrEnableSharpening;
-            dest.OcrSharpenAmount = source.OcrSharpenAmount;
-            dest.OcrEnableRoiDetection = source.OcrEnableRoiDetection;
-            dest.OcrRoiRegion = source.OcrRoiRegion;
-            dest.OcrEnableFuzzyMatching = source.OcrEnableFuzzyMatching;
-            dest.OcrFuzzyMatchMaxDistance = source.OcrFuzzyMatchMaxDistance;
-            dest.OcrEnableScrollingDetection = source.OcrEnableScrollingDetection;
-            dest.OcrScrollingMinFrames = source.OcrScrollingMinFrames;
-            dest.OcrScrollingOverlapThreshold = source.OcrScrollingOverlapThreshold;
-            dest.OcrEnableAdaptiveFrameRate = source.OcrEnableAdaptiveFrameRate;
-            dest.OcrAdaptiveFrameRateMin = source.OcrAdaptiveFrameRateMin;
-            dest.OcrEnableCreditStructureDetection = source.OcrEnableCreditStructureDetection;
-            dest.OcrMinimumStructureLines = source.OcrMinimumStructureLines;
-            dest.UseCorrelationScoring = source.UseCorrelationScoring;
-            dest.CorrelationWindowSeconds = source.CorrelationWindowSeconds;
-            dest.DetectionResultSelection = source.DetectionResultSelection;
-            dest.VideoPatternPriority = source.VideoPatternPriority;
-            dest.AudioPatternPriority = source.AudioPatternPriority;
-            dest.BlackScreenPriority = source.BlackScreenPriority;
-            dest.AudioSilencePriority = source.AudioSilencePriority;
-            dest.TextDetectionPriority = source.TextDetectionPriority;
-            dest.SceneChangePriority = source.SceneChangePriority;
-            dest.KeywordDetectionPriority = source.KeywordDetectionPriority;
-            dest.OcrDetectionPriority = source.OcrDetectionPriority;
-            dest.EnableCombinedHeuristic = source.EnableCombinedHeuristic;
-            dest.CombinedHeuristicPriority = source.CombinedHeuristicPriority;
-            dest.CombinedMinutesFromEnd = source.CombinedMinutesFromEnd;
-            dest.CombinedSearchStart = source.CombinedSearchStart;
-            dest.CombinedFrameRate = source.CombinedFrameRate;
-            dest.CombinedUseKeywords = source.CombinedUseKeywords;
-            dest.CombinedUseTextDensity = source.CombinedUseTextDensity;
-            dest.CombinedUseDarkness = source.CombinedUseDarkness;
-            dest.CombinedKeywordWeight = source.CombinedKeywordWeight;
-            dest.CombinedTextDensityWeight = source.CombinedTextDensityWeight;
-            dest.CombinedDarknessWeight = source.CombinedDarknessWeight;
-            dest.CombinedScoreThreshold = source.CombinedScoreThreshold;
-            dest.CombinedMinSustainedSeconds = source.CombinedMinSustainedSeconds;
-            dest.CpuUsageLimit = source.CpuUsageLimit;
-            dest.CpuThrottleDelayMs = source.CpuThrottleDelayMs;
-            dest.DelayBetweenEpisodesMs = source.DelayBetweenEpisodesMs;
-            dest.LowerThreadPriority = source.LowerThreadPriority;
-            dest.LowerProcessPriority = source.LowerProcessPriority;
-            dest.TempFolderPath = source.TempFolderPath;
-            dest.EnableDetailedLogging = source.EnableDetailedLogging;
-            dest.EnableLogToFile = source.EnableLogToFile;
-            dest.LogFileFolderPath = source.LogFileFolderPath;
-            dest.LibraryIds = source.LibraryIds;
-            dest.ScheduledTaskOnlyProcessMissing = source.ScheduledTaskOnlyProcessMissing;
-            dest.BackupImportOverwriteExisting = source.BackupImportOverwriteExisting;
-            dest.ManualSkipExistingMarkers = source.ManualSkipExistingMarkers;
-            dest.EnableScheduledTaskNotifications = source.EnableScheduledTaskNotifications;
-            dest.EnableAutoDetectionNotifications = source.EnableAutoDetectionNotifications;
-            dest.NotifyOnSuccessOnly = source.NotifyOnSuccessOnly;
-            dest.MinimumEpisodesForNotification = source.MinimumEpisodesForNotification;
-            dest.PreventConcurrentPluginProcessing = source.PreventConcurrentPluginProcessing;
-            dest.MaxScheduledBackups = source.MaxScheduledBackups;
-            dest.BackupFolderPath = source.BackupFolderPath;
-            dest.EnableThumbnailGeneration = source.EnableThumbnailGeneration;
-            dest.ThumbnailWidth = source.ThumbnailWidth;
-            dest.ThumbnailQuality = source.ThumbnailQuality;
-            dest.EnableAnimeDetection = source.EnableAnimeDetection;
-            dest.AnimeDetectionMethod = source.AnimeDetectionMethod;
-            dest.BlackFrameMinimumPercentage = source.BlackFrameMinimumPercentage;
-            dest.BlackFrameThreshold = source.BlackFrameThreshold;
-            dest.ChromaprintDetectionPriority = source.ChromaprintDetectionPriority;
-            dest.ChromaprintUseAudioFingerprinting = source.ChromaprintUseAudioFingerprinting;
-            dest.ChromaprintFingerprintDuration = source.ChromaprintFingerprintDuration;
-            dest.ChromaprintFingerprintSimilarityThreshold = source.ChromaprintFingerprintSimilarityThreshold;
-            dest.ChromaprintEnableEpisodeComparison = source.ChromaprintEnableEpisodeComparison;
-            dest.ChromaprintEpisodeComparisonTolerance = source.ChromaprintEpisodeComparisonTolerance;
-            dest.ChromaprintEpisodeComparisonMinimumEpisodes = source.ChromaprintEpisodeComparisonMinimumEpisodes;
-            dest.ChromaprintMinDuration = source.ChromaprintMinDuration;
-            dest.ChromaprintMaxDuration = source.ChromaprintMaxDuration;
-            dest.ChromaprintSimilarityThreshold = source.ChromaprintSimilarityThreshold;
-            dest.ChromaprintMinEpisodeCount = source.ChromaprintMinEpisodeCount;
-            dest.ChromaprintAnalysisPercent = source.ChromaprintAnalysisPercent;
-            dest.ChromaprintBlackFrameThreshold = source.ChromaprintBlackFrameThreshold;
-            dest.ChromaprintBlackFrameMinDuration = source.ChromaprintBlackFrameMinDuration;
-            dest.ChromaprintUseSilenceDetection = source.ChromaprintUseSilenceDetection;
-            dest.ChromaprintSilenceThreshold = source.ChromaprintSilenceThreshold;
-            dest.ChromaprintSilenceMinDuration = source.ChromaprintSilenceMinDuration;
-            dest.ChromaprintSilenceSearchWindow = source.ChromaprintSilenceSearchWindow;
-            dest.ChromaprintMinConfidence = source.ChromaprintMinConfidence;
-            dest.ChromaprintStopSecondsFromEnd = source.ChromaprintStopSecondsFromEnd;
-            dest.ChromaprintLowerProcessPriority = source.ChromaprintLowerProcessPriority;
-            dest.ChromaprintFfmpegThreads = source.ChromaprintFfmpegThreads;
-            dest.ChromaprintDelayBetweenOperationsMs = source.ChromaprintDelayBetweenOperationsMs;
-            dest.DetectionRules = source.DetectionRules;
+            var idSet = new HashSet<string>(configuredIds, StringComparer.OrdinalIgnoreCase);
+            foreach (var vf in libraryManager.GetVirtualFolders())
+            {
+                bool pathMatches = vf.Locations != null && vf.Locations.Any(loc =>
+                    !string.IsNullOrEmpty(loc) &&
+                    path.StartsWith(loc, StringComparison.OrdinalIgnoreCase));
+
+                if (!pathMatches) continue;
+
+                if (!string.IsNullOrEmpty(vf.ItemId))
+                {
+                    if (idSet.Contains(vf.ItemId))
+                        return vf.Name;
+
+                    // Backward compat: config may have stored the numeric InternalId
+                    if (Guid.TryParse(vf.ItemId, out var vfGuid))
+                    {
+                        var vfItem = libraryManager.GetItemById(vfGuid);
+                        if (vfItem != null && idSet.Contains(vfItem.InternalId.ToString()))
+                            return vf.Name;
+                    }
+                }
+            }
+            return null;
         }
+
     }
 }

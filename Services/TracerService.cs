@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -15,14 +16,22 @@ namespace EmbyCredits.Services
     /// credits detection run on them.  Thread-safe; persists state to a JSON file
     /// in the plugin data folder so entries survive restarts.
     /// </summary>
-    public class TracerService
+    public class TracerService : IDisposable
     {
         private readonly ILogger _logger;
         private readonly string _stateFilePath;
+        private readonly string _detectedFilePath;
         private readonly object _lock = new object();
+        private Timer? _saveTimer;
+        private const int SaveDebounceMs = 1000;
+        private const int MaxDetectedEntries = 100;
 
         // episodeId (string) -> TracerEntry
         private ConcurrentDictionary<string, TracerEntry> _pending =
+            new ConcurrentDictionary<string, TracerEntry>(StringComparer.OrdinalIgnoreCase);
+
+        // Recently auto-detected episodes (newest first, capped at MaxDetectedEntries)
+        private ConcurrentDictionary<string, TracerEntry> _detected =
             new ConcurrentDictionary<string, TracerEntry>(StringComparer.OrdinalIgnoreCase);
 
         private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
@@ -35,6 +44,7 @@ namespace EmbyCredits.Services
         {
             _logger = logger;
             _stateFilePath = Path.Combine(dataFolderPath, "tracer_pending.json");
+            _detectedFilePath = Path.Combine(dataFolderPath, "tracer_detected.json");
             Load();
         }
 
@@ -60,7 +70,7 @@ namespace EmbyCredits.Services
                 };
 
                 _pending[id] = entry;
-                Save();
+                ScheduleSave();
                 _logger.Debug($"Tracer: tracking new episode '{entry.SeriesName} S{entry.SeasonNumber:D2}E{entry.EpisodeNumber:D2}'");
             }
             catch (Exception ex)
@@ -74,10 +84,26 @@ namespace EmbyCredits.Services
         {
             try
             {
-                if (_pending.TryRemove(episodeId, out _))
+                if (_pending.TryRemove(episodeId, out var entry))
                 {
-                    Save();
-                    _logger.Debug($"Tracer: removed episode {episodeId} (detection complete)");
+                    entry.DetectedUtc = DateTime.UtcNow;
+                    _detected[episodeId] = entry;
+
+                    // Trim detected list to MaxDetectedEntries
+                    var overflow = _detected.Count - MaxDetectedEntries;
+                    if (overflow > 0)
+                    {
+                        var oldest = _detected.Values
+                            .OrderBy(e => e.DetectedUtc)
+                            .Take(overflow)
+                            .Select(e => e.EpisodeId)
+                            .ToList();
+                        foreach (var id in oldest)
+                            _detected.TryRemove(id, out _);
+                    }
+
+                    ScheduleSave();
+                    _logger.Debug($"Tracer: moved episode {episodeId} to detected history");
                 }
             }
             catch (Exception ex)
@@ -86,11 +112,21 @@ namespace EmbyCredits.Services
             }
         }
 
+        /// <summary>Clear the detected history list.</summary>
+        public void ClearDetected()
+        {
+            _detected.Clear();
+            ScheduleSave();
+        }
+
+        public List<TracerEntry> GetAllDetected() =>
+            _detected.Values.OrderByDescending(e => e.DetectedUtc).ToList();
+
         /// <summary>Remove a single entry by ID (e.g. user dismissed it).</summary>
         public bool Remove(string episodeId)
         {
             var removed = _pending.TryRemove(episodeId, out _);
-            if (removed) Save();
+            if (removed) ScheduleSave();
             return removed;
         }
 
@@ -98,7 +134,7 @@ namespace EmbyCredits.Services
         public void Clear()
         {
             _pending.Clear();
-            Save();
+            ScheduleSave();
         }
 
         public List<TracerEntry> GetAll() =>
@@ -114,22 +150,52 @@ namespace EmbyCredits.Services
         {
             try
             {
-                if (!File.Exists(_stateFilePath)) return;
-                var json = File.ReadAllText(_stateFilePath);
-                var list = JsonSerializer.Deserialize<List<TracerEntry>>(json);
-                if (list != null)
+                if (File.Exists(_stateFilePath))
                 {
-                    _pending = new ConcurrentDictionary<string, TracerEntry>(
-                        list.ToDictionary(e => e.EpisodeId, e => e, StringComparer.OrdinalIgnoreCase));
+                    var json = File.ReadAllText(_stateFilePath);
+                    var list = JsonSerializer.Deserialize<List<TracerEntry>>(json);
+                    if (list != null)
+                    {
+                        var dict = new ConcurrentDictionary<string, TracerEntry>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var entry in list.Where(e => !string.IsNullOrEmpty(e.EpisodeId)))
+                            dict[entry.EpisodeId] = entry;
+                        _pending = dict;
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.Warn($"Tracer: could not load state file ({ex.Message}), starting fresh");
+                _logger.Warn($"Tracer: could not load pending state file ({ex.Message}), starting fresh");
+            }
+
+            try
+            {
+                if (File.Exists(_detectedFilePath))
+                {
+                    var json = File.ReadAllText(_detectedFilePath);
+                    var list = JsonSerializer.Deserialize<List<TracerEntry>>(json);
+                    if (list != null)
+                    {
+                        var dict = new ConcurrentDictionary<string, TracerEntry>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var entry in list.Where(e => !string.IsNullOrEmpty(e.EpisodeId)))
+                            dict[entry.EpisodeId] = entry;
+                        _detected = dict;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"Tracer: could not load detected state file ({ex.Message}), starting fresh");
             }
         }
 
-        private void Save()
+        private void ScheduleSave()
+        {
+            var newTimer = new Timer(_ => FlushSave(), null, SaveDebounceMs, Timeout.Infinite);
+            Interlocked.Exchange(ref _saveTimer, newTimer)?.Dispose();
+        }
+
+        private void FlushSave()
         {
             lock (_lock)
             {
@@ -141,12 +207,21 @@ namespace EmbyCredits.Services
 
                     File.WriteAllText(_stateFilePath,
                         JsonSerializer.Serialize(_pending.Values.ToList(), _jsonOptions));
+                    File.WriteAllText(_detectedFilePath,
+                        JsonSerializer.Serialize(_detected.Values.ToList(), _jsonOptions));
                 }
                 catch (Exception ex)
                 {
                     _logger.Warn($"Tracer: could not save state file: {ex.Message}");
                 }
             }
+        }
+
+        public void Dispose()
+        {
+            _saveTimer?.Dispose();
+            _saveTimer = null;
+            FlushSave();
         }
     }
 
@@ -159,5 +234,6 @@ namespace EmbyCredits.Services
         public string EpisodeName  { get; set; } = string.Empty;
         public string FilePath     { get; set; } = string.Empty;
         public DateTime AddedUtc   { get; set; } = DateTime.UtcNow;
+        public DateTime? DetectedUtc { get; set; }
     }
 }

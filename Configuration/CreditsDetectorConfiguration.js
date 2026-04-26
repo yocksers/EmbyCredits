@@ -172,6 +172,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
             const tracerList = view.querySelector('#tracerEpisodeList');
             if (tracerList) {
                 tracerManager.init(view);
+                this._tracerManagerActive = true;
             }
 
             const detectionModeSelect = view.querySelector('#selectDetectionMode');
@@ -529,6 +530,10 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
         onPause() {
             super.onPause();
             
+            if (this._tracerManagerActive) {
+                tracerManager.destroy();
+                this._tracerManagerActive = false;
+            }
             if (this.progressInterval) {
                 clearInterval(this.progressInterval);
                 this.progressInterval = null;

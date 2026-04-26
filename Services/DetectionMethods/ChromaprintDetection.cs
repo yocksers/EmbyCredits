@@ -59,6 +59,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
         public Task<double> DetectCreditsWithContext(string videoPath, double duration, string episodeId, string seriesId, int? seasonNumber, int? episodeNumber, CancellationToken cancellationToken = default)
         {
+            LastError = "Chromaprint requires batch comparison across episodes; no batch result was available for this episode";
             return Task.FromResult(0.0);
         }
 
@@ -128,23 +129,34 @@ namespace EmbyCredits.Services.DetectionMethods
             
             try
             {
-                var episodeFingerprints = new Dictionary<string, (uint[] fingerprint, double startTime)>();
-                
-                foreach (var episode in episodes)
+                var episodeFingerprints = new ConcurrentDictionary<string, (uint[] fingerprint, double startTime)>();
+
+                var maxConcurrentFingerprints = Math.Max(1, Configuration.ChromaprintParallelSessions);
+                using var fpSemaphore = new SemaphoreSlim(maxConcurrentFingerprints, maxConcurrentFingerprints);
+
+                var fingerprintTasks = episodes.Select(async episode =>
                 {
                     if (cancellationToken.IsCancellationRequested)
-                        break;
-                    
-                    var fingerprintDuration = (double)Configuration.ChromaprintFingerprintDuration;
+                        return;
+
                     var stopSecondsFromEnd = Configuration.ChromaprintStopSecondsFromEnd;
                     var analysisEndTime = Math.Max(0, episode.Duration - stopSecondsFromEnd);
-                    var analysisStartTime = Math.Max(0, analysisEndTime - fingerprintDuration);
-                    
+                    var analysisStartTime = Math.Max(0, episode.Duration * (1.0 - analysisPercent));
+
+                    try
+                    {
+                        await fpSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+
                     try
                     {
                         LogDebug($"Generating chromaprint for episode {episode.EpisodeId} from {FormatTime(analysisStartTime)} to {FormatTime(analysisEndTime)} (duration: {analysisEndTime - analysisStartTime:F1}s, excluding last {stopSecondsFromEnd}s)");
-                        var fingerprint = FFmpegHelper.GenerateChromaprint(episode.VideoPath, analysisStartTime, analysisEndTime, Logger);
-                        
+                        var fingerprint = await Task.Run(() => FFmpegHelper.GenerateChromaprint(episode.VideoPath, analysisStartTime, analysisEndTime, Logger, Configuration.ChromaprintFfmpegThreads), cancellationToken).ConfigureAwait(false);
+
                         if (fingerprint.Length > 0)
                         {
                             episodeFingerprints[episode.EpisodeId] = (fingerprint, analysisStartTime);
@@ -159,7 +171,13 @@ namespace EmbyCredits.Services.DetectionMethods
                     {
                         Logger.Warn($"Failed to generate fingerprint for {episode.EpisodeId}: {ex.Message}");
                     }
-                }
+                    finally
+                    {
+                        fpSemaphore.Release();
+                    }
+                }).ToList();
+
+                await Task.WhenAll(fingerprintTasks).ConfigureAwait(false);
                 
                 // Step 2: Compare fingerprints to find matching credits music subsequences
                 if (episodeFingerprints.Count >= 2)
@@ -378,30 +396,37 @@ namespace EmbyCredits.Services.DetectionMethods
                     return 0;
                 }
                 
-                var threadArgs = Configuration.ChromaprintFfmpegThreads > 0 
-                    ? $"-threads {Configuration.ChromaprintFfmpegThreads} " 
-                    : "";
-                
-                var ffmpegInputPath = FFmpegHelper.GetInputArgument(videoPath);
-                
-                var arguments = $"{threadArgs}-ss {startTime.ToString(CultureInfo.InvariantCulture)} -t {analysisDuration.ToString(CultureInfo.InvariantCulture)} -i {ffmpegInputPath} " +
-                               $"-vf \"blackdetect=d={minDuration.ToString(CultureInfo.InvariantCulture)}:pix_th={blackThreshold.ToString(CultureInfo.InvariantCulture)}\" " +
-                               $"-an -f null -";
-                
-                Logger.Info($"[{MethodName}] Executing FFmpeg black detection: {ffmpegPath} {arguments}");
-                
-                using (var process = new Process
+                var normalizedVideoPath = FFmpegHelper.NormalizeFilePath(videoPath);
+
+                var chromaBlackStartInfo = new ProcessStartInfo
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = ffmpegPath,
-                        Arguments = arguments,
-                        UseShellExecute = false,
-                        RedirectStandardError = true,
-                        RedirectStandardOutput = true,
-                        CreateNoWindow = true
-                    }
-                })
+                    FileName = ffmpegPath,
+                    UseShellExecute = false,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+                if (Configuration.ChromaprintFfmpegThreads > 0)
+                {
+                    chromaBlackStartInfo.ArgumentList.Add("-threads");
+                    chromaBlackStartInfo.ArgumentList.Add(Configuration.ChromaprintFfmpegThreads.ToString(CultureInfo.InvariantCulture));
+                }
+                chromaBlackStartInfo.ArgumentList.Add("-ss");
+                chromaBlackStartInfo.ArgumentList.Add(startTime.ToString(CultureInfo.InvariantCulture));
+                chromaBlackStartInfo.ArgumentList.Add("-t");
+                chromaBlackStartInfo.ArgumentList.Add(analysisDuration.ToString(CultureInfo.InvariantCulture));
+                chromaBlackStartInfo.ArgumentList.Add("-i");
+                chromaBlackStartInfo.ArgumentList.Add(normalizedVideoPath);
+                chromaBlackStartInfo.ArgumentList.Add("-vf");
+                chromaBlackStartInfo.ArgumentList.Add($"blackdetect=d={minDuration.ToString(CultureInfo.InvariantCulture)}:pix_th={blackThreshold.ToString(CultureInfo.InvariantCulture)}");
+                chromaBlackStartInfo.ArgumentList.Add("-an");
+                chromaBlackStartInfo.ArgumentList.Add("-f");
+                chromaBlackStartInfo.ArgumentList.Add("null");
+                chromaBlackStartInfo.ArgumentList.Add("-");
+                
+                Logger.Info($"[{MethodName}] Executing FFmpeg black detection: {ffmpegPath} -ss {startTime} -t {analysisDuration} -i <path> -vf blackdetect...");
+                
+                using (var process = new Process { StartInfo = chromaBlackStartInfo })
                 {
                     if (Configuration.ChromaprintLowerProcessPriority)
                     {
@@ -510,10 +535,13 @@ namespace EmbyCredits.Services.DetectionMethods
             var stdDev = Math.Sqrt(variance);
             
             var threshold = Math.Max(mean - stdDev, sortedScores[sortedScores.Count / 4]);
+
+            // Adaptive minimum: prevents accepting pure noise (~0.50) while allowing genuine
+            // matches whose scores cluster below the old hardcoded floor of 0.70.
+            var minimumFloor = Math.Max(mean - 2 * stdDev, Configuration.ChromaprintMinimumScoreFloor);
+            threshold = Math.Max(minimumFloor, Math.Min(0.85, threshold));
             
-            threshold = Math.Max(0.70, Math.Min(0.85, threshold));
-            
-            LogDebug($"Threshold calculation: mean={mean:F3}, stdDev={stdDev:F3}, Q1={sortedScores[sortedScores.Count / 4]:F3}, final threshold={threshold:F3}");
+            LogDebug($"Threshold calculation: mean={mean:F3}, stdDev={stdDev:F3}, Q1={sortedScores[sortedScores.Count / 4]:F3}, minimumFloor={minimumFloor:F3}, final threshold={threshold:F3}");
             
             return threshold;
         }
@@ -603,7 +631,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 
                 LogDebug($"Fine-grained pass: searching {FormatTime(fineStartTime)} to {FormatTime(fineEndTime)} around coarse detection at {FormatTime(coarseTimestamp)}");
                 
-                var fineFingerprint = FFmpegHelper.GenerateChromaprint(videoPath, fineStartTime, fineStartTime + fineGrainedDuration, Logger);
+                var fineFingerprint = FFmpegHelper.GenerateChromaprint(videoPath, fineStartTime, fineStartTime + fineGrainedDuration, Logger, Configuration.ChromaprintFfmpegThreads);
                 
                 if (fineFingerprint.Length == 0)
                 {

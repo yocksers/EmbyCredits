@@ -30,6 +30,8 @@ namespace EmbyCredits
         public string Name { get; set; } = "";
         public List<string> Tags { get; set; } = new List<string>();
         public List<string> Studios { get; set; } = new List<string>();
+        public List<string> SeriesNames { get; set; } = new List<string>();
+        public List<string> LibraryIds { get; set; } = new List<string>();
         
         public DetectionMode? DetectionMode { get; set; }
         public OcrEngine? OcrEngine { get; set; }
@@ -58,6 +60,41 @@ namespace EmbyCredits
         public double? OcrDensityMinimumDurationSeconds { get; set; }
         public bool? OcrDensityRequireStyleConsistency { get; set; }
         public double? OcrDensityStyleConsistencyThreshold { get; set; }
+        public bool? DisableDetection { get; set; }
+        public double? ChromaprintAnalysisPercent { get; set; }
+        public int? ChromaprintMinDuration { get; set; }
+        public int? ChromaprintMaxDuration { get; set; }
+        public int? ChromaprintFingerprintDuration { get; set; }
+        public double? ChromaprintSimilarityThreshold { get; set; }
+        public bool? ChromaprintEnableEpisodeComparison { get; set; }
+        public double? ChromaprintEpisodeComparisonTolerance { get; set; }
+        public int? ChromaprintEpisodeComparisonMinimumEpisodes { get; set; }
+        public double? ChromaprintStopSecondsFromEnd { get; set; }
+        public double? TimestampOffsetSeconds { get; set; }
+        public double? BlackFrameMinDuration { get; set; }
+        public string? OcrLanguages { get; set; }
+        public int? OcrPageSegmentationMode { get; set; }
+        public int? OcrEngineMode { get; set; }
+        public bool? OcrPreserveInterwordSpaces { get; set; }
+        public double? OcrMinimumConfidence { get; set; }
+        public bool? OcrEnableSmartFrameSkipping { get; set; }
+        public int? OcrConsecutiveMatchesForEarlyStop { get; set; }
+        public bool? OcrEnableImagePreprocessing { get; set; }
+        public double? OcrContrastEnhancement { get; set; }
+        public double? OcrBrightnessAdjustment { get; set; }
+        public bool? OcrEnableSharpening { get; set; }
+        public double? OcrSharpenAmount { get; set; }
+        public bool? OcrEnableRoiDetection { get; set; }
+        public string? OcrRoiRegion { get; set; }
+        public bool? OcrEnableFuzzyMatching { get; set; }
+        public int? OcrFuzzyMatchMaxDistance { get; set; }
+        public bool? OcrEnableScrollingDetection { get; set; }
+        public int? OcrScrollingMinFrames { get; set; }
+        public double? OcrScrollingOverlapThreshold { get; set; }
+        public bool? OcrEnableAdaptiveFrameRate { get; set; }
+        public double? OcrAdaptiveFrameRateMin { get; set; }
+        public bool? OcrEnableCreditStructureDetection { get; set; }
+        public int? OcrMinimumStructureLines { get; set; }
     }
 
     public class PluginConfiguration : BasePluginConfiguration
@@ -98,7 +135,7 @@ namespace EmbyCredits
         public double SceneChangeSearchStart { get; set; } = 0.7;
         public double SceneChangeMinDeviation { get; set; } = 0.25;
 
-        public string KeywordDetectionKeywords { get; set; } = "directed by,produced by,executive producer,written by,cast,credits,fin,ende,?,?,fim,fine,producer,music by,music,cinematography,editor,editing,production design,costume design,casting,based on,story by,screenplay,associate producer,co-producer,created by,developed by,series producer,composer,director of photography,visual effects,sound,the end,end credits,starring,guest starring,special thanks,production company";
+        public string KeywordDetectionKeywords { get; set; } = "directed by,produced by,executive producer,written by,cast,credits,fin,ende,終,完,fim,fine,producer,music by,music,cinematography,editor,editing,production design,costume design,casting,based on,story by,screenplay,associate producer,co-producer,created by,developed by,series producer,composer,director of photography,visual effects,sound,the end,end credits,starring,guest starring,special thanks,production company";
         public double KeywordDetectionSearchStart { get; set; } = 0.65;
         public int KeywordDetectionMinTextScore { get; set; } = 50;
         public int KeywordDetectionRegionHeight { get; set; } = 120;
@@ -257,15 +294,19 @@ namespace EmbyCredits
 
         public string[] AutoSkipExcludedSeriesIds { get; set; } = Array.Empty<string>();
         public int ThumbnailWidth { get; set; } = 320;
-        public int ThumbnailQuality { get; set; } = 85;
+        public int ThumbnailQuality { get; set; } = 75;
 
         public bool EnableAnimeDetection { get; set; } = true;
         public AnimeDetectionMethod AnimeDetectionMethod { get; set; } = AnimeDetectionMethod.BlackFrame;
         public int BlackFrameMinimumPercentage { get; set; } = 85;
         public int BlackFrameThreshold { get; set; } = 28;
+        public double BlackFrameMinDuration { get; set; } = 0.5;
+        public int BlackFrameParallelSessions { get; set; } = 1;
+        public int BlackFrameFfmpegThreads { get; set; } = 2;
 
         public int ChromaprintDetectionPriority { get; set; } = 1;
         public bool ChromaprintUseAudioFingerprinting { get; set; } = false;
+        public bool ChromaprintEnableBlackFrameFallback { get; set; } = true;
         public int ChromaprintFingerprintDuration { get; set; } = 360;
         public double ChromaprintFingerprintSimilarityThreshold { get; set; } = 0.90;
         public bool ChromaprintEnableEpisodeComparison { get; set; } = true;
@@ -283,14 +324,22 @@ namespace EmbyCredits
         public double ChromaprintSilenceMinDuration { get; set; } = 0.5;
         public double ChromaprintSilenceSearchWindow { get; set; } = 30.0;
         public double ChromaprintMinConfidence { get; set; } = 0.85;
+        public double ChromaprintMinimumScoreFloor { get; set; } = 0.55;
         public double ChromaprintStopSecondsFromEnd { get; set; } = 20.0;
         public bool ChromaprintLowerProcessPriority { get; set; } = false;
-        public int ChromaprintFfmpegThreads { get; set; } = 0;
+        public int ChromaprintFfmpegThreads { get; set; } = 2;
+        public int ChromaprintParallelSessions { get; set; } = 2;
         public int ChromaprintDelayBetweenOperationsMs { get; set; } = 0;
 
         public bool EnableVideoValidation { get; set; } = false;
         public int VideoValidationTimeoutSeconds { get; set; } = 10;
 
+        public bool DisableDetection { get; set; } = false;
         public List<DetectionRule> DetectionRules { get; set; } = new List<DetectionRule>();
+
+        public PluginConfiguration ShallowClone()
+        {
+            return (PluginConfiguration)MemberwiseClone();
+        }
     }
 }

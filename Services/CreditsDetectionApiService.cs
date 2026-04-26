@@ -9,7 +9,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using EmbyCredits.Api;
@@ -20,6 +19,7 @@ namespace EmbyCredits.Services
 {
     public class CreditsDetectionApiService : IService
     {
+        private const int MaxImportBytes = 50 * 1024 * 1024;
         private readonly ILibraryManager _libraryManager;
         private readonly ILogger _logger;
 
@@ -199,23 +199,12 @@ namespace EmbyCredits.Services
                                 var episodesWithMarkers = new HashSet<string>();
                 foreach (var marker in episodeMarkers)
                 {
-                    var markerType = marker.GetType();
-                    var hasCreditsMarkerProp = markerType.GetProperty("HasCreditsMarker");
-                    var episodeIdProp = markerType.GetProperty("EpisodeId");
-                    
-                    if (hasCreditsMarkerProp != null && episodeIdProp != null)
+                    if (marker.HasCreditsMarker && marker.EpisodeId != null)
                     {
-                        var hasMarkerValue = hasCreditsMarkerProp.GetValue(marker);
-                        var hasMarker = hasMarkerValue != null && (bool)hasMarkerValue;
-                        var episodeId = episodeIdProp.GetValue(marker)?.ToString();
-                        
-                        if (hasMarker && episodeId != null)
+                        episodesWithMarkers.Add(marker.EpisodeId);
+                        if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
                         {
-                            episodesWithMarkers.Add(episodeId);
-                            if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
-                            {
-                                _logger?.Info($"Episode {episodeId} already has credits marker");
-                            }
+                            _logger?.Info($"Episode {marker.EpisodeId} already has credits marker");
                         }
                     }
                 }
@@ -315,20 +304,9 @@ namespace EmbyCredits.Services
                                 var episodesWithMarkers = new HashSet<string>();
                 foreach (var marker in episodeMarkers)
                 {
-                    var markerType = marker.GetType();
-                    var hasCreditsMarkerProp = markerType.GetProperty("HasCreditsMarker");
-                    var episodeIdProp = markerType.GetProperty("EpisodeId");
-                    
-                    if (hasCreditsMarkerProp != null && episodeIdProp != null)
+                    if (marker.HasCreditsMarker && marker.EpisodeId != null)
                     {
-                        var hasMarkerValue = hasCreditsMarkerProp.GetValue(marker);
-                        var hasMarker = hasMarkerValue != null && (bool)hasMarkerValue;
-                        var episodeId = episodeIdProp.GetValue(marker)?.ToString();
-                        
-                        if (hasMarker && episodeId != null)
-                        {
-                            episodesWithMarkers.Add(episodeId);
-                        }
+                        episodesWithMarkers.Add(marker.EpisodeId);
                     }
                 }
 
@@ -547,7 +525,9 @@ namespace EmbyCredits.Services
                     SuccessDetails = progress.SuccessDetails,
                     ConfidenceScores = progress.ConfidenceScores,
                     ThumbnailPaths = progress.ThumbnailPaths,
-                    EpisodeIds = progress.EpisodeIds
+                    EpisodeIds = progress.EpisodeIds,
+                    AppliedRules = progress.AppliedRules,
+                    ActiveFfmpegProcesses = FFmpegHelper.GetActiveProcesses()
                 };
             }
             catch (Exception ex)
@@ -740,52 +720,19 @@ namespace EmbyCredits.Services
 
                 foreach (var episode in seasonEpisodes)
                 {
-                    var marker = episodeMarkers.FirstOrDefault(m =>
+                    var marker = episodeMarkers.FirstOrDefault(m => m.EpisodeId == episode.Id.ToString());
+
+                    object markerData;
+                    if (marker != null && marker.HasCreditsMarker)
                     {
-                        var markerType = m.GetType();
-                        var episodeIdProp = markerType.GetProperty("EpisodeId");
-                        if (episodeIdProp != null)
+                        var firstMarker = marker.Markers.FirstOrDefault();
+                        markerData = new
                         {
-                            var episodeId = episodeIdProp.GetValue(m)?.ToString();
-                            return episodeId == episode.Id.ToString();
-                        }
-                        return false;
-                    });
-
-                    object? markerData = null;
-                    if (marker != null)
-                    {
-                        var markerType = marker.GetType();
-                        var hasCreditsMarkerProp = markerType.GetProperty("HasCreditsMarker");
-                        var markersProp = markerType.GetProperty("Markers");
-
-                        var hasMarker = hasCreditsMarkerProp != null &&
-                                       hasCreditsMarkerProp.GetValue(marker) is bool boolVal && boolVal;
-
-                        if (hasMarker && markersProp != null)
-                        {
-                            var markers = markersProp.GetValue(marker);
-                            if (markers is System.Collections.IEnumerable enumerable)
-                            {
-                                foreach (var m in enumerable)
-                                {
-                                    var mType = m.GetType();
-                                    var startTimeProp = mType.GetProperty("StartTime");
-                                    if (startTimeProp != null)
-                                    {
-                                        markerData = new
-                                        {
-                                            HasMarker = true,
-                                            StartTime = startTimeProp.GetValue(m)?.ToString()
-                                        };
-                                        break;
-                                    }
-                                }
-                            }
-                        }
+                            HasMarker = true,
+                            StartTime = firstMarker?.StartTime
+                        };
                     }
-
-                    if (markerData == null)
+                    else
                     {
                         markerData = new { HasMarker = false, StartTime = (string?)null };
                     }
@@ -1007,7 +954,7 @@ namespace EmbyCredits.Services
                     return Stream.Null;
                 }
 
-                var assembly = typeof(Plugin).GetTypeInfo().Assembly;
+                var assembly = typeof(Plugin).Assembly;
                 var resourceName = $"EmbyCredits.Images.{request.ImageName}";
 
                 var stream = assembly.GetManifestResourceStream(resourceName);
@@ -1190,6 +1137,11 @@ namespace EmbyCredits.Services
                     return new { Success = false, Message = "No backup data provided" };
                 }
 
+                if (request.JsonData.Length > MaxImportBytes)
+                {
+                    return new { Success = false, Message = $"Import data exceeds maximum allowed size of {MaxImportBytes / (1024 * 1024)} MB" };
+                }
+
                 var backupService = Plugin.CreditsBackupService;
                 if (backupService == null)
                 {
@@ -1317,6 +1269,11 @@ namespace EmbyCredits.Services
                 if (string.IsNullOrEmpty(request.JsonData))
                 {
                     return new { Success = false, Message = "No backup data provided" };
+                }
+
+                if (request.JsonData.Length > MaxImportBytes)
+                {
+                    return new { Success = false, Message = $"Import data exceeds maximum allowed size of {MaxImportBytes / (1024 * 1024)} MB" };
                 }
 
                 _logger?.Info($"Single series credits import requested for SeriesId: {request.SeriesId}");
@@ -1528,21 +1485,9 @@ namespace EmbyCredits.Services
 
                 foreach (var marker in episodeMarkers)
                 {
-                    var markerType = marker.GetType();
-                    var hasCreditsMarkerProp = markerType.GetProperty("HasCreditsMarker");
-                    var episodeIdProp = markerType.GetProperty("EpisodeId");
-
-                    if (hasCreditsMarkerProp != null && episodeIdProp != null)
+                    if (marker.HasCreditsMarker && marker.EpisodeId != null)
                     {
-                        var hasMarkerValue = hasCreditsMarkerProp.GetValue(marker);
-                        if (hasMarkerValue is bool boolVal && boolVal)
-                        {
-                            var episodeId = episodeIdProp.GetValue(marker)?.ToString();
-                            if (episodeId != null)
-                            {
-                                episodesWithMarkers.Add(episodeId);
-                            }
-                        }
+                        episodesWithMarkers.Add(marker.EpisodeId);
                     }
                 }
 
@@ -1641,21 +1586,23 @@ namespace EmbyCredits.Services
 
         private void TryAutoBackupEpisode(Episode episode, long creditsStartTicks)
         {
-            try
+            if (Plugin.CreditsBackupService == null) return;
+            var config = Plugin.Instance?.Configuration;
+            if (config == null || !config.EnableAutoBackupAfterDetection || string.IsNullOrWhiteSpace(config.BackupFolderPath))
+                return;
+            var svc = Plugin.CreditsBackupService;
+            var folder = config.BackupFolderPath;
+            _ = Task.Run(async () =>
             {
-                var config = Plugin.Instance?.Configuration;
-                if (config == null || !config.EnableAutoBackupAfterDetection ||
-                    string.IsNullOrWhiteSpace(config.BackupFolderPath) ||
-                    Plugin.CreditsBackupService == null)
-                    return;
-
-                Plugin.CreditsBackupService.UpsertEpisodeInSeriesBackup(
-                    episode, creditsStartTicks, config.BackupFolderPath);
-            }
-            catch (Exception ex)
-            {
-                _logger?.ErrorException("Auto-backup after marker save failed", ex);
-            }
+                try
+                {
+                    await svc.UpsertEpisodeInSeriesBackup(episode, creditsStartTicks, folder).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.ErrorException("Auto-backup after marker save failed", ex);
+                }
+            });
         }
 
         private string? GetMarkerTypeFromChapter(ChapterInfo chapter)
@@ -2064,42 +2011,26 @@ namespace EmbyCredits.Services
 
                 foreach (var marker in markers)
                 {
-                    var markerType = marker.GetType();
-                    var episodeIdProp = markerType.GetProperty("EpisodeId");
-                    var episodeNameProp = markerType.GetProperty("EpisodeName");
-                    var seriesNameProp = markerType.GetProperty("SeriesName");
-                    var seasonNumberProp = markerType.GetProperty("SeasonNumber");
-                    var episodeNumberProp = markerType.GetProperty("EpisodeNumber");
-                    var hasCreditsMarkerProp = markerType.GetProperty("HasCreditsMarker");
-                    var creditsStartSecondsProp = markerType.GetProperty("CreditsStartSeconds");
-                    var creditsStartFormattedProp = markerType.GetProperty("CreditsStartFormatted");
-                    var durationProp = markerType.GetProperty("Duration");
-
-                    if (episodeIdProp != null)
+                    var firstCreditsMarker = marker.HasCreditsMarker ? marker.Markers.FirstOrDefault() : null;
+                    results.Add(new
                     {
-                        var episodeId = episodeIdProp.GetValue(marker)?.ToString();
-                        var hasCreditsMarker = hasCreditsMarkerProp?.GetValue(marker) as bool? ?? false;
-
-                        results.Add(new
-                        {
-                            EpisodeId = episodeId,
-                            SeriesName = seriesNameProp?.GetValue(marker)?.ToString(),
-                            SeasonNumber = seasonNumberProp?.GetValue(marker),
-                            EpisodeNumber = episodeNumberProp?.GetValue(marker),
-                            EpisodeName = episodeNameProp?.GetValue(marker)?.ToString(),
-                            HasCreditsMarker = hasCreditsMarker,
-                            CreditsStartSeconds = creditsStartSecondsProp?.GetValue(marker),
-                            CreditsStartFormatted = creditsStartFormattedProp?.GetValue(marker)?.ToString(),
-                            Duration = durationProp?.GetValue(marker)?.ToString()
-                        });
-                    }
+                        EpisodeId = marker.EpisodeId,
+                        SeriesName = (string?)null,
+                        SeasonNumber = marker.Season,
+                        EpisodeNumber = marker.Episode,
+                        EpisodeName = marker.EpisodeName,
+                        HasCreditsMarker = marker.HasCreditsMarker,
+                        CreditsStartSeconds = firstCreditsMarker != null ? (object)(firstCreditsMarker.StartPositionTicks / (double)TimeSpan.TicksPerSecond) : null,
+                        CreditsStartFormatted = firstCreditsMarker?.StartTime,
+                        Duration = marker.Duration
+                    });
                 }
 
                 return new
                 {
                     Success = true,
                     TotalEpisodes = results.Count,
-                    EpisodesWithMarkers = results.Count(r => (bool)(r.GetType().GetProperty("HasCreditsMarker")?.GetValue(r) ?? false)),
+                    EpisodesWithMarkers = markers.Count(m => m.HasCreditsMarker),
                     Results = results
                 };
             }
@@ -2160,10 +2091,7 @@ namespace EmbyCredits.Services
                 }
 
                 var marker = markers[0];
-                var markerType = marker.GetType();
-                var hasCreditsMarkerProp = markerType.GetProperty("HasCreditsMarker");
-                var creditsStartSecondsProp = markerType.GetProperty("CreditsStartSeconds");
-                var creditsStartFormattedProp = markerType.GetProperty("CreditsStartFormatted");
+                var firstCreditsMarker = marker.HasCreditsMarker ? marker.Markers.FirstOrDefault() : null;
 
                 return new
                 {
@@ -2173,9 +2101,9 @@ namespace EmbyCredits.Services
                     SeriesName = episode.Series?.Name,
                     SeasonNumber = episode.ParentIndexNumber,
                     EpisodeNumber = episode.IndexNumber,
-                    HasCreditsMarker = hasCreditsMarkerProp?.GetValue(marker) as bool? ?? false,
-                    CreditsStartSeconds = creditsStartSecondsProp?.GetValue(marker),
-                    CreditsStartFormatted = creditsStartFormattedProp?.GetValue(marker)?.ToString(),
+                    HasCreditsMarker = marker.HasCreditsMarker,
+                    CreditsStartSeconds = firstCreditsMarker != null ? (object)(firstCreditsMarker.StartPositionTicks / (double)TimeSpan.TicksPerSecond) : null,
+                    CreditsStartFormatted = firstCreditsMarker?.StartTime,
                     Duration = episode.RunTimeTicks.HasValue ? TimeSpan.FromTicks(episode.RunTimeTicks.Value).ToString(@"hh\:mm\:ss") : null
                 };
             }
@@ -2372,8 +2300,8 @@ namespace EmbyCredits.Services
                 return "An error occurred";
 
             var sanitized = System.Text.RegularExpressions.Regex.Replace(
-                message, 
-                @"[A-Za-z]:\\[^\\s]+|/[/a-zA-Z0-9_.-]+", 
+                message,
+                @"[A-Za-z]:\\\S+|/(?:[a-zA-Z0-9_./\-])+",
                 "[path]");
             
             return sanitized;
@@ -2394,11 +2322,21 @@ namespace EmbyCredits.Services
                     e.SeasonNumber,
                     e.EpisodeNumber,
                     e.EpisodeName,
-                    e.FilePath,
                     AddedUtc = e.AddedUtc.ToString("o")
                 }).ToList();
 
-                return new { Success = true, Count = entries.Count, Episodes = entries };
+                var detected = tracer.GetAllDetected().Select(e => new
+                {
+                    e.EpisodeId,
+                    e.SeriesName,
+                    e.SeasonNumber,
+                    e.EpisodeNumber,
+                    e.EpisodeName,
+                    AddedUtc = e.AddedUtc.ToString("o"),
+                    DetectedUtc = e.DetectedUtc?.ToString("o")
+                }).ToList();
+
+                return new { Success = true, Count = entries.Count, Episodes = entries, Detected = detected };
             }
             catch (Exception ex)
             {
@@ -2434,6 +2372,20 @@ namespace EmbyCredits.Services
             catch (Exception ex)
             {
                 _logger?.ErrorException("Error clearing tracer list", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Post(ClearDetectedTracerListRequest request)
+        {
+            try
+            {
+                Plugin.TracerService?.ClearDetected();
+                return new { Success = true };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error clearing detected tracer list", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }

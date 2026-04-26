@@ -21,7 +21,8 @@ namespace EmbyCredits
     {
         private readonly ILogger _logger;
         private readonly IApplicationPaths _appPaths;
-        public readonly ILibraryManager _libraryManager;
+        private readonly ILibraryManager _libraryManager;
+        public ILibraryManager LibraryManager => _libraryManager;
         private readonly IItemRepository _itemRepository;
         private readonly IFfmpegManager _ffmpegManager;
         private readonly IMediaEncoder _mediaEncoder;
@@ -58,10 +59,6 @@ namespace EmbyCredits
             NotificationManager = notificationManager;
         }
         
-        private void MigrateLegacyDetectionSettings()
-        {
-        }
-
         public override void SaveConfiguration()
         {
             ValidateConfiguration();
@@ -144,29 +141,32 @@ namespace EmbyCredits
 
             try
             {
-                // Resolve to absolute path and check for traversal
                 var fullPath = Path.GetFullPath(path);
-                
-                if (fullPath.Contains("..") || 
-                    path.Contains("..") ||
-                    fullPath.IndexOf("..", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    _logger.Warn($"{fieldName} contains path traversal sequence. Clearing value.");
-                    return string.Empty;
-                }
+                var normalizedPath = fullPath.ToLowerInvariant();
 
-                var normalizedPath = fullPath.ToLowerInvariant().Replace('/', '\\');
-                var forbiddenPaths = new[] 
-                { 
-                    "\\windows\\", 
-                    "\\program files\\", 
-                    "\\system32\\",
-                    "/etc/",
-                    "/bin/",
-                    "/sbin/",
-                    "/usr/bin/",
-                    "/usr/sbin/"
-                };
+                string[] forbiddenPaths;
+                if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                        System.Runtime.InteropServices.OSPlatform.Windows))
+                {
+                    var sep = System.IO.Path.DirectorySeparatorChar;
+                    forbiddenPaths = new[]
+                    {
+                        sep + "windows" + sep,
+                        sep + "program files" + sep,
+                        sep + "system32" + sep
+                    };
+                }
+                else
+                {
+                    forbiddenPaths = new[]
+                    {
+                        "/etc/",
+                        "/bin/",
+                        "/sbin/",
+                        "/usr/bin/",
+                        "/usr/sbin/"
+                    };
+                }
 
                 foreach (var forbidden in forbiddenPaths)
                 {
@@ -313,9 +313,6 @@ namespace EmbyCredits
 
         public void Run()
         {
-            // Migrate legacy boolean settings to DetectionMode enum
-            MigrateLegacyDetectionSettings();
-            
             CreditsDetectionService.SetLibraryManager(_libraryManager);
             CreditsDetectionService.SetItemRepository(_itemRepository);
             CreditsDetectionService.SetFfmpegManager(_ffmpegManager);
@@ -372,6 +369,9 @@ namespace EmbyCredits
                 }
 
                 _logger?.Info("Credits Detector plugin disposed");
+
+                if (Services.Http.HttpClientPool.IsInitialized)
+                    Services.Http.HttpClientPool.Instance.Dispose();
             }
 
             _disposed = true;

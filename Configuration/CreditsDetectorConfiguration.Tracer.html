@@ -104,11 +104,31 @@
             opacity: 1;
         }
 
-        #tracerEmptyMsg {
-            text-align: center;
-            padding: 2.5em 1em;
-            opacity: 0.38;
-            font-size: 0.9em;
+        .tracer-detected-item {
+            background: rgba(76,175,80,0.05);
+            border-color: rgba(76,175,80,0.15);
+        }
+
+        .tracer-detected-icon {
+            color: #66bb6a;
+            font-size: 1.1em;
+            flex-shrink: 0;
+            opacity: 0.8;
+        }
+
+        .tracer-detected-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 1.8em;
+            margin-bottom: 0.6em;
+        }
+
+        .tracer-detected-header h3 {
+            margin: 0;
+            font-size: 0.95em;
+            font-weight: 600;
+            opacity: 0.8;
         }
     </style>
 
@@ -144,5 +164,16 @@
 
     <div id="tracerEpisodeList" class="tracer-list">
         <div id="tracerEmptyMsg">Loading...</div>
+    </div>
+
+    <div id="tracerDetectedSection" style="display:none;">
+        <div class="tracer-detected-header">
+            <h3><i class="md-icon" style="font-size:1em;vertical-align:middle;margin-right:0.3em;color:#66bb6a;">check_circle</i>Automatically Detected</h3>
+            <button is="emby-button" type="button" id="btnTracerClearDetected" class="raised" style="padding:0.25em 0.8em;font-size:0.82em;opacity:0.7;">
+                <i class="md-icon" style="font-size:1em;margin-right:0.3em;vertical-align:middle;">clear_all</i>Clear History
+            </button>
+        </div>
+        <div id="tracerDetectedCount" class="tracer-meta" style="margin-bottom:0.5em;"></div>
+        <div id="tracerDetectedList" class="tracer-list"></div>
     </div>
 </div>

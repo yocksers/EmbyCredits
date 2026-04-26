@@ -9,10 +9,34 @@ using System.Linq;
 
 namespace EmbyCredits.Services
 {
+    public class CreditMarkerData
+    {
+        public string? Name { get; set; }
+        public long StartPositionTicks { get; set; }
+        public string StartTime { get; set; } = string.Empty;
+        public string? MarkerType { get; set; }
+    }
+
+    public class EpisodeMarkerInfo
+    {
+        public string EpisodeId { get; set; } = string.Empty;
+        public string EpisodeName { get; set; } = string.Empty;
+        public int? Season { get; set; }
+        public int? Episode { get; set; }
+        public string SeasonEpisode { get; set; } = string.Empty;
+        public string Duration { get; set; } = string.Empty;
+        public double DurationSeconds { get; set; }
+        public bool HasCreditsMarker { get; set; }
+        public List<CreditMarkerData> Markers { get; set; } = new List<CreditMarkerData>();
+    }
+
     public class ChapterMarkerService
     {
         private readonly ILogger _logger;
         private readonly IItemRepository _itemRepository;
+
+        private static readonly System.Reflection.PropertyInfo? _markerTypeProp =
+            typeof(ChapterInfo).GetProperty("MarkerType");
 
         public ChapterMarkerService(ILogger logger, IItemRepository itemRepository)
         {
@@ -124,9 +148,9 @@ namespace EmbyCredits.Services
             }
         }
 
-        public List<object> GetSeriesMarkers(List<Episode> episodes)
+        public List<EpisodeMarkerInfo> GetSeriesMarkers(List<Episode> episodes)
         {
-            var result = new List<object>(episodes.Count);
+            var result = new List<EpisodeMarkerInfo>(episodes.Count);
 
             foreach (var episode in episodes)
             {
@@ -138,7 +162,7 @@ namespace EmbyCredits.Services
                     {
                         var markerType = GetMarkerType(c);
                         return markerType == "CreditsStart" || markerType == "Credits";
-                    }).Select(c => new
+                    }).Select(c => new CreditMarkerData
                     {
                         Name = c.Name,
                         StartPositionTicks = c.StartPositionTicks,
@@ -146,7 +170,7 @@ namespace EmbyCredits.Services
                         MarkerType = GetMarkerType(c)
                     }).ToList();
 
-                    result.Add(new
+                    result.Add(new EpisodeMarkerInfo
                     {
                         EpisodeId = episode.Id.ToString(),
                         EpisodeName = episode.Name,
@@ -180,14 +204,9 @@ namespace EmbyCredits.Services
                 if (chapter == null)
                     return null;
 
-                var chapterType = chapter.GetType();
-                if (chapterType == null)
-                    return null;
-
-                var markerTypeProp = chapterType.GetProperty("MarkerType");
-                if (markerTypeProp != null && markerTypeProp.CanRead)
+                if (_markerTypeProp != null && _markerTypeProp.CanRead)
                 {
-                    var value = markerTypeProp.GetValue(chapter);
+                    var value = _markerTypeProp.GetValue(chapter);
                     return value?.ToString();
                 }
             }
@@ -205,14 +224,9 @@ namespace EmbyCredits.Services
                 if (chapter == null)
                     return false;
 
-                var chapterType = chapter.GetType();
-                if (chapterType == null)
-                    return false;
-
-                var markerTypeProp = chapterType.GetProperty("MarkerType");
-                if (markerTypeProp != null && markerTypeProp.CanWrite)
+                if (_markerTypeProp != null && _markerTypeProp.CanWrite)
                 {
-                    markerTypeProp.SetValue(chapter, markerType);
+                    _markerTypeProp.SetValue(chapter, markerType);
                     return true;
                 }
                 else

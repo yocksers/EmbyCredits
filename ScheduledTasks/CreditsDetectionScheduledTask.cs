@@ -146,7 +146,12 @@ namespace EmbyCredits.ScheduledTasks
                     librariesToProcess = new List<Folder>();
                     foreach (var libraryId in libraryIds)
                     {
-                        var library = _libraryManager.GetItemById(libraryId) as Folder;
+                        if (!Guid.TryParse(libraryId, out var libraryGuid))
+                        {
+                            _logger.Warn($"Invalid library ID (not a valid Guid): {libraryId}");
+                            continue;
+                        }
+                        var library = _libraryManager.GetItemById(libraryGuid) as Folder;
                         if (library != null)
                             librariesToProcess.Add(library);
                         else

@@ -47,6 +47,7 @@ define(['loading', 'toast'], function (loading, toast) {
         var listEl        = q('tracerEpisodeList');
         var btnRunAll     = q('btnTracerRunAll');
         var btnClear      = q('btnTracerClear');
+        var detectedSection = q('tracerDetectedSection');
 
         disabledNotice.style.display = enabled ? 'none' : 'block';
         if (btnRunAll) btnRunAll.disabled = !enabled;
@@ -55,53 +56,84 @@ define(['loading', 'toast'], function (loading, toast) {
         if (!enabled) {
             listEl.innerHTML = '<div id="tracerEmptyMsg" style="text-align:center;padding:2.5em 1em;opacity:0.38;font-size:0.9em;">Tracer is disabled.</div>';
             countLine.style.display = 'none';
+            if (detectedSection) detectedSection.style.display = 'none';
             return;
         }
 
         fetchEpisodes()
             .then(function (result) {
                 var episodes = result.Episodes || [];
+                var detected = result.Detected || [];
 
                 if (episodes.length === 0) {
                     listEl.innerHTML = '<div id="tracerEmptyMsg" style="text-align:center;padding:2.5em 1em;opacity:0.38;font-size:0.9em;">No pending episodes — all caught up!</div>';
                     countLine.style.display = 'none';
-                    return;
+                } else {
+                    countLine.textContent = episodes.length + ' episode' + (episodes.length === 1 ? '' : 's') + ' pending detection';
+                    countLine.style.display = 'block';
+
+                    listEl.innerHTML = '';
+                    episodes.forEach(function (ep) {
+                        var seLabel = 'S' + String(ep.SeasonNumber).padStart(2, '0') + 'E' + String(ep.EpisodeNumber).padStart(2, '0');
+                        var item = document.createElement('div');
+                        item.className = 'tracer-item';
+                        item.dataset.episodeId = ep.EpisodeId;
+                        item.innerHTML =
+                            '<div class="tracer-item-label">' +
+                                '<span class="tracer-item-series">' + escapeHtml(ep.SeriesName) + '</span>' +
+                                '<span class="tracer-item-ep">' + seLabel + (ep.EpisodeName ? ' \u2014 ' + escapeHtml(ep.EpisodeName) : '') + '</span>' +
+                            '</div>' +
+                            '<span class="tracer-item-added">' + formatDate(ep.AddedUtc) + '</span>' +
+                            '<div class="tracer-item-actions">' +
+                                '<button is="emby-button" type="button" class="raised button-submit tracer-run-btn" title="Run detection for this episode">' +
+                                    '<i class="md-icon" style="font-size:1em;vertical-align:middle;">play_arrow</i>' +
+                                '</button>' +
+                                '<button is="emby-button" type="button" class="raised tracer-dismiss-btn" title="Dismiss (remove from list without detecting)">' +
+                                    '<i class="md-icon" style="font-size:1em;vertical-align:middle;">close</i>' +
+                                '</button>' +
+                            '</div>';
+
+                        item.querySelector('.tracer-run-btn').addEventListener('click', function () {
+                            runEpisode(ep.EpisodeId, item);
+                        });
+
+                        item.querySelector('.tracer-dismiss-btn').addEventListener('click', function () {
+                            dismissEpisode(ep.EpisodeId, item);
+                        });
+
+                        listEl.appendChild(item);
+                    });
                 }
 
-                countLine.textContent = episodes.length + ' episode' + (episodes.length === 1 ? '' : 's') + ' pending detection';
-                countLine.style.display = 'block';
-
-                listEl.innerHTML = '';
-                episodes.forEach(function (ep) {
-                    var seLabel = 'S' + String(ep.SeasonNumber).padStart(2, '0') + 'E' + String(ep.EpisodeNumber).padStart(2, '0');
-                    var item = document.createElement('div');
-                    item.className = 'tracer-item';
-                    item.dataset.episodeId = ep.EpisodeId;
-                    item.innerHTML =
-                        '<div class="tracer-item-label">' +
-                            '<span class="tracer-item-series">' + escapeHtml(ep.SeriesName) + '</span>' +
-                            '<span class="tracer-item-ep">' + seLabel + (ep.EpisodeName ? ' \u2014 ' + escapeHtml(ep.EpisodeName) : '') + '</span>' +
-                        '</div>' +
-                        '<span class="tracer-item-added">' + formatDate(ep.AddedUtc) + '</span>' +
-                        '<div class="tracer-item-actions">' +
-                            '<button is="emby-button" type="button" class="raised button-submit tracer-run-btn" title="Run detection for this episode">' +
-                                '<i class="md-icon" style="font-size:1em;vertical-align:middle;">play_arrow</i>' +
-                            '</button>' +
-                            '<button is="emby-button" type="button" class="raised tracer-dismiss-btn" title="Dismiss (remove from list without detecting)">' +
-                                '<i class="md-icon" style="font-size:1em;vertical-align:middle;">close</i>' +
-                            '</button>' +
-                        '</div>';
-
-                    item.querySelector('.tracer-run-btn').addEventListener('click', function () {
-                        runEpisode(ep.EpisodeId, item);
-                    });
-
-                    item.querySelector('.tracer-dismiss-btn').addEventListener('click', function () {
-                        dismissEpisode(ep.EpisodeId, item);
-                    });
-
-                    listEl.appendChild(item);
-                });
+                // Render detected history section
+                if (detectedSection) {
+                    if (detected.length === 0) {
+                        detectedSection.style.display = 'none';
+                    } else {
+                        detectedSection.style.display = 'block';
+                        var detectedList = q('tracerDetectedList');
+                        var detectedCount = q('tracerDetectedCount');
+                        if (detectedCount) {
+                            detectedCount.textContent = detected.length + ' episode' + (detected.length === 1 ? '' : 's') + ' automatically detected';
+                        }
+                        if (detectedList) {
+                            detectedList.innerHTML = '';
+                            detected.forEach(function (ep) {
+                                var seLabel = 'S' + String(ep.SeasonNumber).padStart(2, '0') + 'E' + String(ep.EpisodeNumber).padStart(2, '0');
+                                var item = document.createElement('div');
+                                item.className = 'tracer-item tracer-detected-item';
+                                item.innerHTML =
+                                    '<i class="md-icon tracer-detected-icon">check_circle</i>' +
+                                    '<div class="tracer-item-label">' +
+                                        '<span class="tracer-item-series">' + escapeHtml(ep.SeriesName) + '</span>' +
+                                        '<span class="tracer-item-ep">' + seLabel + (ep.EpisodeName ? ' \u2014 ' + escapeHtml(ep.EpisodeName) : '') + '</span>' +
+                                    '</div>' +
+                                    '<span class="tracer-item-added" title="Detected at">' + formatDate(ep.DetectedUtc) + '</span>';
+                                detectedList.appendChild(item);
+                            });
+                        }
+                    }
+                }
             })
             .catch(function () {
                 listEl.innerHTML = '<div style="text-align:center;padding:2em;color:#ef9a9a;font-size:0.88em;">Failed to load tracer episodes.</div>';
@@ -157,6 +189,9 @@ define(['loading', 'toast'], function (loading, toast) {
             } else {
                 countLine.textContent = remaining + ' episode' + (remaining === 1 ? '' : 's') + ' pending detection';
             }
+        })
+        .catch(function () {
+            toast({ type: 'error', text: 'Failed to dismiss episode' });
         });
     }
 
@@ -216,6 +251,17 @@ define(['loading', 'toast'], function (loading, toast) {
         .catch(function () { toast({ type: 'error', text: 'Failed to clear list' }); });
     }
 
+    function clearDetectedHistory() {
+        if (!confirm('Clear the detected history list?')) return;
+        fetch(ApiClient.getUrl('CreditsDetector/ClearDetectedTracerList'), {
+            method: 'POST',
+            headers: { 'X-Emby-Token': ApiClient.accessToken(), 'Content-Type': 'application/json' },
+            body: '{}'
+        })
+        .then(function () { toast({ type: 'success', text: 'Detected history cleared' }); refresh(); })
+        .catch(function () { toast({ type: 'error', text: 'Failed to clear detected history' }); });
+    }
+
     function init(view) {
         _view = view;
 
@@ -227,6 +273,9 @@ define(['loading', 'toast'], function (loading, toast) {
 
         var btnClear = q('btnTracerClear');
         if (btnClear) btnClear.addEventListener('click', clearAll);
+
+        var btnClearDetected = q('btnTracerClearDetected');
+        if (btnClearDetected) btnClearDetected.addEventListener('click', clearDetectedHistory);
 
         var btnSave = q('btnTracerSave');
         if (btnSave) btnSave.addEventListener('click', saveTracerSetting);
@@ -250,5 +299,12 @@ define(['loading', 'toast'], function (loading, toast) {
         _refreshInterval = setInterval(refresh, 30000);
     }
 
-    return { init: init };
+    function destroy() {
+        if (_refreshInterval) {
+            clearInterval(_refreshInterval);
+            _refreshInterval = null;
+        }
+    }
+
+    return { init: init, destroy: destroy };
 });

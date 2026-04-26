@@ -70,7 +70,7 @@ namespace EmbyCredits.Services
         {
             try
             {
-                if ((DateTime.UtcNow - _lastIntroSkipperCheck).TotalSeconds > CheckCacheSeconds)
+                if (!_introSkipperInstalled && (DateTime.UtcNow - _lastIntroSkipperCheck).TotalSeconds > CheckCacheSeconds)
                 {
                     DiscoverIntroSkipper();
                     _lastIntroSkipperCheck = DateTime.UtcNow;
