@@ -48,13 +48,27 @@ namespace EmbyCredits.Services
             _itemRepository = itemRepository;
         }
 
+        private static readonly System.Collections.Generic.HashSet<char> _invalidFileNameChars = BuildInvalidFileNameChars();
+
+        private static System.Collections.Generic.HashSet<char> BuildInvalidFileNameChars()
+        {
+            var chars = new System.Collections.Generic.HashSet<char>(Path.GetInvalidFileNameChars());
+            foreach (var c in new[] { ':', '*', '?', '"', '<', '>', '|', '\\' })
+                chars.Add(c);
+            return chars;
+        }
+
+        private static readonly StringComparison _pathComparison =
+            System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
         private static string SanitizeFileName(string name)
         {
-            var invalidChars = Path.GetInvalidFileNameChars();
             var sanitized = new System.Text.StringBuilder();
             foreach (var c in name)
             {
-                sanitized.Append(Array.IndexOf(invalidChars, c) >= 0 ? '_' : c);
+                sanitized.Append(_invalidFileNameChars.Contains(c) ? '_' : c);
             }
             var result = sanitized.ToString().Trim().TrimEnd('.');
             return string.IsNullOrEmpty(result) ? "Unknown" : result;
@@ -64,6 +78,9 @@ namespace EmbyCredits.Services
         {
             return $"{SanitizeFileName(seriesName)}_*.json";
         }
+
+        private static string? GetProviderId(MediaBrowser.Model.Entities.ProviderIdDictionary? ids, string provider) =>
+            ids?.TryGetValue(provider, out var val) == true ? val : null;
 
         private string? FindLatestSeriesBackupFile(string seriesName, string backupFolder)
         {
@@ -120,12 +137,12 @@ namespace EmbyCredits.Services
                     {
                         SeriesName = series.Name,
                         SeriesId = series.Id.ToString(),
-                        TvdbId = series.ProviderIds?.TryGetValue("Tvdb", out var tvdbId) == true ? tvdbId : null,
-                        TmdbId = series.ProviderIds?.TryGetValue("Tmdb", out var tmdbId) == true ? tmdbId : null,
-                        ImdbId = series.ProviderIds?.TryGetValue("Imdb", out var imdbId) == true ? imdbId : null,
-                        TvdbEpisodeId = episode.ProviderIds?.TryGetValue("Tvdb", out var epTvdbId) == true ? epTvdbId : null,
-                        TmdbEpisodeId = episode.ProviderIds?.TryGetValue("Tmdb", out var epTmdbId) == true ? epTmdbId : null,
-                        ImdbEpisodeId = episode.ProviderIds?.TryGetValue("Imdb", out var epImdbId) == true ? epImdbId : null,
+                        TvdbId = GetProviderId(series.ProviderIds, "Tvdb"),
+                        TmdbId = GetProviderId(series.ProviderIds, "Tmdb"),
+                        ImdbId = GetProviderId(series.ProviderIds, "Imdb"),
+                        TvdbEpisodeId = GetProviderId(episode.ProviderIds, "Tvdb"),
+                        TmdbEpisodeId = GetProviderId(episode.ProviderIds, "Tmdb"),
+                        ImdbEpisodeId = GetProviderId(episode.ProviderIds, "Imdb"),
                         SeasonNumber = episode.ParentIndexNumber ?? 0,
                         EpisodeNumber = episode.IndexNumber ?? 0,
                         EpisodeName = episode.Name,
@@ -192,10 +209,11 @@ namespace EmbyCredits.Services
                 if (backup?.Entries == null) return true;
 
                 CreditsBackupEntry? entry = null;
-                if (episode.ProviderIds?.TryGetValue("Tvdb", out var epTvdb) == true && !string.IsNullOrEmpty(epTvdb))
+                var epTvdb = GetProviderId(episode.ProviderIds, "Tvdb");
+                if (!string.IsNullOrEmpty(epTvdb))
                     entry = backup.Entries.FirstOrDefault(e => e.TvdbEpisodeId == epTvdb);
                 if (entry == null && !string.IsNullOrEmpty(episode.Path))
-                    entry = backup.Entries.FirstOrDefault(e => string.Equals(e.FilePath, episode.Path, StringComparison.OrdinalIgnoreCase));
+                    entry = backup.Entries.FirstOrDefault(e => string.Equals(e.FilePath, episode.Path, _pathComparison));
                 if (entry == null && episode.ParentIndexNumber.HasValue && episode.IndexNumber.HasValue)
                     entry = backup.Entries.FirstOrDefault(e => e.SeasonNumber == episode.ParentIndexNumber.Value && e.EpisodeNumber == episode.IndexNumber.Value);
 
@@ -260,14 +278,14 @@ namespace EmbyCredits.Services
                 }
 
                 // Resolve episode provider IDs upfront for use in both Remove and Add
-                string? epTvdb = episode.ProviderIds?.TryGetValue("Tvdb", out var t1) == true ? t1 : null;
-                string? epTmdb = episode.ProviderIds?.TryGetValue("Tmdb", out var t2) == true ? t2 : null;
-                string? epImdb = episode.ProviderIds?.TryGetValue("Imdb", out var t3) == true ? t3 : null;
+                string? epTvdb = GetProviderId(episode.ProviderIds, "Tvdb");
+                string? epTmdb = GetProviderId(episode.ProviderIds, "Tmdb");
+                string? epImdb = GetProviderId(episode.ProviderIds, "Imdb");
 
                 // Remove any existing entry for this episode (match on provider ID, path, or S/E numbers)
                 backup.Entries.RemoveAll(e =>
                     (!string.IsNullOrEmpty(epTvdb) && e.TvdbEpisodeId == epTvdb) ||
-                    (!string.IsNullOrEmpty(episode.Path) && string.Equals(e.FilePath, episode.Path, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(episode.Path) && string.Equals(e.FilePath, episode.Path, _pathComparison)) ||
                     (episode.ParentIndexNumber.HasValue && episode.IndexNumber.HasValue &&
                      e.SeasonNumber == episode.ParentIndexNumber.Value && e.EpisodeNumber == episode.IndexNumber.Value));
 
@@ -286,9 +304,9 @@ namespace EmbyCredits.Services
                 {
                     SeriesName = series.Name,
                     SeriesId = series.Id.ToString(),
-                    TvdbId = series.ProviderIds?.TryGetValue("Tvdb", out var sTvdb) == true ? sTvdb : null,
-                    TmdbId = series.ProviderIds?.TryGetValue("Tmdb", out var sTmdb) == true ? sTmdb : null,
-                    ImdbId = series.ProviderIds?.TryGetValue("Imdb", out var sImdb) == true ? sImdb : null,
+                    TvdbId = GetProviderId(series.ProviderIds, "Tvdb"),
+                    TmdbId = GetProviderId(series.ProviderIds, "Tmdb"),
+                    ImdbId = GetProviderId(series.ProviderIds, "Imdb"),
                     TvdbEpisodeId = epTvdb,
                     TmdbEpisodeId = epTmdb,
                     ImdbEpisodeId = epImdb,
@@ -374,14 +392,16 @@ namespace EmbyCredits.Services
 
                 CreditsBackupEntry? entry = null;
 
-                if (entry == null && episode.ProviderIds?.TryGetValue("Tvdb", out var epTvdb) == true && !string.IsNullOrEmpty(epTvdb))
+                var epTvdb = GetProviderId(episode.ProviderIds, "Tvdb");
+                if (entry == null && !string.IsNullOrEmpty(epTvdb))
                     entry = backup.Entries.FirstOrDefault(e => e.TvdbEpisodeId == epTvdb);
 
-                if (entry == null && episode.ProviderIds?.TryGetValue("Tmdb", out var epTmdb) == true && !string.IsNullOrEmpty(epTmdb))
+                var epTmdb = GetProviderId(episode.ProviderIds, "Tmdb");
+                if (entry == null && !string.IsNullOrEmpty(epTmdb))
                     entry = backup.Entries.FirstOrDefault(e => e.TmdbEpisodeId == epTmdb);
 
                 if (entry == null && !string.IsNullOrEmpty(episode.Path))
-                    entry = backup.Entries.FirstOrDefault(e => string.Equals(e.FilePath, episode.Path, StringComparison.OrdinalIgnoreCase));
+                    entry = backup.Entries.FirstOrDefault(e => string.Equals(e.FilePath, episode.Path, _pathComparison));
 
                 if (entry == null && episode.ParentIndexNumber.HasValue && episode.IndexNumber.HasValue)
                     entry = backup.Entries.FirstOrDefault(e => e.SeasonNumber == episode.ParentIndexNumber.Value && e.EpisodeNumber == episode.IndexNumber.Value);
@@ -480,11 +500,7 @@ namespace EmbyCredits.Services
                         Entries = new List<CreditsBackupEntry>()
                     };
                     
-                    result.JsonData = JsonSerializer.Serialize(emptyBackup, new JsonSerializerOptions 
-                    { 
-                        WriteIndented = true,
-                        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-                    });
+                    result.JsonData = JsonSerializer.Serialize(emptyBackup, _jsonOptions);
                     
                     return result;
                 }
@@ -574,12 +590,12 @@ namespace EmbyCredits.Services
                         {
                             SeriesName = series?.Name ?? "Unknown",
                             SeriesId = series?.Id.ToString() ?? "",
-                            TvdbId = series?.ProviderIds?.TryGetValue("Tvdb", out var tvdbId) == true ? tvdbId : null,
-                            TmdbId = series?.ProviderIds?.TryGetValue("Tmdb", out var tmdbId) == true ? tmdbId : null,
-                            ImdbId = series?.ProviderIds?.TryGetValue("Imdb", out var imdbId) == true ? imdbId : null,
-                            TvdbEpisodeId = episode.ProviderIds?.TryGetValue("Tvdb", out var epTvdbId) == true ? epTvdbId : null,
-                            TmdbEpisodeId = episode.ProviderIds?.TryGetValue("Tmdb", out var epTmdbId) == true ? epTmdbId : null,
-                            ImdbEpisodeId = episode.ProviderIds?.TryGetValue("Imdb", out var epImdbId) == true ? epImdbId : null,
+                            TvdbId = GetProviderId(series?.ProviderIds, "Tvdb"),
+                            TmdbId = GetProviderId(series?.ProviderIds, "Tmdb"),
+                            ImdbId = GetProviderId(series?.ProviderIds, "Imdb"),
+                            TvdbEpisodeId = GetProviderId(episode.ProviderIds, "Tvdb"),
+                            TmdbEpisodeId = GetProviderId(episode.ProviderIds, "Tmdb"),
+                            ImdbEpisodeId = GetProviderId(episode.ProviderIds, "Imdb"),
                             SeasonNumber = episode.ParentIndexNumber ?? 0,
                             EpisodeNumber = episode.IndexNumber ?? 0,
                             EpisodeName = episode.Name,
@@ -608,12 +624,6 @@ namespace EmbyCredits.Services
                     Entries = backupData
                 };
 
-                var jsonOptions = new JsonSerializerOptions
-                {
-                    WriteIndented = true,
-                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-                };
-
                 string json;
 
                 if (!string.IsNullOrWhiteSpace(backupFolder))
@@ -636,7 +646,7 @@ namespace EmbyCredits.Services
                             Entries = seriesEntries
                         };
 
-                        var seriesJson = JsonSerializer.Serialize(seriesBackup, jsonOptions);
+                        var seriesJson = JsonSerializer.Serialize(seriesBackup, _jsonOptions);
                         var safeName = SanitizeFileName(seriesGroup.Key);
                         var filePath = Path.Combine(backupFolder, $"{safeName}_{timestamp}.json");
                         await File.WriteAllTextAsync(filePath, seriesJson, cancellationToken).ConfigureAwait(false);
@@ -647,11 +657,11 @@ namespace EmbyCredits.Services
 
                     _logger.Info($"Saved {bySeriesName.Count} per-series backup files to: {backupFolder}");
 
-                    json = JsonSerializer.Serialize(backup, jsonOptions);
+                    json = JsonSerializer.Serialize(backup, _jsonOptions);
                 }
                 else
                 {
-                    json = JsonSerializer.Serialize(backup, jsonOptions);
+                    json = JsonSerializer.Serialize(backup, _jsonOptions);
                 }
 
                 result.Success = true;

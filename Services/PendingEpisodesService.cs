@@ -16,13 +16,10 @@ namespace EmbyCredits.Services
     /// by detection. Used by the "Only process new episodes" scheduled task mode.
     /// Thread-safe; persists to a JSON file so entries survive restarts.
     /// </summary>
-    public class PendingEpisodesService : IDisposable
+    public class PendingEpisodesService : DebouncedPersistenceService
     {
         private readonly ILogger _logger;
         private readonly string _stateFilePath;
-        private readonly object _lock = new object();
-        private Timer? _saveTimer;
-        private const int SaveDebounceMs = 1000;
 
         private ConcurrentDictionary<string, PendingEntry> _pending =
             new ConcurrentDictionary<string, PendingEntry>(StringComparer.OrdinalIgnoreCase);
@@ -128,13 +125,7 @@ namespace EmbyCredits.Services
             }
         }
 
-        private void ScheduleSave()
-        {
-            var newTimer = new Timer(_ => FlushSave(), null, SaveDebounceMs, Timeout.Infinite);
-            Interlocked.Exchange(ref _saveTimer, newTimer)?.Dispose();
-        }
-
-        private void FlushSave()
+        protected override void FlushSave()
         {
             lock (_lock)
             {
@@ -151,13 +142,6 @@ namespace EmbyCredits.Services
                     _logger.ErrorException("Pending: error saving state file", ex);
                 }
             }
-        }
-
-        public void Dispose()
-        {
-            _saveTimer?.Dispose();
-            _saveTimer = null;
-            FlushSave();
         }
 
         // ------------------------------------------------------------------ //

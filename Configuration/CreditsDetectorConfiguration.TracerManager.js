@@ -25,7 +25,6 @@ define(['loading', 'toast'], function (loading, toast) {
         ApiClient.getPluginConfiguration(pluginId).then(function (cfg) {
             cfg.EnableTracerMode = q('chkEnableTracerMode').checked;
             ApiClient.updatePluginConfiguration(pluginId, cfg).then(function () {
-                toast({ type: 'success', text: 'Tracer setting saved' });
                 refresh();
             }).catch(function () {
                 toast({ type: 'error', text: 'Failed to save setting' });

@@ -9,7 +9,8 @@ namespace EmbyCredits
         OcrOnly,
         HashOnly,
         OcrWithHashFallback,
-        HashWithOcrFallback
+        HashWithOcrFallback,
+        BlackFrameOnly
     }
 
     public enum AnimeDetectionMethod
@@ -50,6 +51,12 @@ namespace EmbyCredits
         public AnimeDetectionMethod? AnimeDetectionMethod { get; set; }
         public int? BlackFrameMinimumPercentage { get; set; }
         public int? BlackFrameThreshold { get; set; }
+        public double? BlackFrameMinimumDensity { get; set; }
+        public double? BlackFrameMaxCreditsDuration { get; set; }
+        public double? BlackFrameMaxSceneMergeGap { get; set; }
+        public bool? BlackFrameScanAllFrames { get; set; }
+        public bool? BlackFrameAutoFallbackToAllFrames { get; set; }
+        public bool? BlackFrameRefineCreditsBoundary { get; set; }
         public bool? OcrEnableCharacterDensityDetection { get; set; }
         public int? OcrCharacterDensityThreshold { get; set; }
         public int? OcrCharacterDensityConsecutiveFrames { get; set; }
@@ -301,6 +308,13 @@ namespace EmbyCredits
         public int BlackFrameMinimumPercentage { get; set; } = 85;
         public int BlackFrameThreshold { get; set; } = 28;
         public double BlackFrameMinDuration { get; set; } = 0.5;
+        public double BlackFrameMinCreditsDuration { get; set; } = 15.0;
+        public double BlackFrameMinimumDensity { get; set; } = 0.50;
+        public double BlackFrameMaxCreditsDuration { get; set; } = 450.0;
+        public double BlackFrameMaxSceneMergeGap { get; set; } = 20.0;
+        public bool BlackFrameScanAllFrames { get; set; } = false;
+        public bool BlackFrameAutoFallbackToAllFrames { get; set; } = true;
+        public bool BlackFrameRefineCreditsBoundary { get; set; } = true;
         public int BlackFrameParallelSessions { get; set; } = 1;
         public int BlackFrameFfmpegThreads { get; set; } = 2;
 
@@ -316,7 +330,7 @@ namespace EmbyCredits
         public int ChromaprintMaxDuration { get; set; } = 300;
         public double ChromaprintSimilarityThreshold { get; set; } = 0.85;
         public int ChromaprintMinEpisodeCount { get; set; } = 4;
-        public double ChromaprintAnalysisPercent { get; set; } = 25.0;
+        public double ChromaprintAnalysisPercent { get; set; } = 10.0;
         public double ChromaprintBlackFrameThreshold { get; set; } = 0.05;
         public double ChromaprintBlackFrameMinDuration { get; set; } = 0.5;
         public bool ChromaprintUseSilenceDetection { get; set; } = true;

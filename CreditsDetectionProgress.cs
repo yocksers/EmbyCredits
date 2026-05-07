@@ -167,14 +167,6 @@ namespace EmbyCredits
         {
             try
             {
-                List<string> thumbnailValues;
-                lock (_dictionariesLock)
-                {
-                    if (_thumbnailPaths.Count == 0)
-                        return;
-                    thumbnailValues = _thumbnailPaths.Values.ToList();
-                }
-
                 var pluginDataPath = Plugin.Instance?.AppPaths?.PluginConfigurationsPath;
                 if (string.IsNullOrEmpty(pluginDataPath))
                     return;
@@ -183,19 +175,12 @@ namespace EmbyCredits
                 if (!System.IO.Directory.Exists(thumbnailDir))
                     return;
 
-                foreach (var thumbnailFile in thumbnailValues)
+                // Delete every file in the folder — thumbnails are only needed for the
+                // active session's UI display, so anything on disk from a prior run
+                // (including across server restarts) is stale and should be purged.
+                foreach (var file in System.IO.Directory.GetFiles(thumbnailDir, "*.jpg"))
                 {
-                    try
-                    {
-                        var fullPath = System.IO.Path.Combine(thumbnailDir, thumbnailFile);
-                        if (System.IO.File.Exists(fullPath))
-                        {
-                            System.IO.File.Delete(fullPath);
-                        }
-                    }
-                    catch
-                    {
-                    }
+                    try { System.IO.File.Delete(file); } catch { }
                 }
             }
             catch

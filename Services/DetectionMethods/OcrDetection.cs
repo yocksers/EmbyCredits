@@ -54,10 +54,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
         private (string lower, string lowerCollapsed)[] _normalizedKeywordCache = Array.Empty<(string, string)>();
 
-        private static readonly ConcurrentDictionary<string, List<double>> _seriesCreditsTimestamps = new ConcurrentDictionary<string, List<double>>();
-        private static readonly ConcurrentDictionary<string, DateTime> _cacheLastAccess = new ConcurrentDictionary<string, DateTime>();
-        private const int MaxCacheEntries = 100;
-        private static readonly TimeSpan CacheExpiration = TimeSpan.FromHours(24);
+        private static readonly DetectionTimestampCache _cache = new DetectionTimestampCache();
 
         public OcrDetection(ILogger logger, PluginConfiguration configuration, bool isForAnime = false)
             : base(logger, configuration)
@@ -65,18 +62,11 @@ namespace EmbyCredits.Services.DetectionMethods
             _isForAnime = isForAnime;
         }
 
-        public static void ClearSeriesCache(string seriesId, int seasonNumber)
-        {
-            var cacheKey = $"{seriesId}_S{seasonNumber:D2}";
-            _seriesCreditsTimestamps.TryRemove(cacheKey, out _);
-            _cacheLastAccess.TryRemove(cacheKey, out _);
-        }
+        public static void ClearSeriesCache(string seriesId, int seasonNumber) =>
+            _cache.ClearSeries(seriesId, seasonNumber);
 
-        public static void ClearAllCache()
-        {
-            _seriesCreditsTimestamps.Clear();
-            _cacheLastAccess.Clear();
-        }
+        public static void ClearAllCache() =>
+            _cache.ClearAll();
 
         public async Task<double> DetectCreditsWithContext(string videoPath, double duration, string episodeId, string seriesId, int seasonNumber, int episodeNumber, CancellationToken cancellationToken = default)
         {
@@ -85,17 +75,13 @@ namespace EmbyCredits.Services.DetectionMethods
                 return await DetectCredits(videoPath, duration, cancellationToken).ConfigureAwait(false);
             }
 
-            var cacheKey = $"{seriesId}_S{seasonNumber:D2}";
-            _cacheLastAccess[cacheKey] = DateTime.UtcNow;
-
-            if (_seriesCreditsTimestamps.Count > MaxCacheEntries || _cacheLastAccess.Count > MaxCacheEntries)
-            {
-                CleanupExpiredCacheEntries();
-            }
+            var cacheKey = DetectionTimestampCache.MakeCacheKey(seriesId, seasonNumber);
+            _cache.TouchAccess(cacheKey);
+            _cache.EnsureCleanedIfNeeded();
 
             double result;
             
-            if (_seriesCreditsTimestamps.TryGetValue(cacheKey, out var cachedTimestamps) && cachedTimestamps.Count >= Configuration.OcrEpisodeComparisonMinimumEpisodes)
+            if (_cache.TryGetTimestamps(cacheKey, out var cachedTimestamps) && cachedTimestamps.Count >= Configuration.OcrEpisodeComparisonMinimumEpisodes)
             {
                 double averageTimestamp;
                 double standardDeviation;
@@ -179,7 +165,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
             if (result > 0)
             {
-                var episodeTimestamps = _seriesCreditsTimestamps.GetOrAdd(cacheKey, _ => new List<double>());
+                var episodeTimestamps = _cache.GetOrAddList(cacheKey);
                 lock (episodeTimestamps)
                 {
                     episodeTimestamps.Add(result);
@@ -198,51 +184,6 @@ namespace EmbyCredits.Services.DetectionMethods
             }
 
             return result;
-        }
-
-        private static void CleanupExpiredCacheEntries()
-        {
-            var now = DateTime.UtcNow;
-            var expiredKeys = _cacheLastAccess
-                .Where(kvp => now - kvp.Value > CacheExpiration)
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            foreach (var key in expiredKeys)
-            {
-                _seriesCreditsTimestamps.TryRemove(key, out _);
-                _cacheLastAccess.TryRemove(key, out _);
-            }
-
-            if (_seriesCreditsTimestamps.Count > MaxCacheEntries)
-            {
-                var oldestKeys = _cacheLastAccess
-                    .OrderBy(kvp => kvp.Value)
-                    .Take(_seriesCreditsTimestamps.Count - MaxCacheEntries)
-                    .Select(kvp => kvp.Key)
-                    .ToList();
-
-                foreach (var key in oldestKeys)
-                {
-                    _seriesCreditsTimestamps.TryRemove(key, out _);
-                    _cacheLastAccess.TryRemove(key, out _);
-                }
-            }
-
-            if (_cacheLastAccess.Count > MaxCacheEntries)
-            {
-                var orphanKeys = _cacheLastAccess
-                    .Where(kvp => !_seriesCreditsTimestamps.ContainsKey(kvp.Key))
-                    .OrderBy(kvp => kvp.Value)
-                    .Take(_cacheLastAccess.Count - MaxCacheEntries)
-                    .Select(kvp => kvp.Key)
-                    .ToList();
-
-                foreach (var key in orphanKeys)
-                {
-                    _cacheLastAccess.TryRemove(key, out _);
-                }
-            }
         }
 
         public override async Task<double> DetectCredits(string videoPath, double duration, CancellationToken cancellationToken = default)

@@ -49,7 +49,7 @@ namespace EmbyCredits.Services
                 var episodes = allEpisodes.Where(e => e.ParentIndexNumber != null && e.ParentIndexNumber != 0).ToList();
                 var specialCount = allEpisodes.Count - episodes.Count;
 
-                CreditsDetectionService.QueueSeries(episodes);
+                CreditsDetectionService.QueueSeriesManual(episodes, request.SkipExistingMarkers, request.IgnoreFailureMarkers);
 
                 return new { Success = true, Message = $"Queued {episodes.Count} episodes for processing (excluded {specialCount} specials)" };
             }
@@ -424,11 +424,7 @@ namespace EmbyCredits.Services
             }
         }
 
-        private string FormatTime(double seconds)
-        {
-            var ts = TimeSpan.FromSeconds(seconds);
-            return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
-        }
+        private string FormatTime(double seconds) => ItemLookupHelper.FormatTime(seconds);
 
         private object ToStaticResult(MemoryStream stream)
         {
@@ -915,13 +911,13 @@ namespace EmbyCredits.Services
                                 }
                                 else
                                 {
-                                    if (ocrResult.IndexOf("EmbyCredits", StringComparison.OrdinalIgnoreCase) >= 0)
+                                    if (ocrResult.Contains("\"data\"") && ocrResult.Contains("\"stdout\"") && ocrResult.Length > 20)
                                     {
-                                        return new { Success = true, Message = "✓ Connection successful! OCR correctly detected 'EmbyCredits' text from test image." };
+                                        return new { Success = true, Message = "✓ Connection successful! Tesseract OCR server is responding correctly." };
                                     }
                                     else
                                     {
-                                        return new { Success = false, Message = $"OCR server responded but did not detect expected text. OCR returned: {ocrResult.Substring(0, Math.Min(100, ocrResult.Length))}..." };
+                                        return new { Success = false, Message = $"Tesseract server responded but returned unexpected format: {ocrResult.Substring(0, Math.Min(150, ocrResult.Length))}..." };
                                     }
                                 }
                             }

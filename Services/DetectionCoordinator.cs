@@ -56,6 +56,15 @@ namespace EmbyCredits.Services
                     _logger.Debug($"[DetectionCoordinator] Added ChromaprintDetection. IsEnabled: {chromaprintMethod.IsEnabled}");
                 }
             }
+            else if (_configuration.DetectionMode == DetectionMode.BlackFrameOnly)
+            {
+                var blackFrameMethod = new BlackFrameDetection(_logger, _configuration);
+                _detectionMethods.Add(blackFrameMethod);
+                if (_configuration.EnableDetailedLogging)
+                {
+                    _logger.Debug($"[DetectionCoordinator] Added BlackFrameDetection (BlackFrameOnly mode). IsEnabled: {blackFrameMethod.IsEnabled}");
+                }
+            }
             else
             {
                 var chromaprintMethod = new ChromaprintDetection(_logger, _configuration);
@@ -337,7 +346,11 @@ namespace EmbyCredits.Services
 
             if (!isAnime && detectionResults.Count == 0 && seasonNumber.HasValue && episodeNumber.HasValue)
             {
-                if (_configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
+                if (_configuration.DetectionMode == DetectionMode.BlackFrameOnly)
+                {
+                    // BlackFrameOnly: no fallback, black frame is the only method
+                }
+                else if (_configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
                 {
                     // OcrWithHashFallback: OCR failed, try Hash
                     var chromaprint = _detectionMethods.FirstOrDefault(m => m is ChromaprintDetection) as ChromaprintDetection;
@@ -399,12 +412,12 @@ namespace EmbyCredits.Services
                 }
                 else if (_configuration.DetectionMode == DetectionMode.HashOnly)
                 {
-                    if (_configuration.EnableAnimeDetection && _configuration.ChromaprintEnableBlackFrameFallback)
+                    if (_configuration.ChromaprintEnableBlackFrameFallback)
                     {
                         LogDebug("Hash detection failed for non-anime series, attempting BlackFrame detection as fallback...");
                         EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash failed, trying BlackFrame fallback");
                         
-                        var blackFrame = new BlackFrameDetectionFallback(_logger, _configuration);
+                        var blackFrame = new BlackFrameDetection(_logger, _configuration);
                         try
                         {
                             double timestamp = await blackFrame.DetectCredits(videoPath, duration, _cancellationTokenSource?.Token ?? default);
@@ -419,11 +432,14 @@ namespace EmbyCredits.Services
                             else
                             {
                                 LogDebug("BlackFrame fallback also failed");
+                                var bfError = string.IsNullOrWhiteSpace(blackFrame.GetLastError()) ? "No black frame transition detected" : blackFrame.GetLastError();
+                                methodErrors[blackFrame.MethodName] = bfError;
                             }
                         }
                         catch (Exception ex)
                         {
                             LogWarn($"BlackFrame fallback error: {ex.Message}");
+                            methodErrors["BlackFrame (Fallback)"] = ex.Message;
                         }
                         finally
                         {
@@ -528,9 +544,20 @@ namespace EmbyCredits.Services
                 
                 LogDebug("=== END SUMMARY ===");
                 
-                var failureReason = methodErrors.Count > 0 
-                    ? string.Join("; ", methodErrors.Values)
-                    : "No credits detected by any enabled method";
+                string failureReason;
+                if (methodErrors.Count == 0)
+                {
+                    failureReason = "No credits detected by any enabled method";
+                }
+                else if (methodErrors.Count == 1)
+                {
+                    failureReason = methodErrors.Values.First();
+                }
+                else
+                {
+                    var parts = methodErrors.Select(kvp => $"{kvp.Key}: {kvp.Value}");
+                    failureReason = "All detection methods failed — " + string.Join("; ", parts);
+                }
                 LogDebug($"Overall failure reason: {failureReason}");
                 return (0, failureReason, 0, string.Empty, string.Empty);
             }
@@ -702,11 +729,6 @@ namespace EmbyCredits.Services
         {
             _batchDetectionCache.Clear();
             _batchDetectionCache.TrimExcess();
-            if (_batchDetectionCache.Count > 0)
-            {
-                _batchDetectionCache.Clear();
-                _batchDetectionCache.TrimExcess();
-            }
         }
 
         public List<IDetectionMethod> GetAllDetectionMethods()
@@ -911,39 +933,7 @@ namespace EmbyCredits.Services
             }
         }
 
-        private double GetMethodConfidence(string methodName)
-        {
-            return methodName switch
-            {
-                "Video Pattern" => 1.0,
-                "Audio Pattern" => 0.9,
-                "Text Detection" => 0.85,
-                "Scene Change" => 0.80,
-                "Black Screen" => 0.75,
-                "Audio Silence" => 0.7,
-                _ => 0.5
-            };
-        }
-
-        private int GetMethodPriority(string methodName)
-        {
-            return methodName switch
-            {
-                "Video Pattern" => _configuration.VideoPatternPriority,
-                "Audio Pattern" => _configuration.AudioPatternPriority,
-                "Audio Silence" => _configuration.AudioSilencePriority,
-                "Text Detection" => _configuration.TextDetectionPriority,
-                "Scene Change" => _configuration.SceneChangePriority,
-                "Black Screen" => _configuration.BlackScreenPriority,
-                _ => 99
-            };
-        }
-
-        private string FormatTime(double seconds)
-        {
-            var ts = TimeSpan.FromSeconds(seconds);
-            return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
-        }
+        private string FormatTime(double seconds) => Utilities.ItemLookupHelper.FormatTime(seconds);
 
         public void CancelDetection()
         {

@@ -9,6 +9,8 @@ namespace EmbyCredits.Api
     public class TriggerDetectionRequest : IReturn<object>
     {
         public int Limit { get; set; }
+        public bool SkipExistingMarkers { get; set; } = true;
+        public bool? IgnoreFailureMarkers { get; set; }
     }
     [Authenticated]
     [Route(ApiRoutes.ProcessEpisode, "POST", Summary = "Process a specific episode for credits detection.")]

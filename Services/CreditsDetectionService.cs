@@ -57,6 +57,10 @@ namespace EmbyCredits.Services
 
         private static ConcurrentDictionary<string, List<(string method, double timestamp)>> _batchDetectionCache = new ConcurrentDictionary<string, List<(string method, double timestamp)>>();
         private static bool _isBatchMode = false;
+
+        // When a single episode triggers a season-wide Chromaprint scan, only save markers
+        // for the originally requested episode IDs. Empty = no restriction (save all).
+        private static ConcurrentDictionary<string, bool> _singleEpisodeTargets = new ConcurrentDictionary<string, bool>();
         
         private static ConcurrentDictionary<string, ConcurrentQueue<string>> _episodeStatusMessages = new ConcurrentDictionary<string, ConcurrentQueue<string>>();
 
@@ -698,10 +702,19 @@ namespace EmbyCredits.Services
                 bool usesHashDetection = effectiveConfig.DetectionMode == DetectionMode.HashOnly ||
                                        effectiveConfig.DetectionMode == DetectionMode.HashWithOcrFallback ||
                                        effectiveConfig.DetectionMode == DetectionMode.OcrWithHashFallback;
-                
-                if (usesHashDetection && !_isBatchMode)
+
+                bool isAnimeBlackFrame = effectiveConfig.EnableAnimeDetection &&
+                                        effectiveConfig.AnimeDetectionMethod == AnimeDetectionMethod.BlackFrame &&
+                                        CheckIfAnime(episode.Series?.Id.ToString("N") ?? string.Empty);
+
+                bool isBlackFrameOnly = effectiveConfig.DetectionMode == DetectionMode.BlackFrameOnly;
+
+                if (usesHashDetection && !isAnimeBlackFrame && !isBlackFrameOnly && !_isBatchMode)
                 {
-                    LogInfo($"Hash detection enabled for '{episode.Series.Name}' - queueing entire season instead of single episode");
+                    LogInfo($"Hash detection enabled for '{episode.Series?.Name}' - queueing entire season instead of single episode");
+                    // Record which episode was originally requested so only it gets a marker saved.
+                    _singleEpisodeTargets.Clear();
+                    _singleEpisodeTargets[episodeId] = true;
                     QueueSeasonForEpisode(episode, isManualDetection);
                     return;
                 }
@@ -901,6 +914,9 @@ namespace EmbyCredits.Services
             _batchDetectionCache.Clear();
             System.Threading.Interlocked.Exchange(ref _batchDetectionCache, new ConcurrentDictionary<string, List<(string method, double timestamp)>>());
 
+            // Full series queue — no per-episode restriction on marker saving.
+            _singleEpisodeTargets.Clear();
+
             _processingQueue.Clear();
             _cancellationRequested = false;
             _isProcessing = false;
@@ -1055,10 +1071,30 @@ namespace EmbyCredits.Services
                 }
             }
 
+            if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && !_configuration.IgnoreFailureMarkers)
+            {
+                var hasFailed = episode.ProviderIds?.TryGetValue("EmbyCredits.Fail", out var failValue) == true && failValue == "true";
+                if (hasFailed)
+                {
+                    LogInfo($"Skipping episode {episode.Name} - previously failed detection");
+                    
+                    if (Plugin.Instance != null)
+                    {
+                        var episodeKey = series != null
+                            ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
+                            : episode.Name;
+                        Plugin.Progress.SkipReasons[episodeKey] = "Previously failed detection";
+                        Plugin.Progress.SkippedItems++;
+                    }
+                    
+                    return;
+                }
+            }
+
             QueueEpisode(episode, isManualDetection: true);
         }
 
-        public static void QueueSeriesManual(List<Episode> episodes, bool skipExistingMarkers = false)
+        public static void QueueSeriesManual(List<Episode> episodes, bool skipExistingMarkers = false, bool? ignoreFailureMarkers = null)
         {
             if (episodes.Count > 0)
             {
@@ -1117,7 +1153,8 @@ namespace EmbyCredits.Services
             }
 
             // Filter episodes with failure markers based on configuration
-            if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && !_configuration.IgnoreFailureMarkers)
+            var effectiveIgnoreFailureMarkers = ignoreFailureMarkers ?? _configuration?.IgnoreFailureMarkers ?? false;
+            if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && !effectiveIgnoreFailureMarkers)
             {
                 var filteredByFailure = new List<Episode>();
                 
@@ -1147,7 +1184,7 @@ namespace EmbyCredits.Services
                 
                 episodesToQueue = filteredByFailure;
             }
-            else if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && _configuration.IgnoreFailureMarkers)
+            else if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && effectiveIgnoreFailureMarkers)
             {
                 // Count how many failed episodes we're retrying
                 var retryCount = episodesToQueue.Count(e => 
@@ -1623,6 +1660,39 @@ namespace EmbyCredits.Services
                 return;
             }
 
+            // Filter out previously failed episodes before any detection work begins.
+            // This prevents them from wasting CPU in the Chromaprint batch scan and the
+            // per-episode processing loop. Manual detection already filters before calling
+            // this method, so this primarily fixes the scheduled task path.
+            if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && !_configuration.IgnoreFailureMarkers)
+            {
+                var beforeCount = seasonEpisodes.Count;
+                seasonEpisodes = seasonEpisodes.Where(ep =>
+                {
+                    var hasFailed = ep.ProviderIds?.TryGetValue("EmbyCredits.Fail", out var failValue) == true && failValue == "true";
+                    if (hasFailed)
+                    {
+                        var epKey = $"{seriesName} S{ep.ParentIndexNumber:00}E{ep.IndexNumber:00}";
+                        if (Plugin.Instance != null)
+                        {
+                            Plugin.Progress.SkipReasons[epKey] = "Previously failed detection";
+                            Plugin.Progress.IncrementSkipped();
+                        }
+                    }
+                    return !hasFailed;
+                }).ToList();
+
+                var skippedCount = beforeCount - seasonEpisodes.Count;
+                if (skippedCount > 0)
+                    _logger?.Info($"Skipped {skippedCount} previously failed episode(s) in {seriesName} Season {seasonNumber}");
+
+                if (seasonEpisodes.Count == 0)
+                {
+                    _logger?.Info($"All episodes in {seriesName} Season {seasonNumber} were previously failed — nothing to process");
+                    return;
+                }
+            }
+
             if (Plugin.Instance != null)
             {
                 Plugin.Progress.CurrentItem = $"Preparing: {seriesName} Season {seasonNumber} ({seasonEpisodes.Count} episodes)";
@@ -1694,6 +1764,10 @@ namespace EmbyCredits.Services
             else if (isAnime)
             {
                 _logger?.Info($"Anime detected - skipping chromaprint batch processing, will use individual episode detection with BlackFrameDetection");
+            }
+            else if (effectiveConfig != null && effectiveConfig.DetectionMode == DetectionMode.BlackFrameOnly)
+            {
+                _logger?.Info($"BlackFrameOnly mode - processing episodes individually using black frame detection");
             }
             else if (effectiveConfig != null && (effectiveConfig.DetectionMode == DetectionMode.OcrWithHashFallback || effectiveConfig.DetectionMode == DetectionMode.OcrOnly))
             {
@@ -1806,8 +1880,19 @@ namespace EmbyCredits.Services
                 }
 
                 if (_episodeProcessor == null) return;
+
+                // If this run was triggered by a single-episode request, only save markers
+                // for the originally queued episode; treat all others as dry-run so they
+                // contribute to Chromaprint batch analysis but produce no output.
+                bool isTargetEpisode = _singleEpisodeTargets.Count == 0 || _singleEpisodeTargets.ContainsKey(episodeId);
+                bool effectiveDryRun = _isDryRun || !isTargetEpisode;
+                if (!isTargetEpisode)
+                {
+                    _logger?.Debug($"[SingleEpisodeTarget] Skipping marker save for {episode.Name} - not the originally requested episode");
+                }
+
                 var (success, creditsStart, failureReason, confidence, methodName, detectionReason) = await _episodeProcessor.ProcessEpisodeWithBatchResult(
-                    episode, _isDryRun, batchCreditsStart, chromaprintMethod, tempCoordinator);
+                    episode, effectiveDryRun, batchCreditsStart, chromaprintMethod, tempCoordinator);
 
                 if (success && creditsStart > 0)
                 {
@@ -2203,36 +2288,6 @@ namespace EmbyCredits.Services
                 _logger?.ErrorException($"Thumbnail generation error for {episodeKey}", ex);
                 return string.Empty;
             }
-        }
-
-        private static double GetMethodConfidence(string method)
-        {
-            return method switch
-            {
-                "Video Pattern" => 1.0,
-                "Audio Pattern" => 0.9,
-                "Text Detection" => 0.85,
-                "Scene Change" => 0.80,
-                "Black Screen" => 0.75,
-                "Audio Silence" => 0.7,
-                _ => 0.5
-            };
-        }
-
-        private static int GetMethodPriority(string method)
-        {
-            if (_configuration == null) return 5;
-
-            return method switch
-            {
-                "Video Pattern" => _configuration.VideoPatternPriority,
-                "Audio Pattern" => _configuration.AudioPatternPriority,
-                "Text Detection" => _configuration.TextDetectionPriority,
-                "Scene Change" => _configuration.SceneChangePriority,
-                "Audio Silence" => _configuration.AudioSilencePriority,
-                "Black Screen" => _configuration.BlackScreenPriority,
-                _ => 5
-            };
         }
 
         private static string? GetMarkerType(ChapterInfo chapter)

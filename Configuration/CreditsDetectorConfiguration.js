@@ -346,6 +346,23 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 });
                 this.toggleOcrEngineFields(view);
             }
+
+            // Auto-save: save config whenever a field changes
+            const _autoSaveExcludedIds = new Set([
+                'selectLibraryFilter', 'selectSeries', 'selectEpisode',
+                'selectSeriesForMarkers', 'txtAutoSkipSearch', 'txtNewKeyword',
+                'selectBulkExportLibrary'
+            ]);
+            let _autoSaveTimer = null;
+            view.addEventListener('change', (e) => {
+                const el = e.target;
+                if (!el || !el.tagName) return;
+                if (el.tagName !== 'INPUT' && el.tagName !== 'SELECT' && el.tagName !== 'TEXTAREA') return;
+                if (_autoSaveExcludedIds.has(el.id)) return;
+                if (el.closest('.rule-card')) return;
+                clearTimeout(_autoSaveTimer);
+                _autoSaveTimer = setTimeout(() => dataManager.saveData(this, view), 800);
+            });
         }
 
         addKeyword(view) {

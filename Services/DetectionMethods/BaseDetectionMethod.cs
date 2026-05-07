@@ -1,3 +1,4 @@
+using EmbyCredits.Services.Utilities;
 using MediaBrowser.Model.Logging;
 using System;
 using System.Threading;
@@ -63,11 +64,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 Logger.Error($"[{MethodName}] {message}");
         }
 
-        protected string FormatTime(double seconds)
-        {
-            var ts = TimeSpan.FromSeconds(seconds);
-            return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
-        }
+        protected string FormatTime(double seconds) => ItemLookupHelper.FormatTime(seconds);
 
         protected void UpdateProgress(double progressPercentage, string? statusMessage = null)
         {
@@ -92,10 +89,6 @@ namespace EmbyCredits.Services.DetectionMethods
         {
             if (!_disposed)
             {
-                if (disposing)
-                {
-
-                }
                 _disposed = true;
             }
         }

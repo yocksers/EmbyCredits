@@ -84,6 +84,8 @@ namespace EmbyCredits.Services
                 _debugLog.AppendLine($"  Enable Detailed Logging:          {_configuration.EnableDetailedLogging}");
                 _debugLog.AppendLine($"  Manual Skip Existing Markers:     {_configuration.ManualSkipExistingMarkers}");
                 _debugLog.AppendLine($"  Scheduled Task Process Missing:   {_configuration.ScheduledTaskOnlyProcessMissing}");
+                _debugLog.AppendLine($"  Skip Previously Failed Episodes:  {_configuration.SkipPreviouslyFailedEpisodes}");
+                _debugLog.AppendLine($"  Allow Retry of Failed Episodes:   {_configuration.IgnoreFailureMarkers}");
                 _debugLog.AppendLine($"  Library IDs:                      {(_configuration.LibraryIds?.Length > 0 ? string.Join(", ", _configuration.LibraryIds) : "All")}");
                 _debugLog.AppendLine($"  Temp Folder Path:                 {(!string.IsNullOrEmpty(_configuration.TempFolderPath) ? _configuration.TempFolderPath : "Default")}");
                 _debugLog.AppendLine();
@@ -321,6 +323,27 @@ namespace EmbyCredits.Services
                     _debugLog.AppendLine($"  Lower Process Priority:           {_configuration.ChromaprintLowerProcessPriority}");
                     _debugLog.AppendLine($"  FFmpeg Threads:                   {(_configuration.ChromaprintFfmpegThreads > 0 ? _configuration.ChromaprintFfmpegThreads.ToString() : "Auto")}");
                     _debugLog.AppendLine($"  Delay Between Operations (ms):    {_configuration.ChromaprintDelayBetweenOperationsMs}");
+                    _debugLog.AppendLine();
+                }
+
+                if (_configuration.DetectionMode == DetectionMode.BlackFrameOnly ||
+                    _configuration.EnableAnimeDetection ||
+                    _configuration.DetectionMode == DetectionMode.HashOnly ||
+                    _configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
+                {
+                    _debugLog.AppendLine("BLACK FRAME DETECTION SETTINGS");
+                    _debugLog.AppendLine("-".PadRight(80, '-'));
+                    _debugLog.AppendLine($"  Analysis Percent:                 {_configuration.ChromaprintAnalysisPercent:F1}%");
+                    _debugLog.AppendLine($"  Min Black Pixel Coverage (%):     {_configuration.BlackFrameMinimumPercentage}");
+                    _debugLog.AppendLine($"  Black Pixel Threshold (0-255):    {_configuration.BlackFrameThreshold}");
+                    _debugLog.AppendLine($"  Min Black Sequence Duration (s):  {_configuration.BlackFrameMinDuration:F1}");
+                    _debugLog.AppendLine($"  Min Credits Duration (s):         {_configuration.BlackFrameMinCreditsDuration:F0}");
+                    _debugLog.AppendLine($"  Max Credits Duration (s):         {_configuration.BlackFrameMaxCreditsDuration:F0}");
+                    _debugLog.AppendLine($"  Min Scene Black-Frame Density:    {_configuration.BlackFrameMinimumDensity:F2}");
+                    _debugLog.AppendLine($"  Max Scene Merge Gap (s):          {_configuration.BlackFrameMaxSceneMergeGap:F0}");
+                    _debugLog.AppendLine($"  Scan All Frames:                  {_configuration.BlackFrameScanAllFrames}");
+                    _debugLog.AppendLine($"  Auto-Fallback to All Frames:      {_configuration.BlackFrameAutoFallbackToAllFrames}");
+                    _debugLog.AppendLine($"  FFmpeg Threads:                   {(_configuration.BlackFrameFfmpegThreads > 0 ? _configuration.BlackFrameFfmpegThreads.ToString() : "Auto")}");
                     _debugLog.AppendLine();
                 }
 

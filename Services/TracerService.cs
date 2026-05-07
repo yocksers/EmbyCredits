@@ -16,14 +16,11 @@ namespace EmbyCredits.Services
     /// credits detection run on them.  Thread-safe; persists state to a JSON file
     /// in the plugin data folder so entries survive restarts.
     /// </summary>
-    public class TracerService : IDisposable
+    public class TracerService : DebouncedPersistenceService
     {
         private readonly ILogger _logger;
         private readonly string _stateFilePath;
         private readonly string _detectedFilePath;
-        private readonly object _lock = new object();
-        private Timer? _saveTimer;
-        private const int SaveDebounceMs = 1000;
         private const int MaxDetectedEntries = 100;
 
         // episodeId (string) -> TracerEntry
@@ -189,13 +186,7 @@ namespace EmbyCredits.Services
             }
         }
 
-        private void ScheduleSave()
-        {
-            var newTimer = new Timer(_ => FlushSave(), null, SaveDebounceMs, Timeout.Infinite);
-            Interlocked.Exchange(ref _saveTimer, newTimer)?.Dispose();
-        }
-
-        private void FlushSave()
+        protected override void FlushSave()
         {
             lock (_lock)
             {
@@ -217,12 +208,6 @@ namespace EmbyCredits.Services
             }
         }
 
-        public void Dispose()
-        {
-            _saveTimer?.Dispose();
-            _saveTimer = null;
-            FlushSave();
-        }
     }
 
     public class TracerEntry

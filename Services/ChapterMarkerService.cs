@@ -1,3 +1,4 @@
+using EmbyCredits.Services.Utilities;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Persistence;
@@ -65,6 +66,16 @@ namespace EmbyCredits.Services
                 {
                     _logger.Error($"Cannot save credits marker for {episode.Name} - timestamp ({creditsStartSeconds:F1}s) exceeds video duration ({durationSeconds:F1}s)");
                     throw new ArgumentOutOfRangeException(nameof(creditsStartSeconds), $"Timestamp {creditsStartSeconds:F1}s exceeds video duration {durationSeconds:F1}s");
+                }
+
+                // Clamp to 1 second before the stored duration to prevent floating-point
+                // precision mismatches with the actual media file duration from causing
+                // Emby's ChapterImagesTask to reject the chapter as out-of-range.
+                var safeMax = durationSeconds - 1.0;
+                if (creditsStartSeconds > safeMax && safeMax > 0)
+                {
+                    _logger.Info($"Clamping credits marker for {episode.Name} from {creditsStartSeconds:F3}s to {safeMax:F3}s (within 1s of duration)");
+                    creditsStartSeconds = safeMax;
                 }
 
                 var chapters = _itemRepository.GetChapters(episode)?.ToList() ?? new List<ChapterInfo>();
@@ -241,11 +252,7 @@ namespace EmbyCredits.Services
             return false;
         }
 
-        private string FormatTime(double seconds)
-        {
-            var ts = TimeSpan.FromSeconds(seconds);
-            return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
-        }
+        private string FormatTime(double seconds) => ItemLookupHelper.FormatTime(seconds);
 
         public string GetChapterMarkerType(ChapterInfo chapter)
         {

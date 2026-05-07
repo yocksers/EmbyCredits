@@ -102,10 +102,13 @@ define(['loading', 'toast'], function (loading, toast) {
 
     function queueAllSeries(instance, view) {
         loading.show();
+        const skipExistingMarkers = view.querySelector('#chkManualSkipExistingMarkers').checked;
+        const ignoreFailureMarkers = view.querySelector('#chkIgnoreFailureMarkers').checked;
         ApiClient.ajax({
             type: 'POST',
             url: ApiClient.getUrl('CreditsDetector/TriggerDetection'),
-            contentType: 'application/json'
+            contentType: 'application/json',
+            data: JSON.stringify({ SkipExistingMarkers: skipExistingMarkers, IgnoreFailureMarkers: ignoreFailureMarkers })
         }).then(response => {
             loading.hide();
             toast(response.Message || 'All episodes queued for processing.');

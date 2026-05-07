@@ -427,6 +427,7 @@ define([], function () {
         setupBooleanSelect(card, '.rule-ocr-enable-scrolling-detection', rule, 'OcrEnableScrollingDetection');
         setupBooleanSelect(card, '.rule-ocr-enable-adaptive-frame-rate', rule, 'OcrEnableAdaptiveFrameRate');
         setupBooleanSelect(card, '.rule-ocr-enable-credit-structure-detection', rule, 'OcrEnableCreditStructureDetection');
+        setupBooleanSelect(card, '.rule-black-frame-refine-credits-boundary', rule, 'BlackFrameRefineCreditsBoundary');
         
         const keywordsInput = card.querySelector('.rule-ocr-keywords');
         keywordsInput.value = rule.OcrDetectionKeywords || '';

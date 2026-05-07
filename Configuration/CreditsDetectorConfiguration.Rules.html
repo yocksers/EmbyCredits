@@ -240,6 +240,7 @@
                         <option value="HashOnly">Enable Hash Detection</option>
                         <option value="OcrWithHashFallback">Enable OCR with Hash Fallback</option>
                         <option value="HashWithOcrFallback">Enable Hash with OCR Fallback</option>
+                        <option value="BlackFrameOnly">Enable Black Frame Detection Only</option>
                     </select>
                 </div>
                 
@@ -328,16 +329,6 @@
                         <option value="BlackFrame">Black Frame</option>
                         <option value="Ocr">OCR</option>
                     </select>
-                </div>
-                
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused">Black Frame Minimum Percentage</label>
-                    <input is="emby-input" type="number" class="rule-black-frame-percentage" placeholder="Default" />
-                </div>
-                
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused">Black Frame Threshold</label>
-                    <input is="emby-input" type="number" class="rule-black-frame-threshold" placeholder="Default" />
                 </div>
                 
                 <div class="selectContainer">
@@ -469,9 +460,31 @@
                     <div class="fieldDescription">Shift all detected timestamps by this amount. Positive moves forward, negative moves backward.</div>
                 </div>
 
+                <h4 style="margin-top: 1.5em; margin-bottom: 0.5em;">Black Frame Detection</h4>
+
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused">Black Frame Minimum Duration (seconds)</label>
+                    <label class="inputLabel inputLabelUnfocused">Minimum Black Pixel Coverage (%)</label>
+                    <input is="emby-input" type="number" class="rule-black-frame-percentage" placeholder="Default" />
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Black Pixel Threshold (0–255)</label>
+                    <input is="emby-input" type="number" class="rule-black-frame-threshold" placeholder="Default" />
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused">Minimum Black Sequence Duration (seconds)</label>
                     <input is="emby-input" type="number" step="0.1" class="rule-black-frame-min-duration" placeholder="Default" />
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel">Refine Credits Boundary</label>
+                    <select class="emby-select rule-black-frame-refine-credits-boundary">
+                        <option value="">Use Default</option>
+                        <option value="true">Enable</option>
+                        <option value="false">Disable</option>
+                    </select>
+                    <div class="fieldDescription">When enabled, probes between keyframes at full frame resolution to find the exact credits start frame. Disable for keyframe-only accuracy.</div>
                 </div>
 
                 <div class="inputContainer">

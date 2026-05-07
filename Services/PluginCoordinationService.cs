@@ -18,6 +18,7 @@ namespace EmbyCredits.Services
         private PropertyInfo? _introSkipperProcessingProperty = null;
         private const int CheckCacheSeconds = 30;
         private bool _disposed = false;
+        private readonly object _introSkipperLock = new object();
 
         public PluginCoordinationService(ILogger logger, PluginConfiguration configuration)
         {
@@ -70,36 +71,39 @@ namespace EmbyCredits.Services
         {
             try
             {
-                if (!_introSkipperInstalled && (DateTime.UtcNow - _lastIntroSkipperCheck).TotalSeconds > CheckCacheSeconds)
+                lock (_introSkipperLock)
                 {
-                    DiscoverIntroSkipper();
-                    _lastIntroSkipperCheck = DateTime.UtcNow;
-                }
-
-                if (!_introSkipperInstalled || _introSkipperWeakRef == null)
-                {
-                    return false;
-                }
-
-                var introSkipperInstance = _introSkipperWeakRef.Target;
-                if (introSkipperInstance == null)
-                {
-                    _introSkipperInstalled = false;
-                    _introSkipperWeakRef = null;
-                    _introSkipperProcessingProperty = null;
-                    return false;
-                }
-
-                if (_introSkipperProcessingProperty != null && _introSkipperProcessingProperty.CanRead)
-                {
-                    var value = _introSkipperProcessingProperty.GetValue(introSkipperInstance);
-                    if (value is bool isProcessing)
+                    if (!_introSkipperInstalled && (DateTime.UtcNow - _lastIntroSkipperCheck).TotalSeconds > CheckCacheSeconds)
                     {
-                        return isProcessing;
+                        DiscoverIntroSkipperLocked();
+                        _lastIntroSkipperCheck = DateTime.UtcNow;
                     }
-                }
 
-                return false;
+                    if (!_introSkipperInstalled || _introSkipperWeakRef == null)
+                    {
+                        return false;
+                    }
+
+                    var introSkipperInstance = _introSkipperWeakRef.Target;
+                    if (introSkipperInstance == null)
+                    {
+                        _introSkipperInstalled = false;
+                        _introSkipperWeakRef = null;
+                        _introSkipperProcessingProperty = null;
+                        return false;
+                    }
+
+                    if (_introSkipperProcessingProperty != null && _introSkipperProcessingProperty.CanRead)
+                    {
+                        var value = _introSkipperProcessingProperty.GetValue(introSkipperInstance);
+                        if (value is bool isProcessing)
+                        {
+                            return isProcessing;
+                        }
+                    }
+
+                    return false;
+                }
             }
             catch (Exception ex)
             {
@@ -109,6 +113,14 @@ namespace EmbyCredits.Services
         }
 
         private void DiscoverIntroSkipper()
+        {
+            lock (_introSkipperLock)
+            {
+                DiscoverIntroSkipperLocked();
+            }
+        }
+
+        private void DiscoverIntroSkipperLocked()
         {
             try
             {
@@ -197,7 +209,13 @@ namespace EmbyCredits.Services
                 return "Coordination disabled";
             }
 
-            if (_introSkipperInstalled)
+            bool installed;
+            lock (_introSkipperLock)
+            {
+                installed = _introSkipperInstalled;
+            }
+
+            if (installed)
             {
                 var isProcessing = IsIntroSkipperProcessing();
                 return isProcessing 
@@ -210,13 +228,16 @@ namespace EmbyCredits.Services
 
         public bool IsIntroSkipperInstalled()
         {
-            if ((DateTime.UtcNow - _lastIntroSkipperCheck).TotalSeconds > CheckCacheSeconds)
+            lock (_introSkipperLock)
             {
-                DiscoverIntroSkipper();
-                _lastIntroSkipperCheck = DateTime.UtcNow;
-            }
+                if ((DateTime.UtcNow - _lastIntroSkipperCheck).TotalSeconds > CheckCacheSeconds)
+                {
+                    DiscoverIntroSkipperLocked();
+                    _lastIntroSkipperCheck = DateTime.UtcNow;
+                }
 
-            return _introSkipperInstalled;
+                return _introSkipperInstalled;
+            }
         }
 
         public void Dispose()
@@ -232,8 +253,11 @@ namespace EmbyCredits.Services
 
             if (disposing)
             {
-                _introSkipperWeakRef = null;
-                _introSkipperProcessingProperty = null;
+                lock (_introSkipperLock)
+                {
+                    _introSkipperWeakRef = null;
+                    _introSkipperProcessingProperty = null;
+                }
             }
 
             _disposed = true;

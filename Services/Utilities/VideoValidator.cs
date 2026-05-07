@@ -121,8 +121,7 @@ namespace EmbyCredits.Services.Utilities
                         {
                             if (errors.Contains("Invalid data found", StringComparison.OrdinalIgnoreCase) ||
                                 errors.Contains("moov atom not found", StringComparison.OrdinalIgnoreCase) ||
-                                errors.Contains("could not find codec", StringComparison.OrdinalIgnoreCase) ||
-                                errors.Contains("error", StringComparison.OrdinalIgnoreCase))
+                                errors.Contains("could not find codec", StringComparison.OrdinalIgnoreCase))
                             {
                                 _logger?.Warn($"Video appears corrupted: {videoPath} - {errors.Trim()}");
                                 return (false, $"Video file appears corrupted: {errors.Trim()}");

@@ -9,11 +9,13 @@
                 <option value="HashOnly">Enable Hash Detection</option>
                 <option value="OcrWithHashFallback">Enable OCR with Hash Fallback</option>
                 <option value="HashWithOcrFallback">Enable Hash with OCR Fallback</option>
+                <option value="BlackFrameOnly">Enable Black Frame Detection Only</option>
             </select>
             <div class="fieldDescription">
                 <strong>OCR Detection:</strong> Uses OCR (Tesseract or PaddleOCR) to detect credits by reading text. More accurate but requires Docker container.<br>
                 <strong>Hash Detection:</strong> Uses audio fingerprinting and black frame/silence detection. Faster but less accurate.<br>
-                <strong>With Fallback:</strong> If primary method fails to detect credits, automatically tries the fallback method.
+                <strong>With Fallback:</strong> If primary method fails to detect credits, automatically tries the fallback method.<br>
+                <strong>Black Frame Detection Only:</strong> Uses only black frame analysis. No fallback. Works on a per-episode basis without requiring the full season.
             </div>
         </div>
 
@@ -254,14 +256,14 @@
             <span>Anime Detection</span>
         </h2>
         <div class="collapsible-content" style="display: none; margin-top: 1em;">
-            <p class="fieldDescription">Specialized detection for anime shows using black frame detection optimized for anime credit sequences. When enabled, anime shows are automatically detected and use black frame detection first before falling back to standard methods.</p>
+            <p class="fieldDescription">Specialized detection for anime shows. When enabled, anime series are automatically identified (by Tags or Genres containing "anime") and use the chosen detection method first before falling back to the configured Detection Mode.</p>
 
             <div class="checkboxContainer">
                 <label>
                     <input is="emby-checkbox" type="checkbox" id="chkEnableAnimeDetection" data-config-key="EnableAnimeDetection" />
                     <span>Enable Anime Detection</span>
                 </label>
-                <div class="fieldDescription"><strong>Recommended: Enabled (default).</strong> Automatically detects anime series (by checking Tags or Genres for "anime") and uses optimized detection methods. Anime shows will use black frame detection first, then fall back to your configured detection mode (Hash/OCR) if needed.</div>
+                <div class="fieldDescription"><strong>Recommended: Enabled (default).</strong> Automatically detects anime series and uses optimized detection methods.</div>
             </div>
 
             <div class="selectContainer">
@@ -270,25 +272,83 @@
                     <option value="BlackFrame">Black Frame Detection</option>
                     <option value="Ocr">OCR Detection</option>
                 </select>
-                <div class="fieldDescription"><strong>Default: Black Frame Detection.</strong> Choose which detection method to use for anime shows. Black Frame is optimized for anime credit sequences that commonly have black frames. OCR uses text recognition which may work better for some anime. If the selected method fails, it will fall back to your configured Detection Mode (Hash/OCR).</div>
+                <div class="fieldDescription"><strong>Default: Black Frame Detection.</strong> Choose which detection method to use for anime shows. Black Frame is optimized for anime credit sequences that commonly end with a hard cut to black. OCR uses text recognition which may work better for some anime. If the selected method fails, it falls back to the configured Detection Mode.</div>
             </div>
+        </div>
+    </div>
+
+    <div class="paper-card" style="padding: 0; margin-top: 1.5em;">
+        <h2 class="collapsible-header" data-detection-type="blackframe" style="font-size: 1em; margin: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
+            <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
+            <span>Black Frame Detection</span>
+        </h2>
+        <div class="collapsible-content" style="display: none; margin-top: 1em;">
+            <p class="fieldDescription">Settings for black frame detection. These apply whenever black frame analysis is used — as the anime detection method, as the <strong>Black Frame Only</strong> detection mode, or as a Chromaprint fallback.</p>
 
             <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameMinimumPercentage">Black Frame Minimum Percentage</label>
+                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameMinimumPercentage">Minimum Black Pixel Coverage (%)</label>
                 <input is="emby-input" type="number" id="txtBlackFrameMinimumPercentage" data-config-key="BlackFrameMinimumPercentage" step="1" min="0" max="100" value="85" />
-                <div class="fieldDescription"><strong>Default: 85%.</strong> Minimum percentage of pixels that must be black for a frame to be considered a black frame (0-100). Higher values require darker/more complete black frames.</div>
+                <div class="fieldDescription"><strong>Default: 85%.</strong> Minimum percentage of pixels that must be below the pixel threshold for a frame to count as black (0–100). Higher values require a more completely black frame.</div>
             </div>
 
             <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameThreshold">Black Frame Pixel Threshold</label>
+                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameThreshold">Black Pixel Threshold (0–255)</label>
                 <input is="emby-input" type="number" id="txtBlackFrameThreshold" data-config-key="BlackFrameThreshold" step="1" min="0" max="255" value="28" />
-                <div class="fieldDescription"><strong>Default: 28.</strong> Pixel brightness threshold (0-255) - pixels darker than this are considered black. Lower values require darker pixels. 0 = completely black, 255 = white.</div>
+                <div class="fieldDescription"><strong>Default: 28.</strong> Pixels with brightness at or below this value are counted as black. Lower values require darker pixels. 0 = only pure black, 255 = everything counts.</div>
             </div>
 
             <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameMinDuration">Black Frame Minimum Duration (seconds)</label>
+                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameMinDuration">Minimum Black Sequence Duration (seconds)</label>
                 <input is="emby-input" type="number" id="txtBlackFrameMinDuration" data-config-key="BlackFrameMinDuration" step="0.1" min="0.1" />
-                <div class="fieldDescription"><strong>Default: 0.5 seconds.</strong> Minimum duration a black frame sequence must last to be detected as a credits boundary. Increase if false positives occur on brief black frames (e.g. cuts); decrease if the credits transition is very short.</div>
+                <div class="fieldDescription"><strong>Default: 0.5 seconds.</strong> A black frame sequence must last at least this long to be considered a credits boundary. Increase to avoid false positives on brief cuts; decrease if the transition is very short.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameMinCreditsDuration">Minimum Credits Duration (seconds)</label>
+                <input is="emby-input" type="number" id="txtBlackFrameMinCreditsDuration" data-config-key="BlackFrameMinCreditsDuration" step="1" min="1" value="15" />
+                <div class="fieldDescription"><strong>Default: 15 seconds.</strong> The remaining video after a detected black frame transition must be at least this long for the result to be accepted. Lower this if short episodes are failing because the credits window falls just under the threshold.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameMaxCreditsDuration">Maximum Credits Duration (seconds)</label>
+                <input is="emby-input" type="number" id="txtBlackFrameMaxCreditsDuration" data-config-key="BlackFrameMaxCreditsDuration" step="1" min="1" value="450" />
+                <div class="fieldDescription"><strong>Default: 450 seconds.</strong> The remaining video after a detected transition must be no longer than this. Increase for movies or long-format content where credits run beyond 4 minutes.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameMinimumDensity">Minimum Scene Black-Frame Density (0.0–1.0)</label>
+                <input is="emby-input" type="number" id="txtBlackFrameMinimumDensity" data-config-key="BlackFrameMinimumDensity" step="0.05" min="0" max="1" value="0.50" />
+                <div class="fieldDescription"><strong>Default: 0.50.</strong> Fraction of frames within a detected scene that must be black for the scene to be accepted. Reduce this (e.g. 0.30) when detection fails because non-black frames are interspersed in the transition.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtBlackFrameMaxSceneMergeGap">Maximum Scene Merge Gap (seconds)</label>
+                <input is="emby-input" type="number" id="txtBlackFrameMaxSceneMergeGap" data-config-key="BlackFrameMaxSceneMergeGap" step="1" min="0" value="20" />
+                <div class="fieldDescription"><strong>Default: 20 seconds.</strong> Two adjacent black frame scenes separated by less than this gap will be merged into one. Increase if the credit transition is split across multiple brief black intervals.</div>
+            </div>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkBlackFrameAutoFallbackToAllFrames" data-config-key="BlackFrameAutoFallbackToAllFrames" />
+                    <span>Auto-retry with all frames if keyframe scan finds nothing</span>
+                </label>
+                <div class="fieldDescription"><strong>Default: Enabled.</strong> When the fast keyframe-only scan finds no credit transition, automatically retry by scanning every frame within the same analysis window. This catches transitions that fall between keyframes — the most common cause of missed detections. Only the fallback pass is slower; the initial fast scan always runs first.</div>
+            </div>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkBlackFrameScanAllFrames" data-config-key="BlackFrameScanAllFrames" />
+                    <span>Scan All Frames (disable keyframe-only mode)</span>
+                </label>
+                <div class="fieldDescription"><strong>Default: Disabled.</strong> By default only keyframes are scanned for speed. Enable this when detection consistently misses transitions — common with videos that have sparse or irregularly spaced keyframes. The Analysis Percent window is still respected, so only the last portion of the video is scanned. Increases CPU usage and processing time within that window.</div>
+            </div>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkBlackFrameRefineCreditsBoundary" data-config-key="BlackFrameRefineCreditsBoundary" />
+                    <span>Refine Credits Boundary</span>
+                </label>
+                <div class="fieldDescription"><strong>Default: Enabled.</strong> After a keyframe scan identifies a credit transition, probes the gap between keyframes at full frame resolution to find the exact frame where credits begin. Disable for faster analysis that is accurate only to the nearest keyframe.</div>
             </div>
         </div>
     </div>
@@ -318,7 +378,7 @@
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtChromaprintAnalysisPercent">Analysis Percent</label>
                 <input is="emby-input" type="number" id="txtChromaprintAnalysisPercent" data-config-key="ChromaprintAnalysisPercent" step="5" />
-                <div class="fieldDescription"><strong>Default: 25%.</strong> Analyze this percentage from the end of each episode. For example, 25% means analyze the last quarter of the video.</div>
+                <div class="fieldDescription"><strong>Default: 10%.</strong> Analyze this percentage from the end of each episode. For example, 10% means analyze the last tenth of the video. <strong>Warning:</strong> Setting this too high may cause detections to fail due to too many detection points being found.</div>
             </div>
 
             <h3 style="margin-top: 1.5em; margin-bottom: 1em;">Audio Fingerprinting</h3>
@@ -438,7 +498,7 @@
     </div>
 
     <div class="paper-card" style="padding: 0; margin-top: 1.5em;">
-        <h2 class="collapsible-header" data-detection-type="ocr" style="font-size: 1em; margin: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
+        <h2 class="collapsible-header" style="font-size: 1em; margin: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5em; background-color: #52B54B; color: white; padding: 0.6em 1em; border-radius: 16px;">
             <i class="md-icon collapse-icon" style="transition: transform 0.2s;">expand_more</i>
             <span>Performance & Resource Control</span>
         </h2>
@@ -839,9 +899,6 @@
     </div>
 
     <div style="margin-top: 2em; display: flex; gap: 1em;">
-        <button is="emby-button" type="submit" class="raised button-submit block" style="flex: 1;">
-            <span>Save</span>
-        </button>
         <button is="emby-button" type="button" class="raised block" id="btnResetToDefaults" style="flex: 1;">
             <i class="md-icon">restore</i>
             <span>Reset to Defaults</span>

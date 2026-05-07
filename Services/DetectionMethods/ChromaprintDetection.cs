@@ -26,31 +26,18 @@ namespace EmbyCredits.Services.DetectionMethods
                                           Configuration.DetectionMode == DetectionMode.HashWithOcrFallback ||
                                           Configuration.DetectionMode == DetectionMode.OcrWithHashFallback;
 
-        private static readonly ConcurrentDictionary<string, List<double>> _seriesCreditsTimestamps = new ConcurrentDictionary<string, List<double>>();
-        private static readonly ConcurrentDictionary<string, DateTime> _cacheLastAccess = new ConcurrentDictionary<string, DateTime>();
-        private const int MaxCacheEntries = 100;
-        private const int CacheExpirationHours = 24;
+        private static readonly DetectionTimestampCache _cache = new DetectionTimestampCache();
 
         public ChromaprintDetection(ILogger logger, PluginConfiguration configuration)
             : base(logger, configuration)
         {
         }
 
-        public static void ClearSeriesCache(string seriesId, int seasonNumber)
-        {
-            var cacheKey = $"{seriesId}_S{seasonNumber:D2}";
-            if (_seriesCreditsTimestamps.TryRemove(cacheKey, out var timestamps))
-            {
-                timestamps?.Clear();
-            }
-            _cacheLastAccess.TryRemove(cacheKey, out _);
-        }
+        public static void ClearSeriesCache(string seriesId, int seasonNumber) =>
+            _cache.ClearSeries(seriesId, seasonNumber);
 
-        public static void ClearAllCache()
-        {
-            _seriesCreditsTimestamps.Clear();
-            _cacheLastAccess.Clear();
-        }
+        public static void ClearAllCache() =>
+            _cache.ClearAll();
 
         public override Task<double> DetectCredits(string videoPath, double duration, CancellationToken cancellationToken = default)
         {
@@ -338,35 +325,7 @@ namespace EmbyCredits.Services.DetectionMethods
         
         private void CleanupCache()
         {
-            if (_seriesCreditsTimestamps.Count <= MaxCacheEntries)
-                return;
-
-            var expiredKeys = new List<string>();
-            var now = DateTime.UtcNow;
-            
-            foreach (var kvp in _cacheLastAccess)
-            {
-                if ((now - kvp.Value).TotalHours > CacheExpirationHours)
-                    expiredKeys.Add(kvp.Key);
-            }
-
-            foreach (var key in expiredKeys)
-            {
-                _seriesCreditsTimestamps.TryRemove(key, out _);
-                _cacheLastAccess.TryRemove(key, out _);
-            }
-
-            if (_seriesCreditsTimestamps.Count > MaxCacheEntries)
-            {
-                var entriesToRemove = _seriesCreditsTimestamps.Count - MaxCacheEntries;
-                var sortedByAge = _cacheLastAccess.OrderBy(kvp => kvp.Value).Take(entriesToRemove);
-
-                foreach (var kvp in sortedByAge)
-                {
-                    _seriesCreditsTimestamps.TryRemove(kvp.Key, out _);
-                    _cacheLastAccess.TryRemove(kvp.Key, out _);
-                }
-            }
+            _cache.EnsureCleanedIfNeeded();
         }
 
         private async Task<double> DetectBlackFrameTransition(string videoPath, double startTime, double duration, CancellationToken cancellationToken)

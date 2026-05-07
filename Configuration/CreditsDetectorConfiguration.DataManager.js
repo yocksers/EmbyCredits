@@ -150,7 +150,7 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtChromaprintEpisodeComparisonMinimumEpisodes').value = config.ChromaprintEpisodeComparisonMinimumEpisodes !== undefined ? config.ChromaprintEpisodeComparisonMinimumEpisodes : 4;
             view.querySelector('#txtChromaprintMinDuration').value = config.ChromaprintMinDuration || 30;
             view.querySelector('#txtChromaprintMaxDuration').value = config.ChromaprintMaxDuration || 300;
-            view.querySelector('#txtChromaprintAnalysisPercent').value = config.ChromaprintAnalysisPercent || 25;
+            view.querySelector('#txtChromaprintAnalysisPercent').value = config.ChromaprintAnalysisPercent || 10;
             view.querySelector('#txtChromaprintBlackFrameThreshold').value = config.ChromaprintBlackFrameThreshold || 0.05;
             view.querySelector('#txtChromaprintBlackFrameMinDuration').value = config.ChromaprintBlackFrameMinDuration || 0.5;
             view.querySelector('#chkChromaprintUseSilenceDetection').checked = config.ChromaprintUseSilenceDetection !== false;
@@ -177,6 +177,13 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtBlackFrameMinimumPercentage').value = config.BlackFrameMinimumPercentage !== undefined ? config.BlackFrameMinimumPercentage : 85;
             view.querySelector('#txtBlackFrameThreshold').value = config.BlackFrameThreshold !== undefined ? config.BlackFrameThreshold : 28;
             view.querySelector('#txtBlackFrameMinDuration').value = config.BlackFrameMinDuration !== undefined ? config.BlackFrameMinDuration : 0.5;
+            view.querySelector('#txtBlackFrameMinCreditsDuration').value = config.BlackFrameMinCreditsDuration !== undefined ? config.BlackFrameMinCreditsDuration : 15;
+            view.querySelector('#txtBlackFrameMaxCreditsDuration').value = config.BlackFrameMaxCreditsDuration !== undefined ? config.BlackFrameMaxCreditsDuration : 450;
+            view.querySelector('#txtBlackFrameMinimumDensity').value = config.BlackFrameMinimumDensity !== undefined ? config.BlackFrameMinimumDensity : 0.50;
+            view.querySelector('#txtBlackFrameMaxSceneMergeGap').value = config.BlackFrameMaxSceneMergeGap !== undefined ? config.BlackFrameMaxSceneMergeGap : 20;
+            view.querySelector('#chkBlackFrameAutoFallbackToAllFrames').checked = config.BlackFrameAutoFallbackToAllFrames !== false;
+            view.querySelector('#chkBlackFrameScanAllFrames').checked = config.BlackFrameScanAllFrames || false;
+            view.querySelector('#chkBlackFrameRefineCreditsBoundary').checked = config.BlackFrameRefineCreditsBoundary !== false;
             view.querySelector('#txtBlackFrameParallelSessions').value = config.BlackFrameParallelSessions !== undefined ? config.BlackFrameParallelSessions : 1;
             view.querySelector('#txtBlackFrameFfmpegThreads').value = config.BlackFrameFfmpegThreads || 0;
 
@@ -395,7 +402,7 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.ChromaprintEpisodeComparisonMinimumEpisodes = Number.parseInt(view.querySelector('#txtChromaprintEpisodeComparisonMinimumEpisodes').value, 10) || 4;
         instance.config.ChromaprintMinDuration = Number.parseInt(view.querySelector('#txtChromaprintMinDuration').value, 10) || 30;
         instance.config.ChromaprintMaxDuration = Number.parseInt(view.querySelector('#txtChromaprintMaxDuration').value, 10) || 300;
-        instance.config.ChromaprintAnalysisPercent = Number.parseFloat(view.querySelector('#txtChromaprintAnalysisPercent').value) || 25;
+        instance.config.ChromaprintAnalysisPercent = Number.parseFloat(view.querySelector('#txtChromaprintAnalysisPercent').value) || 10;
         instance.config.ChromaprintBlackFrameThreshold = Number.parseFloat(view.querySelector('#txtChromaprintBlackFrameThreshold').value) || 0.05;
         instance.config.ChromaprintBlackFrameMinDuration = Number.parseFloat(view.querySelector('#txtChromaprintBlackFrameMinDuration').value) || 0.5;
         instance.config.ChromaprintUseSilenceDetection = view.querySelector('#chkChromaprintUseSilenceDetection').checked;
@@ -416,6 +423,13 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.BlackFrameMinimumPercentage = Number.parseInt(view.querySelector('#txtBlackFrameMinimumPercentage').value, 10) || 85;
         instance.config.BlackFrameThreshold = Number.parseInt(view.querySelector('#txtBlackFrameThreshold').value, 10) || 28;
         instance.config.BlackFrameMinDuration = Number.parseFloat(view.querySelector('#txtBlackFrameMinDuration').value) || 0.5;
+        instance.config.BlackFrameMinCreditsDuration = Number.parseFloat(view.querySelector('#txtBlackFrameMinCreditsDuration').value) || 15;
+        instance.config.BlackFrameMaxCreditsDuration = Number.parseFloat(view.querySelector('#txtBlackFrameMaxCreditsDuration').value) || 450;
+        instance.config.BlackFrameMinimumDensity = Number.parseFloat(view.querySelector('#txtBlackFrameMinimumDensity').value) || 0.50;
+        instance.config.BlackFrameMaxSceneMergeGap = Number.parseFloat(view.querySelector('#txtBlackFrameMaxSceneMergeGap').value) || 20;
+        instance.config.BlackFrameAutoFallbackToAllFrames = view.querySelector('#chkBlackFrameAutoFallbackToAllFrames').checked;
+        instance.config.BlackFrameScanAllFrames = view.querySelector('#chkBlackFrameScanAllFrames').checked;
+        instance.config.BlackFrameRefineCreditsBoundary = view.querySelector('#chkBlackFrameRefineCreditsBoundary').checked;
         instance.config.BlackFrameParallelSessions = Math.max(1, Number.parseInt(view.querySelector('#txtBlackFrameParallelSessions').value, 10) || 1);
         instance.config.BlackFrameFfmpegThreads = Number.parseInt(view.querySelector('#txtBlackFrameFfmpegThreads').value, 10) || 0;
         instance.config.EnableVideoValidation = view.querySelector('#chkEnableVideoValidation').checked;
@@ -444,9 +458,8 @@ define(['loading', 'toast'], function (loading, toast) {
         require(['configurationpage?name=CreditsDetectorConfigurationRulesManager'], (rulesManager) => {
             rulesManager.saveRules(instance.config);
             
-            ApiClient.updatePluginConfiguration(pluginId, instance.config).then(result => {
+            ApiClient.updatePluginConfiguration(pluginId, instance.config).then(() => {
                 loading.hide();
-                Dashboard.processPluginConfigurationUpdateResult(result);
             }).catch(error => {
                 loading.hide();
                 console.error('Error saving configuration:', error);
@@ -740,6 +753,13 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#txtBlackFrameMinimumPercentage', 85);
         setIfExists('#txtBlackFrameThreshold', 28);
         setIfExists('#txtBlackFrameMinDuration', 0.5);
+        setIfExists('#txtBlackFrameMinCreditsDuration', 15);
+        setIfExists('#txtBlackFrameMaxCreditsDuration', 450);
+        setIfExists('#txtBlackFrameMinimumDensity', 0.50);
+        setIfExists('#txtBlackFrameMaxSceneMergeGap', 20);
+        setIfExists('#chkBlackFrameAutoFallbackToAllFrames', true, true);
+        setIfExists('#chkBlackFrameScanAllFrames', false, true);
+        setIfExists('#chkBlackFrameRefineCreditsBoundary', true, true);
 
         setIfExists('#chkEnableVideoValidation', false, true);
         setIfExists('#numVideoValidationTimeoutSeconds', 10);
@@ -839,6 +859,13 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#txtBlackFrameMinimumPercentage', 85);
         setIfExists('#txtBlackFrameThreshold', 28);
         setIfExists('#txtBlackFrameMinDuration', 0.5);
+        setIfExists('#txtBlackFrameMinCreditsDuration', 15);
+        setIfExists('#txtBlackFrameMaxCreditsDuration', 450);
+        setIfExists('#txtBlackFrameMinimumDensity', 0.50);
+        setIfExists('#txtBlackFrameMaxSceneMergeGap', 20);
+        setIfExists('#chkBlackFrameAutoFallbackToAllFrames', true, true);
+        setIfExists('#chkBlackFrameScanAllFrames', false, true);
+        setIfExists('#chkBlackFrameRefineCreditsBoundary', true, true);
 
         setIfExists('#chkEnableVideoValidation', false, true);
         setIfExists('#numVideoValidationTimeoutSeconds', 10);
@@ -989,7 +1016,7 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#txtChromaprintEpisodeComparisonMinimumEpisodes', 4);
         setIfExists('#txtChromaprintMinDuration', 10);
         setIfExists('#txtChromaprintMaxDuration', 300);
-        setIfExists('#txtChromaprintAnalysisPercent', 25);
+        setIfExists('#txtChromaprintAnalysisPercent', 10);
         setIfExists('#txtChromaprintBlackFrameThreshold', 0.05);
         setIfExists('#txtChromaprintBlackFrameMinDuration', 0.5);
         setIfExists('#chkChromaprintUseSilenceDetection', true, true);
@@ -1006,6 +1033,13 @@ define(['loading', 'toast'], function (loading, toast) {
 
         setIfExists('#txtBlackFrameParallelSessions', 1);
         setIfExists('#txtBlackFrameFfmpegThreads', 2);
+        setIfExists('#txtBlackFrameMinCreditsDuration', 15);
+        setIfExists('#txtBlackFrameMaxCreditsDuration', 450);
+        setIfExists('#txtBlackFrameMinimumDensity', 0.50);
+        setIfExists('#txtBlackFrameMaxSceneMergeGap', 20);
+        setIfExists('#chkBlackFrameAutoFallbackToAllFrames', true, true);
+        setIfExists('#chkBlackFrameScanAllFrames', false, true);
+        setIfExists('#chkBlackFrameRefineCreditsBoundary', true, true);
 
         setIfExists('#chkEnableVideoValidation', false, true);
         setIfExists('#numVideoValidationTimeoutSeconds', 10);
@@ -1025,7 +1059,6 @@ define(['loading', 'toast'], function (loading, toast) {
 
             ApiClient.updatePluginConfiguration('b1a65a73-a620-432a-9f5b-285038031c26', config).then(() => {
                 loading.hide();
-                toast('Detection settings saved successfully');
             }).catch(error => {
                 loading.hide();
                 console.error('Error saving settings:', error);

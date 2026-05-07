@@ -110,5 +110,11 @@ namespace EmbyCredits.Services.Utilities
 
             return seriesByGuid;
         }
+
+        public static string FormatTime(double seconds)
+        {
+            var ts = TimeSpan.FromSeconds(seconds);
+            return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
+        }
     }
 }

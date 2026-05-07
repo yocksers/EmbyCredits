@@ -105,6 +105,16 @@ namespace EmbyCredits.Services
                     if (!validationResult.isValid)
                     {
                         _debugLogger.LogWarn($"Video validation failed for {episode.Name}: {validationResult.errorMessage}");
+                        if (_configuration.SkipPreviouslyFailedEpisodes)
+                        {
+                            if (episode.ProviderIds == null)
+                            {
+                                episode.ProviderIds = new MediaBrowser.Model.Entities.ProviderIdDictionary();
+                            }
+                            episode.ProviderIds["EmbyCredits.Fail"] = "true";
+                            _debugLogger.LogInfo($"Marked episode {episode.Name} as failed for future skipping");
+                            _libraryManager?.UpdateItem(episode, episode.Parent, ItemUpdateType.MetadataEdit, null!);
+                        }
                         return (false, 0, $"Video validation failed: {validationResult.errorMessage}", 0, string.Empty, string.Empty);
                     }
                 }
@@ -331,6 +341,16 @@ namespace EmbyCredits.Services
                         if (!validationResult.isValid)
                         {
                             _debugLogger.LogWarn($"Video validation failed for {episode.Name}: {validationResult.errorMessage}");
+                            if (_configuration.SkipPreviouslyFailedEpisodes)
+                            {
+                                if (episode.ProviderIds == null)
+                                {
+                                    episode.ProviderIds = new MediaBrowser.Model.Entities.ProviderIdDictionary();
+                                }
+                                episode.ProviderIds["EmbyCredits.Fail"] = "true";
+                                _debugLogger.LogWarn($"Marked episode {episode.Name} as failed for future skipping");
+                                _libraryManager?.UpdateItem(episode, episode.Parent, ItemUpdateType.MetadataEdit, null!);
+                            }
                             return (false, 0, $"Video validation failed: {validationResult.errorMessage}", 0, string.Empty, string.Empty);
                         }
                         
@@ -505,10 +525,6 @@ namespace EmbyCredits.Services
             }
         }
 
-        private string FormatTime(double seconds)
-        {
-            var ts = TimeSpan.FromSeconds(seconds);
-            return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
-        }
+        private string FormatTime(double seconds) => Utilities.ItemLookupHelper.FormatTime(seconds);
     }
 }

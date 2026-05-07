@@ -257,6 +257,24 @@ namespace EmbyCredits.Services
             if (rule.BlackFrameThreshold.HasValue)
                 effectiveConfig.BlackFrameThreshold = rule.BlackFrameThreshold.Value;
 
+            if (rule.BlackFrameMinimumDensity.HasValue)
+                effectiveConfig.BlackFrameMinimumDensity = rule.BlackFrameMinimumDensity.Value;
+
+            if (rule.BlackFrameMaxCreditsDuration.HasValue)
+                effectiveConfig.BlackFrameMaxCreditsDuration = rule.BlackFrameMaxCreditsDuration.Value;
+
+            if (rule.BlackFrameMaxSceneMergeGap.HasValue)
+                effectiveConfig.BlackFrameMaxSceneMergeGap = rule.BlackFrameMaxSceneMergeGap.Value;
+
+            if (rule.BlackFrameScanAllFrames.HasValue)
+                effectiveConfig.BlackFrameScanAllFrames = rule.BlackFrameScanAllFrames.Value;
+
+            if (rule.BlackFrameAutoFallbackToAllFrames.HasValue)
+                effectiveConfig.BlackFrameAutoFallbackToAllFrames = rule.BlackFrameAutoFallbackToAllFrames.Value;
+
+            if (rule.BlackFrameRefineCreditsBoundary.HasValue)
+                effectiveConfig.BlackFrameRefineCreditsBoundary = rule.BlackFrameRefineCreditsBoundary.Value;
+
             if (rule.OcrEnableCharacterDensityDetection.HasValue)
                 effectiveConfig.OcrEnableCharacterDensityDetection = rule.OcrEnableCharacterDensityDetection.Value;
 
