@@ -2280,8 +2280,8 @@ namespace EmbyCredits.Services
                     }
                 }
 
-                _logger?.Warn($"Rejected OCR endpoint test for public address: {endpoint}");
-                return false;
+                _logger?.Warn($"OCR endpoint is a public/non-local address: {endpoint}. Ensure this is intentional.");
+                return true;
             }
             catch (Exception ex)
             {
