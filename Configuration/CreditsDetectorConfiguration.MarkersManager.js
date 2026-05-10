@@ -13,18 +13,35 @@ define(['loading', 'toast'], function (loading, toast) {
         return 0;
     }
     
-    function playVideoAtTimestamp(episodeId, timestampSeconds) {
-        require(['playbackManager'], function(playbackManager) {
-            ApiClient.getItem(ApiClient.getCurrentUserId(), episodeId).then(function(item) {
-                playbackManager.play({
-                    items: [item],
-                    startPositionTicks: timestampSeconds * 10000000
-                });
-            }).catch(function(error) {
-                console.error('Error starting playback:', error);
-                require(['toast'], function(toast) {
-                    toast({ type: 'error', text: 'Failed to start playback' });
-                });
+    function saveMarkerSeconds(instance, view, episodeId, seconds, successCallback) {
+        require(['loading', 'toast'], function(loading, toast) {
+            loading.show();
+            fetch(ApiClient.getUrl('CreditsDetector/UpdateCreditsMarker'), {
+                method: 'POST',
+                headers: {
+                    'X-Emby-Token': ApiClient.accessToken(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    EpisodeId: episodeId,
+                    CreditsStartSeconds: seconds,
+                    IsRelativeFromEnd: false
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(result) {
+                loading.hide();
+                if (result.Success) {
+                    toast({ type: 'success', text: result.Message });
+                    if (successCallback) successCallback();
+                    else displayMarkers(instance, view);
+                } else {
+                    toast({ type: 'error', text: result.Message || 'Failed to update marker' });
+                }
+            })
+            .catch(function(error) {
+                loading.hide();
+                toast({ type: 'error', text: 'Failed to update marker: ' + error.message });
             });
         });
     }
@@ -152,7 +169,14 @@ define(['loading', 'toast'], function (loading, toast) {
                         const episodeId = this.getAttribute('data-episode-id');
                         const timestamp = this.getAttribute('data-timestamp');
                         const timestampSeconds = parseTimestamp(timestamp);
-                        playVideoAtTimestamp(episodeId, timestampSeconds);
+                        require(['configurationpage?name=CreditsDetectorConfigurationVideoPlayer'], function(videoPlayer) {
+                            videoPlayer.openVideoDialog(episodeId, timestampSeconds, {
+                                title: 'Preview / Edit',
+                                onTimestampSelected: function(chosenSeconds) {
+                                    saveMarkerSeconds(instance, view, episodeId, chosenSeconds, null);
+                                }
+                            });
+                        });
                     });
                 });
                 
@@ -734,7 +758,16 @@ define(['loading', 'toast'], function (loading, toast) {
                 const episodeId = this.getAttribute('data-episode-id');
                 const timestamp = this.getAttribute('data-timestamp');
                 const timestampSeconds = parseTimestamp(timestamp);
-                playVideoAtTimestamp(episodeId, timestampSeconds);
+                require(['configurationpage?name=CreditsDetectorConfigurationVideoPlayer'], function(videoPlayer) {
+                    videoPlayer.openVideoDialog(episodeId, timestampSeconds, {
+                        title: 'Preview / Edit',
+                        onTimestampSelected: function(chosenSeconds) {
+                            saveMarkerSeconds(instance, view, episodeId, chosenSeconds, function() {
+                                refreshValidationModal(instance, view, modal, content, data.SeriesId, data.SeasonNumber);
+                            });
+                        }
+                    });
+                });
             });
         });
         

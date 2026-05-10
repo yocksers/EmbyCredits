@@ -156,7 +156,12 @@ namespace EmbyCredits.Services
 
                 if (creditsStart > 0)
                 {
-                    double finalTimestamp = creditsStart + _configuration.TimestampOffsetSeconds;
+                    var containerStartTime = await GetVideoContainerStartTime(normalizedPath);
+                    if (containerStartTime > 0)
+                    {
+                        _debugLogger.LogInfo($"Applying container start_time correction of {containerStartTime:F3}s to {episode.Name}");
+                    }
+                    double finalTimestamp = creditsStart + containerStartTime + _configuration.TimestampOffsetSeconds;
                     
                     if (finalTimestamp < 0)
                     {
@@ -187,7 +192,7 @@ namespace EmbyCredits.Services
                     }
                     else
                     {
-                        _debugLogger.LogInfo($"✓ [{(isDryRun ? "DRY RUN" : "SAVED")}] Credits detected at {FormatTime(creditsStart)} for {episode.Name} (confidence: {confidence:F2})");
+                        _debugLogger.LogInfo($"✓ [{(isDryRun ? "DRY RUN" : "SAVED")}] Credits detected at {FormatTime(creditsStart)}, saved at {FormatTime(finalTimestamp)} for {episode.Name} (confidence: {confidence:F2})");
                     }
 
                     return (true, creditsStart, string.Empty, confidence, methodName, detectionReason);
@@ -471,6 +476,58 @@ namespace EmbyCredits.Services
         public List<DetectionMethods.IDetectionMethod> GetDetectionMethods()
         {
             return _detectionCoordinator.GetAllDetectionMethods();
+        }
+
+        private async Task<double> GetVideoContainerStartTime(string filePath)
+        {
+            try
+            {
+                var normalizedFilePath = Utilities.FFmpegHelper.NormalizeFilePath(filePath);
+
+                var ffprobeStartInfo = new ProcessStartInfo
+                {
+                    FileName = Utilities.FFmpegHelper.GetFfprobePath(),
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                ffprobeStartInfo.ArgumentList.Add("-v");
+                ffprobeStartInfo.ArgumentList.Add("error");
+                ffprobeStartInfo.ArgumentList.Add("-show_entries");
+                ffprobeStartInfo.ArgumentList.Add("format=start_time");
+                ffprobeStartInfo.ArgumentList.Add("-of");
+                ffprobeStartInfo.ArgumentList.Add("default=noprint_wrappers=1:nokey=1");
+                ffprobeStartInfo.ArgumentList.Add(normalizedFilePath);
+
+                using (var process = new Process { StartInfo = ffprobeStartInfo })
+                {
+                    process.Start();
+                    CpuThrottler.SetProcessPriority(process, _configuration);
+
+                    var stderrTask = process.StandardError.ReadToEndAsync();
+                    var output = await process.StandardOutput.ReadToEndAsync();
+                    await process.WaitForExitAsync();
+                    await stderrTask.ConfigureAwait(false);
+
+                    var trimmed = output.Trim();
+                    if (trimmed == "N/A" || string.IsNullOrEmpty(trimmed))
+                        return 0;
+
+                    if (double.TryParse(trimmed, System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out var startTime))
+                    {
+                        return startTime > 0 ? startTime : 0;
+                    }
+
+                    return 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                _debugLogger.LogError($"Error getting container start_time: {ex.Message}", ex);
+                return 0;
+            }
         }
 
         private async Task<double> GetVideoDuration(string filePath)

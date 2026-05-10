@@ -74,6 +74,16 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 });
             }
 
+            const txtVideoPrerollSeconds = view.querySelector('#txtVideoPrerollSeconds');
+            if (txtVideoPrerollSeconds) {
+                txtVideoPrerollSeconds.value = parseInt(localStorage.getItem('creditsDetector_prerollSeconds') || '30', 10);
+                txtVideoPrerollSeconds.addEventListener('change', function () {
+                    var val = Math.max(5, parseInt(this.value, 10) || 30);
+                    this.value = val;
+                    localStorage.setItem('creditsDetector_prerollSeconds', val);
+                });
+            }
+
             const btnSaveDetectionSettings = view.querySelector('#btnSaveDetectionSettings');
             if (btnSaveDetectionSettings) {
                 btnSaveDetectionSettings.addEventListener('click', () => {

@@ -245,6 +245,11 @@ namespace EmbyCredits
                 },
                 new PluginPageInfo
                 {
+                    Name = "CreditsDetectorConfigurationVideoPlayer",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.VideoPlayer.js"
+                },
+                new PluginPageInfo
+                {
                     Name = "CreditsDetectorConfigurationBackupManager",
                     EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.BackupManager.js"
                 },

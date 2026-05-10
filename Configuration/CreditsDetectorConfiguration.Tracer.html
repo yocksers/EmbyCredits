@@ -130,6 +130,42 @@
             font-weight: 600;
             opacity: 0.8;
         }
+
+        .tracer-failed-item {
+            background: rgba(229,57,53,0.05);
+            border-color: rgba(229,57,53,0.18);
+        }
+
+        .tracer-failed-icon {
+            color: #ef5350;
+            font-size: 1.1em;
+            flex-shrink: 0;
+            opacity: 0.8;
+        }
+
+        .tracer-failed-reason {
+            font-size: 0.76em;
+            opacity: 0.55;
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .tracer-failed-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 1.8em;
+            margin-bottom: 0.6em;
+        }
+
+        .tracer-failed-header h3 {
+            margin: 0;
+            font-size: 0.95em;
+            font-weight: 600;
+            opacity: 0.8;
+        }
     </style>
 
     <div style="display:flex;align-items:center;gap:0.75em;margin-bottom:1em;flex-wrap:wrap;">
@@ -174,5 +210,16 @@
         </div>
         <div id="tracerDetectedCount" class="tracer-meta" style="margin-bottom:0.5em;"></div>
         <div id="tracerDetectedList" class="tracer-list"></div>
+    </div>
+
+    <div id="tracerFailedSection" style="display:none;">
+        <div class="tracer-failed-header">
+            <h3><i class="md-icon" style="font-size:1em;vertical-align:middle;margin-right:0.3em;color:#ef5350;">error</i>Failed Detection</h3>
+            <button is="emby-button" type="button" id="btnTracerClearFailed" class="raised" style="padding:0.25em 0.8em;font-size:0.82em;opacity:0.7;">
+                <i class="md-icon" style="font-size:1em;margin-right:0.3em;vertical-align:middle;">clear_all</i>Clear History
+            </button>
+        </div>
+        <div id="tracerFailedCount" class="tracer-meta" style="margin-bottom:0.5em;"></div>
+        <div id="tracerFailedList" class="tracer-list"></div>
     </div>
 </div>

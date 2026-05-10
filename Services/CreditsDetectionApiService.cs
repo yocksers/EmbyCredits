@@ -2332,7 +2332,19 @@ namespace EmbyCredits.Services
                     DetectedUtc = e.DetectedUtc?.ToString("o")
                 }).ToList();
 
-                return new { Success = true, Count = entries.Count, Episodes = entries, Detected = detected };
+                var failed = tracer.GetAllFailed().Select(e => new
+                {
+                    e.EpisodeId,
+                    e.SeriesName,
+                    e.SeasonNumber,
+                    e.EpisodeNumber,
+                    e.EpisodeName,
+                    AddedUtc = e.AddedUtc.ToString("o"),
+                    FailedUtc = e.FailedUtc?.ToString("o"),
+                    e.FailureReason
+                }).ToList();
+
+                return new { Success = true, Count = entries.Count, Episodes = entries, Detected = detected, Failed = failed };
             }
             catch (Exception ex)
             {
@@ -2382,6 +2394,20 @@ namespace EmbyCredits.Services
             catch (Exception ex)
             {
                 _logger?.ErrorException("Error clearing detected tracer list", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Post(ClearFailedTracerListRequest request)
+        {
+            try
+            {
+                Plugin.TracerService?.ClearFailed();
+                return new { Success = true };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error clearing failed tracer list", ex);
                 return new { Success = false, Message = ex.Message };
             }
         }

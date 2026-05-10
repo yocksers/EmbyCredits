@@ -45,5 +45,6 @@ namespace EmbyCredits.Api
         public const string DismissTracerEpisode = "/CreditsDetector/DismissTracerEpisode";
         public const string ClearTracerList = "/CreditsDetector/ClearTracerList";
         public const string ClearDetectedTracerList = "/CreditsDetector/ClearDetectedTracerList";
+        public const string ClearFailedTracerList = "/CreditsDetector/ClearFailedTracerList";
     }
 }

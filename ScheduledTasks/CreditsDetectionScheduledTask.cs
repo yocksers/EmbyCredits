@@ -146,12 +146,22 @@ namespace EmbyCredits.ScheduledTasks
                     librariesToProcess = new List<Folder>();
                     foreach (var libraryId in libraryIds)
                     {
-                        if (!Guid.TryParse(libraryId, out var libraryGuid))
+                        Folder? library = null;
+
+                        if (Guid.TryParse(libraryId, out var libraryGuid))
                         {
-                            _logger.Warn($"Invalid library ID (not a valid Guid): {libraryId}");
+                            library = _libraryManager.GetItemById(libraryGuid) as Folder;
+                        }
+                        else if (long.TryParse(libraryId, out var libraryInternalId))
+                        {
+                            library = _libraryManager.GetItemById(libraryInternalId) as Folder;
+                        }
+                        else
+                        {
+                            _logger.Warn($"Invalid library ID format: {libraryId}");
                             continue;
                         }
-                        var library = _libraryManager.GetItemById(libraryGuid) as Folder;
+
                         if (library != null)
                             librariesToProcess.Add(library);
                         else
@@ -240,6 +250,12 @@ namespace EmbyCredits.ScheduledTasks
             Plugin.Progress.IsRunning = true;
             Plugin.Progress.StartTime = DateTime.Now;
 
+            // Reset any stale cancellation flag from a previous run and wire up Emby's
+            // cancellation token (runtime limit / dashboard X button) so that it also
+            // kills running ffmpeg processes and stops the DetectionCoordinator.
+            CreditsDetectionService.ResetForScheduledTask();
+            cancellationToken.Register(() => CreditsDetectionService.CancelProcessing());
+
             var processedCount = 0;
             var failedEpisodeNames = new List<string>();
             var successfulSeriesNames = new HashSet<string>();
@@ -254,7 +270,7 @@ namespace EmbyCredits.ScheduledTasks
 
             foreach (var seasonGroup in episodesBySeason)
             {
-                if (cancellationToken.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested || CreditsDetectionService.IsCancellationRequested)
                 {
                     _logger.Info("Cancellation requested, stopping credits detection");
                     break;
@@ -288,12 +304,14 @@ namespace EmbyCredits.ScheduledTasks
                     }
                 }
 
-                await Task.Delay(1000, cancellationToken);
+                try { await Task.Delay(1000, cancellationToken); } catch (OperationCanceledException) { }
             }
 
             Plugin.Progress.IsRunning = false;
             Plugin.Progress.EndTime = DateTime.Now;
-            Plugin.Progress.CurrentItem = "Complete";
+            Plugin.Progress.CurrentItem = (cancellationToken.IsCancellationRequested || CreditsDetectionService.IsCancellationRequested)
+                ? "Cancelled"
+                : "Complete";
             
             EmbyCredits.Services.DetectionMethods.OcrDetection.ClearAllCache();
             EmbyCredits.Services.DetectionMethods.ChromaprintDetection.ClearAllCache();

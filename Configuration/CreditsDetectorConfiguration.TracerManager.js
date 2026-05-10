@@ -47,6 +47,7 @@ define(['loading', 'toast'], function (loading, toast) {
         var btnRunAll     = q('btnTracerRunAll');
         var btnClear      = q('btnTracerClear');
         var detectedSection = q('tracerDetectedSection');
+        var failedSection = q('tracerFailedSection');
 
         disabledNotice.style.display = enabled ? 'none' : 'block';
         if (btnRunAll) btnRunAll.disabled = !enabled;
@@ -56,6 +57,7 @@ define(['loading', 'toast'], function (loading, toast) {
             listEl.innerHTML = '<div id="tracerEmptyMsg" style="text-align:center;padding:2.5em 1em;opacity:0.38;font-size:0.9em;">Tracer is disabled.</div>';
             countLine.style.display = 'none';
             if (detectedSection) detectedSection.style.display = 'none';
+            if (failedSection) failedSection.style.display = 'none';
             return;
         }
 
@@ -63,6 +65,7 @@ define(['loading', 'toast'], function (loading, toast) {
             .then(function (result) {
                 var episodes = result.Episodes || [];
                 var detected = result.Detected || [];
+                var failed = result.Failed || [];
 
                 if (episodes.length === 0) {
                     listEl.innerHTML = '<div id="tracerEmptyMsg" style="text-align:center;padding:2.5em 1em;opacity:0.38;font-size:0.9em;">No pending episodes — all caught up!</div>';
@@ -129,6 +132,48 @@ define(['loading', 'toast'], function (loading, toast) {
                                     '</div>' +
                                     '<span class="tracer-item-added" title="Detected at">' + formatDate(ep.DetectedUtc) + '</span>';
                                 detectedList.appendChild(item);
+                            });
+                        }
+                    }
+                }
+
+                // Render failed history section
+                if (failedSection) {
+                    if (failed.length === 0) {
+                        failedSection.style.display = 'none';
+                    } else {
+                        failedSection.style.display = 'block';
+                        var failedList = q('tracerFailedList');
+                        var failedCount = q('tracerFailedCount');
+                        if (failedCount) {
+                            failedCount.textContent = failed.length + ' episode' + (failed.length === 1 ? '' : 's') + ' failed detection';
+                        }
+                        if (failedList) {
+                            failedList.innerHTML = '';
+                            failed.forEach(function (ep) {
+                                var seLabel = 'S' + String(ep.SeasonNumber).padStart(2, '0') + 'E' + String(ep.EpisodeNumber).padStart(2, '0');
+                                var item = document.createElement('div');
+                                item.className = 'tracer-item tracer-failed-item';
+                                item.dataset.episodeId = ep.EpisodeId;
+                                item.innerHTML =
+                                    '<i class="md-icon tracer-failed-icon">error</i>' +
+                                    '<div class="tracer-item-label">' +
+                                        '<span class="tracer-item-series">' + escapeHtml(ep.SeriesName) + '</span>' +
+                                        '<span class="tracer-item-ep">' + seLabel + (ep.EpisodeName ? ' \u2014 ' + escapeHtml(ep.EpisodeName) : '') + '</span>' +
+                                        (ep.FailureReason ? '<span class="tracer-failed-reason">' + escapeHtml(ep.FailureReason) + '</span>' : '') +
+                                    '</div>' +
+                                    '<span class="tracer-item-added" title="Failed at">' + formatDate(ep.FailedUtc) + '</span>' +
+                                    '<div class="tracer-item-actions">' +
+                                        '<button is="emby-button" type="button" class="raised button-submit tracer-run-btn" title="Retry detection">' +
+                                            '<i class="md-icon" style="font-size:1em;vertical-align:middle;">replay</i>' +
+                                        '</button>' +
+                                    '</div>';
+
+                                item.querySelector('.tracer-run-btn').addEventListener('click', function () {
+                                    retryFailed(ep.EpisodeId, item);
+                                });
+
+                                failedList.appendChild(item);
                             });
                         }
                     }
@@ -261,6 +306,47 @@ define(['loading', 'toast'], function (loading, toast) {
         .catch(function () { toast({ type: 'error', text: 'Failed to clear detected history' }); });
     }
 
+    function clearFailedHistory() {
+        if (!confirm('Clear the failed detection history list?')) return;
+        fetch(ApiClient.getUrl('CreditsDetector/ClearFailedTracerList'), {
+            method: 'POST',
+            headers: { 'X-Emby-Token': ApiClient.accessToken(), 'Content-Type': 'application/json' },
+            body: '{}'
+        })
+        .then(function () { toast({ type: 'success', text: 'Failed history cleared' }); refresh(); })
+        .catch(function () { toast({ type: 'error', text: 'Failed to clear failed history' }); });
+    }
+
+    function retryFailed(episodeId, itemEl) {
+        var btn = itemEl.querySelector('.tracer-run-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="md-icon" style="font-size:1em;vertical-align:middle;">hourglass_empty</i>'; }
+
+        fetch(ApiClient.getUrl('CreditsDetector/ProcessEpisode'), {
+            method: 'POST',
+            headers: {
+                'X-Emby-Token': ApiClient.accessToken(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ItemId: episodeId, SkipExistingMarkers: false })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (result) {
+            if (result.Success) {
+                toast({ type: 'success', text: 'Detection queued' });
+                itemEl.remove();
+                var remaining = q('tracerFailedList').querySelectorAll('.tracer-failed-item').length;
+                if (remaining === 0) q('tracerFailedSection').style.display = 'none';
+            } else {
+                toast({ type: 'error', text: 'Failed: ' + (result.Message || 'Unknown error') });
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="md-icon" style="font-size:1em;vertical-align:middle;">replay</i>'; }
+            }
+        })
+        .catch(function () {
+            toast({ type: 'error', text: 'Request failed' });
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="md-icon" style="font-size:1em;vertical-align:middle;">replay</i>'; }
+        });
+    }
+
     function init(view) {
         _view = view;
 
@@ -275,6 +361,9 @@ define(['loading', 'toast'], function (loading, toast) {
 
         var btnClearDetected = q('btnTracerClearDetected');
         if (btnClearDetected) btnClearDetected.addEventListener('click', clearDetectedHistory);
+
+        var btnClearFailed = q('btnTracerClearFailed');
+        if (btnClearFailed) btnClearFailed.addEventListener('click', clearFailedHistory);
 
         var btnSave = q('btnTracerSave');
         if (btnSave) btnSave.addEventListener('click', saveTracerSetting);

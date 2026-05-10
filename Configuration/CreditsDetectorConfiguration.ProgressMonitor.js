@@ -89,23 +89,6 @@
         return 0;
     }
     
-    function playVideoAtTimestamp(episodeId, timestampSeconds) {
-        // Use Emby's playback manager to start playing the episode at the specified timestamp
-        require(['playbackManager'], function(playbackManager) {
-            ApiClient.getItem(ApiClient.getCurrentUserId(), episodeId).then(function(item) {
-                playbackManager.play({
-                    items: [item],
-                    startPositionTicks: timestampSeconds * 10000000 // Convert seconds to ticks (1 tick = 100ns)
-                });
-            }).catch(function(error) {
-                console.error('Error starting playback:', error);
-                require(['toast'], function(toast) {
-                    toast({ type: 'error', text: 'Failed to start playback' });
-                });
-            });
-        });
-    }
-    
     function updateProgressUI(view, progress) {
         const progressBar = view.querySelector('#progressBar');
         const percentText = view.querySelector('#percentText');
@@ -263,13 +246,58 @@
                     playButton.addEventListener('click', function() {
                         const episodeId = progress.EpisodeIds[episode];
                         const timestampSeconds = parseTimestamp(timestamp);
-                        playVideoAtTimestamp(episodeId, timestampSeconds);
+                        const episodeName = episode;
+                        require(['configurationpage?name=CreditsDetectorConfigurationVideoPlayer'], function(videoPlayer) {
+                            videoPlayer.openVideoDialog(episodeId, timestampSeconds, {
+                                title: 'Preview \u2014 ' + episodeName,
+                                onTimestampSelected: function(chosenSeconds) {
+                                    if (isDryRun) {
+                                        loading.show();
+                                        ApiClient.ajax({
+                                            type: 'POST',
+                                            url: ApiClient.getUrl('CreditsDetector/AddTimestampFromDryRun'),
+                                            contentType: 'application/json',
+                                            dataType: 'json',
+                                            data: JSON.stringify({ EpisodeId: episodeId, TimestampSeconds: chosenSeconds })
+                                        }).then(function(response) {
+                                            loading.hide();
+                                            if (response && response.Success) {
+                                                toast({ type: 'success', text: response.Message || 'Timestamp added successfully!' });
+                                            } else {
+                                                toast({ type: 'error', text: (response && response.Message) || 'Failed to add timestamp' });
+                                            }
+                                        }).catch(function() {
+                                            loading.hide();
+                                            toast({ type: 'error', text: 'Failed to add timestamp. Check server logs.' });
+                                        });
+                                    } else {
+                                        loading.show();
+                                        fetch(ApiClient.getUrl('CreditsDetector/UpdateCreditsMarker'), {
+                                            method: 'POST',
+                                            headers: {
+                                                'X-Emby-Token': ApiClient.accessToken(),
+                                                'Content-Type': 'application/json'
+                                            },
+                                            body: JSON.stringify({ EpisodeId: episodeId, CreditsStartSeconds: chosenSeconds, IsRelativeFromEnd: false })
+                                        }).then(function(r) { return r.json(); }).then(function(res) {
+                                            loading.hide();
+                                            if (res.Success) {
+                                                toast({ type: 'success', text: res.Message || 'Timestamp updated successfully!' });
+                                            } else {
+                                                toast({ type: 'error', text: res.Message || 'Failed to update timestamp' });
+                                            }
+                                        }).catch(function() {
+                                            loading.hide();
+                                            toast({ type: 'error', text: 'Failed to update timestamp. Check server logs.' });
+                                        });
+                                    }
+                                }
+                            });
+                        });
                     });
                     episodeTitle.appendChild(playButton);
-                    
-                    // Add "Add Timestamp" button if this is a dry run
-                    if (isDryRun) {
 
+                    if (isDryRun) {
                         const addButton = document.createElement('button');
                         addButton.className = 'button-flat';
                         addButton.style.cssText = 'padding: 0.2em 0.5em; font-size: 0.8em; min-width: auto; background-color: #1e88e5; color: white; margin-left: 0.5em;';
@@ -278,7 +306,27 @@
                         addButton.addEventListener('click', function() {
                             const episodeId = progress.EpisodeIds[episode];
                             const timestampSeconds = parseTimestamp(timestamp);
-                            addTimestampFromDryRun(episodeId, timestampSeconds, episode, addButton);
+                            loading.show();
+                            ApiClient.ajax({
+                                type: 'POST',
+                                url: ApiClient.getUrl('CreditsDetector/AddTimestampFromDryRun'),
+                                contentType: 'application/json',
+                                dataType: 'json',
+                                data: JSON.stringify({ EpisodeId: episodeId, TimestampSeconds: timestampSeconds })
+                            }).then(function(response) {
+                                loading.hide();
+                                if (response && response.Success) {
+                                    toast({ type: 'success', text: response.Message || 'Timestamp added successfully!' });
+                                    addButton.style.backgroundColor = '#4caf50';
+                                    addButton.innerHTML = '<i class="md-icon">check</i> Added';
+                                    addButton.disabled = true;
+                                } else {
+                                    toast({ type: 'error', text: (response && response.Message) || 'Failed to add timestamp' });
+                                }
+                            }).catch(function() {
+                                loading.hide();
+                                toast({ type: 'error', text: 'Failed to add timestamp. Check server logs.' });
+                            });
                         });
                         episodeTitle.appendChild(addButton);
                     } else {
@@ -384,96 +432,53 @@
         });
     }
     
-    function addTimestampFromDryRun(episodeId, timestampSeconds, episodeName, buttonElement) {
-        loading.show();
-        
-        ApiClient.ajax({
-            type: 'POST',
-            url: ApiClient.getUrl('CreditsDetector/AddTimestampFromDryRun'),
-            contentType: 'application/json',
-            dataType: 'json',
-            data: JSON.stringify({
-                EpisodeId: episodeId,
-                TimestampSeconds: timestampSeconds
-            })
-        }).then(response => {
-            loading.hide();
-            if (response && response.Success) {
-                toast({ type: 'success', text: response.Message || 'Timestamp added successfully!' });
-                
-                // Update button to show it's been added
-                buttonElement.style.backgroundColor = '#4caf50';
-                buttonElement.innerHTML = '<i class="md-icon">check</i> Added';
-                buttonElement.disabled = true;
-            } else {
-                toast({ type: 'error', text: (response && response.Message) || 'Failed to add timestamp' });
-            }
-        }).catch(error => {
-            loading.hide();
-            console.error('Error adding timestamp:', error);
-            toast({ type: 'error', text: 'Failed to add timestamp. Check server logs.' });
-        });
-    }
-    
     function showEditTimestampDialog(episodeId, currentTimestampSeconds, episodeName, buttonElement) {
-        const hours = Math.floor(currentTimestampSeconds / 3600);
-        const minutes = Math.floor((currentTimestampSeconds % 3600) / 60);
-        const seconds = Math.floor(currentTimestampSeconds % 60);
-        
-        let currentTimeStr;
-        if (hours > 0) {
-            currentTimeStr = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        } else {
-            currentTimeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        }
-        
-        const promptMessage = `Edit Timestamp - ${episodeName}\n\nEnter the new timestamp (format: MM:SS or HH:MM:SS):`;
-        const newTimeStr = prompt(promptMessage, currentTimeStr);
-        
+        var hours = Math.floor(currentTimestampSeconds / 3600);
+        var minutes = Math.floor((currentTimestampSeconds % 3600) / 60);
+        var seconds = Math.floor(currentTimestampSeconds % 60);
+        var currentTimeStr = hours > 0
+            ? hours + ':' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0')
+            : minutes + ':' + String(seconds).padStart(2, '0');
+
+        var newTimeStr = prompt('Edit Timestamp - ' + episodeName + '\n\nEnter the new timestamp (format: MM:SS or HH:MM:SS):', currentTimeStr);
+
         if (newTimeStr && newTimeStr !== currentTimeStr) {
-            const newTimestampSeconds = parseTimestamp(newTimeStr);
+            var newTimestampSeconds = parseTimestamp(newTimeStr);
             if (newTimestampSeconds > 0) {
-                require(['loading', 'toast'], (loading, toast) => {
-                    loading.show();
-                    
-                    fetch(ApiClient.getUrl('CreditsDetector/UpdateCreditsMarker'), {
-                        method: 'POST',
-                        headers: {
-                            'X-Emby-Token': ApiClient.accessToken(),
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            EpisodeId: episodeId,
-                            CreditsStartSeconds: newTimestampSeconds,
-                            IsRelativeFromEnd: false
-                        })
+                loading.show();
+                fetch(ApiClient.getUrl('CreditsDetector/UpdateCreditsMarker'), {
+                    method: 'POST',
+                    headers: {
+                        'X-Emby-Token': ApiClient.accessToken(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        EpisodeId: episodeId,
+                        CreditsStartSeconds: newTimestampSeconds,
+                        IsRelativeFromEnd: false
                     })
-                    .then(response => response.json())
-                    .then(result => {
-                        loading.hide();
-                        if (result.Success) {
-                            toast({ type: 'success', text: result.Message || 'Timestamp updated successfully!' });
-                            
-                            buttonElement.style.backgroundColor = '#4caf50';
-                            buttonElement.innerHTML = '<i class="md-icon">check</i> Saved';
-                            setTimeout(() => {
-                                buttonElement.style.backgroundColor = '#ff9800';
-                                buttonElement.innerHTML = '<i class="md-icon">edit</i> Edit Timestamp';
-                            }, 2000);
-                        } else {
-                            toast({ type: 'error', text: result.Message || 'Failed to update timestamp' });
-                        }
-                    })
-                    .catch(error => {
-                        loading.hide();
-                        console.error('Error updating timestamp:', error);
-                        toast({ type: 'error', text: 'Failed to update timestamp. Check server logs.' });
-                    });
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    loading.hide();
+                    if (res.Success) {
+                        toast({ type: 'success', text: res.Message || 'Timestamp updated successfully!' });
+                        buttonElement.style.backgroundColor = '#4caf50';
+                        buttonElement.innerHTML = '<i class="md-icon">check</i> Saved';
+                        setTimeout(function() {
+                            buttonElement.style.backgroundColor = '#ff9800';
+                            buttonElement.innerHTML = '<i class="md-icon">edit</i> Edit Timestamp';
+                        }, 2000);
+                    } else {
+                        toast({ type: 'error', text: res.Message || 'Failed to update timestamp' });
+                    }
+                })
+                .catch(function() {
+                    loading.hide();
+                    toast({ type: 'error', text: 'Failed to update timestamp. Check server logs.' });
                 });
             } else {
-                require(['toast'], (toast) => {
-                    toast({ type: 'error', text: 'Invalid timestamp format. Use MM:SS or HH:MM:SS' });
-                });
+                toast({ type: 'error', text: 'Invalid timestamp format. Use MM:SS or HH:MM:SS' });
             }
         }
     }

@@ -331,4 +331,7 @@ namespace EmbyCredits.Api
     [Authenticated]
     [Route(ApiRoutes.ClearDetectedTracerList, "POST", Summary = "Clears the detected history tracer list.")]
     public class ClearDetectedTracerListRequest : IReturn<object> { }
+    [Authenticated]
+    [Route(ApiRoutes.ClearFailedTracerList, "POST", Summary = "Clears the failed history tracer list.")]
+    public class ClearFailedTracerListRequest : IReturn<object> { }
 }

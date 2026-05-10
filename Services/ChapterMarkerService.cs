@@ -68,13 +68,15 @@ namespace EmbyCredits.Services
                     throw new ArgumentOutOfRangeException(nameof(creditsStartSeconds), $"Timestamp {creditsStartSeconds:F1}s exceeds video duration {durationSeconds:F1}s");
                 }
 
-                // Clamp to 1 second before the stored duration to prevent floating-point
-                // precision mismatches with the actual media file duration from causing
-                // Emby's ChapterImagesTask to reject the chapter as out-of-range.
-                var safeMax = durationSeconds - 1.0;
-                if (creditsStartSeconds > safeMax && safeMax > 0)
+                // Clamp to 30 seconds before the stored duration. Emby's database duration
+                // (RunTimeTicks) comes from container metadata and can differ from the actual
+                // file duration that ChapterImagesTask measures via ffmpeg by up to ~30 seconds,
+                // particularly with MKV files or after a file has been replaced without a rescan.
+                var safeMax = durationSeconds - 30.0;
+                if (safeMax <= 0) safeMax = durationSeconds - 1.0;
+                if (creditsStartSeconds > safeMax)
                 {
-                    _logger.Info($"Clamping credits marker for {episode.Name} from {creditsStartSeconds:F3}s to {safeMax:F3}s (within 1s of duration)");
+                    _logger.Info($"Clamping credits marker for {episode.Name} from {creditsStartSeconds:F3}s to {safeMax:F3}s (within 30s of duration)");
                     creditsStartSeconds = safeMax;
                 }
 

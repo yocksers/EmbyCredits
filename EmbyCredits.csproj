@@ -10,8 +10,8 @@
 
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
-	<AssemblyVersion>2.5.7.1</AssemblyVersion>
-	<FileVersion>2.5.7.1</FileVersion>
+	<AssemblyVersion>2.5.7.5</AssemblyVersion>
+	<FileVersion>2.5.7.5</FileVersion>
 		<RootNamespace>EmbyCredits</RootNamespace>
 		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**;credit\**;test\**;introskipper\**</DefaultItemExcludes>
 		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
@@ -67,6 +67,9 @@
 		</EmbeddedResource>
 		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.MarkersManager.js">
 			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.MarkersManager.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.VideoPlayer.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.VideoPlayer.js</LogicalName>
 		</EmbeddedResource>
 		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.BackupManager.js">
 			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.BackupManager.js</LogicalName>

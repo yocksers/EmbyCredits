@@ -35,6 +35,9 @@ namespace EmbyCredits.Services
         private static volatile bool _isProcessing = false;
         private static volatile bool _cancellationRequested = false;
         private static CancellationTokenSource? _cancellationTokenSource = null;
+
+        /// <summary>Indicates whether cancellation has been requested via <see cref="CancelProcessing"/>.</summary>
+        public static bool IsCancellationRequested => _cancellationRequested;
         private static bool _isDryRun = false;
         private static bool _previousRestoreAfterScanState = false;
         private static bool _previousItemAddedHandlerState = false;
@@ -1025,6 +1028,19 @@ namespace EmbyCredits.Services
             return clearedCount;
         }
 
+        /// <summary>
+        /// Resets cancellation state and creates a fresh <see cref="CancellationTokenSource"/> so that
+        /// a newly-started scheduled task run is not immediately aborted by a stale cancellation flag
+        /// left over from a previous run or a UI cancel action.
+        /// </summary>
+        public static void ResetForScheduledTask()
+        {
+            _cancellationRequested = false;
+            var newCts = new CancellationTokenSource();
+            Interlocked.Exchange(ref _cancellationTokenSource, newCts)?.Dispose();
+            LogInfo("Cancellation state reset for scheduled task run");
+        }
+
         private static void ResetProgressToCancelling()
         {
             if (Plugin.Instance != null)
@@ -1997,12 +2013,17 @@ namespace EmbyCredits.Services
                     }
 
                     if (!_isDryRun)
+                    {
+                        Plugin.TracerService?.MarkFailed(episodeId, failureReason);
                         Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
+                    }
                 }
             }
             catch (Exception ex)
             {
                 _logger?.ErrorException($"Error processing episode {episode.Name}", ex);
+                if (!_isDryRun)
+                    Plugin.TracerService?.MarkFailed(episodeId, ex.Message);
                 Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
                 if (Plugin.Instance != null)
                 {
@@ -2127,6 +2148,7 @@ namespace EmbyCredits.Services
 
                     if (!_isDryRun)
                     {
+                        Plugin.TracerService?.MarkFailed(episodeId, failureReason);
                         _processedEpisodes.TryAdd(episodeId, DateTime.UtcNow);
                     }
                 }
@@ -2153,6 +2175,9 @@ namespace EmbyCredits.Services
             catch (Exception ex)
             {
                 _logger?.ErrorException($"Error processing episode {episode.Name}", ex);
+
+                if (!_isDryRun)
+                    Plugin.TracerService?.MarkFailed(episodeId, ex.Message);
 
                 if (Plugin.Instance != null)
                 {

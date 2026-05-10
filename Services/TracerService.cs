@@ -21,7 +21,9 @@ namespace EmbyCredits.Services
         private readonly ILogger _logger;
         private readonly string _stateFilePath;
         private readonly string _detectedFilePath;
+        private readonly string _failedFilePath;
         private const int MaxDetectedEntries = 100;
+        private const int MaxFailedEntries = 100;
 
         // episodeId (string) -> TracerEntry
         private ConcurrentDictionary<string, TracerEntry> _pending =
@@ -29,6 +31,10 @@ namespace EmbyCredits.Services
 
         // Recently auto-detected episodes (newest first, capped at MaxDetectedEntries)
         private ConcurrentDictionary<string, TracerEntry> _detected =
+            new ConcurrentDictionary<string, TracerEntry>(StringComparer.OrdinalIgnoreCase);
+
+        // Episodes where detection ran but failed (newest first, capped at MaxFailedEntries)
+        private ConcurrentDictionary<string, TracerEntry> _failed =
             new ConcurrentDictionary<string, TracerEntry>(StringComparer.OrdinalIgnoreCase);
 
         private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
@@ -42,6 +48,7 @@ namespace EmbyCredits.Services
             _logger = logger;
             _stateFilePath = Path.Combine(dataFolderPath, "tracer_pending.json");
             _detectedFilePath = Path.Combine(dataFolderPath, "tracer_detected.json");
+            _failedFilePath = Path.Combine(dataFolderPath, "tracer_failed.json");
             Load();
         }
 
@@ -108,6 +115,53 @@ namespace EmbyCredits.Services
                 _logger.ErrorException($"Tracer: error marking episode {episodeId} as detected", ex);
             }
         }
+
+        /// <summary>Called when detection ran for an episode but did not find credits.</summary>
+        public void MarkFailed(string episodeId, string reason)
+        {
+            try
+            {
+                TracerEntry? entry;
+                if (!_pending.TryRemove(episodeId, out entry))
+                {
+                    // Episode may not be in pending if tracer was enabled after the item was added
+                    entry = new TracerEntry { EpisodeId = episodeId };
+                }
+
+                entry.FailedUtc = DateTime.UtcNow;
+                entry.FailureReason = reason;
+                _failed[episodeId] = entry;
+
+                var overflow = _failed.Count - MaxFailedEntries;
+                if (overflow > 0)
+                {
+                    var oldest = _failed.Values
+                        .OrderBy(e => e.FailedUtc)
+                        .Take(overflow)
+                        .Select(e => e.EpisodeId)
+                        .ToList();
+                    foreach (var id in oldest)
+                        _failed.TryRemove(id, out _);
+                }
+
+                ScheduleSave();
+                _logger.Debug($"Tracer: moved episode {episodeId} to failed history");
+            }
+            catch (Exception ex)
+            {
+                _logger.ErrorException($"Tracer: error marking episode {episodeId} as failed", ex);
+            }
+        }
+
+        /// <summary>Clear the failed history list.</summary>
+        public void ClearFailed()
+        {
+            _failed.Clear();
+            ScheduleSave();
+        }
+
+        public List<TracerEntry> GetAllFailed() =>
+            _failed.Values.OrderByDescending(e => e.FailedUtc).ToList();
 
         /// <summary>Clear the detected history list.</summary>
         public void ClearDetected()
@@ -184,6 +238,26 @@ namespace EmbyCredits.Services
             {
                 _logger.Warn($"Tracer: could not load detected state file ({ex.Message}), starting fresh");
             }
+
+            try
+            {
+                if (File.Exists(_failedFilePath))
+                {
+                    var json = File.ReadAllText(_failedFilePath);
+                    var list = JsonSerializer.Deserialize<List<TracerEntry>>(json);
+                    if (list != null)
+                    {
+                        var dict = new ConcurrentDictionary<string, TracerEntry>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var entry in list.Where(e => !string.IsNullOrEmpty(e.EpisodeId)))
+                            dict[entry.EpisodeId] = entry;
+                        _failed = dict;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"Tracer: could not load failed state file ({ex.Message}), starting fresh");
+            }
         }
 
         protected override void FlushSave()
@@ -200,6 +274,8 @@ namespace EmbyCredits.Services
                         JsonSerializer.Serialize(_pending.Values.ToList(), _jsonOptions));
                     File.WriteAllText(_detectedFilePath,
                         JsonSerializer.Serialize(_detected.Values.ToList(), _jsonOptions));
+                    File.WriteAllText(_failedFilePath,
+                        JsonSerializer.Serialize(_failed.Values.ToList(), _jsonOptions));
                 }
                 catch (Exception ex)
                 {
@@ -220,5 +296,7 @@ namespace EmbyCredits.Services
         public string FilePath     { get; set; } = string.Empty;
         public DateTime AddedUtc   { get; set; } = DateTime.UtcNow;
         public DateTime? DetectedUtc { get; set; }
+        public DateTime? FailedUtc   { get; set; }
+        public string? FailureReason { get; set; }
     }
 }
