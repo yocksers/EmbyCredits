@@ -1036,6 +1036,7 @@ namespace EmbyCredits.Services
         public static void ResetForScheduledTask()
         {
             _cancellationRequested = false;
+            _isDryRun = false;
             var newCts = new CancellationTokenSource();
             Interlocked.Exchange(ref _cancellationTokenSource, newCts)?.Dispose();
             LogInfo("Cancellation state reset for scheduled task run");
