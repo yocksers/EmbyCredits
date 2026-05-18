@@ -365,6 +365,15 @@ namespace EmbyCredits.Services
                     _debugLog.AppendLine();
                 }
 
+                _debugLog.AppendLine("VIDEO VALIDATION SETTINGS");
+                _debugLog.AppendLine("-".PadRight(80, '-'));
+                _debugLog.AppendLine($"  Enable Video Validation:          {_configuration.EnableVideoValidation}");
+                if (_configuration.EnableVideoValidation)
+                {
+                    _debugLog.AppendLine($"    Validation Timeout (seconds):   {_configuration.VideoValidationTimeoutSeconds}");
+                }
+                _debugLog.AppendLine();
+
                 _debugLog.AppendLine("PERFORMANCE SETTINGS");
                 _debugLog.AppendLine("-".PadRight(80, '-'));
                 _debugLog.AppendLine($"  CPU Usage Limit (%):              {_configuration.CpuUsageLimit}");

@@ -44,7 +44,6 @@ namespace EmbyCredits.Services.Utilities
                 processStartInfo.ArgumentList.Add("error");
                 processStartInfo.ArgumentList.Add("-select_streams");
                 processStartInfo.ArgumentList.Add("v:0");
-                processStartInfo.ArgumentList.Add("-count_packets");
                 processStartInfo.ArgumentList.Add("-show_entries");
                 processStartInfo.ArgumentList.Add("stream=codec_name,codec_type,duration");
                 processStartInfo.ArgumentList.Add("-of");
