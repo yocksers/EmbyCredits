@@ -121,6 +121,10 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkOcrEnableAdaptiveFrameRate').checked = config.OcrEnableAdaptiveFrameRate || false;
             view.querySelector('#txtOcrAdaptiveFrameRateMin').value = config.OcrAdaptiveFrameRateMin || 0.25;
 
+            view.querySelector('#chkOcrAdaptiveSamplingEnabled').checked = config.OcrAdaptiveSamplingEnabled !== false;
+            view.querySelector('#txtOcrAdaptiveCoarseIntervalSeconds').value = config.OcrAdaptiveCoarseIntervalSeconds || 5;
+            view.querySelector('#txtOcrAdaptiveRefinementRadiusSeconds').value = config.OcrAdaptiveRefinementRadiusSeconds || 10;
+
             // Credit Structure Detection
             view.querySelector('#chkOcrEnableCreditStructureDetection').checked = config.OcrEnableCreditStructureDetection || false;
             view.querySelector('#txtOcrMinimumStructureLines').value = config.OcrMinimumStructureLines || 4;
@@ -371,6 +375,10 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrEnableAdaptiveFrameRate = view.querySelector('#chkOcrEnableAdaptiveFrameRate').checked;
         instance.config.OcrAdaptiveFrameRateMin = Number.parseFloat(view.querySelector('#txtOcrAdaptiveFrameRateMin').value) || 0.25;
 
+        instance.config.OcrAdaptiveSamplingEnabled = view.querySelector('#chkOcrAdaptiveSamplingEnabled').checked;
+        instance.config.OcrAdaptiveCoarseIntervalSeconds = Number.parseFloat(view.querySelector('#txtOcrAdaptiveCoarseIntervalSeconds').value) || 5;
+        instance.config.OcrAdaptiveRefinementRadiusSeconds = Number.parseFloat(view.querySelector('#txtOcrAdaptiveRefinementRadiusSeconds').value) || 10;
+
         // Credit Structure Detection
         instance.config.OcrEnableCreditStructureDetection = view.querySelector('#chkOcrEnableCreditStructureDetection').checked;
         instance.config.OcrMinimumStructureLines = Number.parseInt(view.querySelector('#txtOcrMinimumStructureLines').value, 10) || 4;
@@ -555,6 +563,10 @@ define(['loading', 'toast'], function (loading, toast) {
 
         view.querySelector('#chkOcrEnableAdaptiveFrameRate').checked = false;
         view.querySelector('#txtOcrAdaptiveFrameRateMin').value = 0.25;
+
+        view.querySelector('#chkOcrAdaptiveSamplingEnabled').checked = true;
+        view.querySelector('#txtOcrAdaptiveCoarseIntervalSeconds').value = 5;
+        view.querySelector('#txtOcrAdaptiveRefinementRadiusSeconds').value = 10;
 
         view.querySelector('#chkOcrEnableCreditStructureDetection').checked = false;
         view.querySelector('#txtOcrMinimumStructureLines').value = 4;
@@ -745,6 +757,10 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkOcrEnableAdaptiveFrameRate', false, true);
         setIfExists('#txtOcrAdaptiveFrameRateMin', 0.25);
 
+        setIfExists('#chkOcrAdaptiveSamplingEnabled', true, true);
+        setIfExists('#txtOcrAdaptiveCoarseIntervalSeconds', 5);
+        setIfExists('#txtOcrAdaptiveRefinementRadiusSeconds', 10);
+
         setIfExists('#chkOcrEnableCreditStructureDetection', false, true);
         setIfExists('#txtOcrMinimumStructureLines', 4);
 
@@ -850,6 +866,10 @@ define(['loading', 'toast'], function (loading, toast) {
 
         setIfExists('#chkOcrEnableAdaptiveFrameRate', false, true);
         setIfExists('#txtOcrAdaptiveFrameRateMin', 0.25);
+
+        setIfExists('#chkOcrAdaptiveSamplingEnabled', true, true);
+        setIfExists('#txtOcrAdaptiveCoarseIntervalSeconds', 5);
+        setIfExists('#txtOcrAdaptiveRefinementRadiusSeconds', 10);
 
         setIfExists('#chkOcrEnableCreditStructureDetection', false, true);
         setIfExists('#txtOcrMinimumStructureLines', 4);
@@ -990,6 +1010,10 @@ define(['loading', 'toast'], function (loading, toast) {
 
         setIfExists('#chkOcrEnableAdaptiveFrameRate', false, true);
         setIfExists('#txtOcrAdaptiveFrameRateMin', 0.25);
+
+        setIfExists('#chkOcrAdaptiveSamplingEnabled', true, true);
+        setIfExists('#txtOcrAdaptiveCoarseIntervalSeconds', 5);
+        setIfExists('#txtOcrAdaptiveRefinementRadiusSeconds', 10);
 
         setIfExists('#chkOcrEnableCreditStructureDetection', false, true);
         setIfExists('#txtOcrMinimumStructureLines', 4);

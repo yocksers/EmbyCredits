@@ -404,6 +404,15 @@ namespace EmbyCredits.Services
             if (rule.OcrAdaptiveFrameRateMin.HasValue)
                 effectiveConfig.OcrAdaptiveFrameRateMin = rule.OcrAdaptiveFrameRateMin.Value;
 
+            if (rule.OcrAdaptiveSamplingEnabled.HasValue)
+                effectiveConfig.OcrAdaptiveSamplingEnabled = rule.OcrAdaptiveSamplingEnabled.Value;
+
+            if (rule.OcrAdaptiveCoarseIntervalSeconds.HasValue)
+                effectiveConfig.OcrAdaptiveCoarseIntervalSeconds = rule.OcrAdaptiveCoarseIntervalSeconds.Value;
+
+            if (rule.OcrAdaptiveRefinementRadiusSeconds.HasValue)
+                effectiveConfig.OcrAdaptiveRefinementRadiusSeconds = rule.OcrAdaptiveRefinementRadiusSeconds.Value;
+
             if (rule.OcrEnableCreditStructureDetection.HasValue)
                 effectiveConfig.OcrEnableCreditStructureDetection = rule.OcrEnableCreditStructureDetection.Value;
 

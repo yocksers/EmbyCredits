@@ -245,6 +245,24 @@ namespace EmbyCredits.ScheduledTasks
                 return;
             }
 
+            // Pre-filter previously failed episodes so their seasons are excluded from batch
+            // grouping entirely, avoiding unnecessary ProcessSeasonBatch calls and per-season delays.
+            if (config.SkipPreviouslyFailedEpisodes && !config.IgnoreFailureMarkers)
+            {
+                var beforeFailFilter = episodesToProcess.Count;
+                episodesToProcess = episodesToProcess
+                    .Where(ep => !(ep.ProviderIds?.TryGetValue("EmbyCredits.Fail", out var fv) == true && fv == "true"))
+                    .ToList();
+                var skippedFailed = beforeFailFilter - episodesToProcess.Count;
+                if (skippedFailed > 0)
+                    _logger.Info($"Skipping {skippedFailed} previously failed episode(s) (not retrying)");
+                if (episodesToProcess.Count == 0)
+                {
+                    _logger.Info("All remaining episodes were previously failed, nothing to process");
+                    return;
+                }
+            }
+
             Plugin.Progress.Reset();
             Plugin.Progress.TotalItems = episodesToProcess.Count;
             Plugin.Progress.IsRunning = true;

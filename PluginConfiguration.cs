@@ -100,6 +100,9 @@ namespace EmbyCredits
         public double? OcrScrollingOverlapThreshold { get; set; }
         public bool? OcrEnableAdaptiveFrameRate { get; set; }
         public double? OcrAdaptiveFrameRateMin { get; set; }
+        public bool? OcrAdaptiveSamplingEnabled { get; set; }
+        public double? OcrAdaptiveCoarseIntervalSeconds { get; set; }
+        public double? OcrAdaptiveRefinementRadiusSeconds { get; set; }
         public bool? OcrEnableCreditStructureDetection { get; set; }
         public int? OcrMinimumStructureLines { get; set; }
     }
@@ -228,6 +231,9 @@ namespace EmbyCredits
 
         public bool OcrEnableAdaptiveFrameRate { get; set; } = false;
         public double OcrAdaptiveFrameRateMin { get; set; } = 0.25;
+        public bool OcrAdaptiveSamplingEnabled { get; set; } = true;
+        public double OcrAdaptiveCoarseIntervalSeconds { get; set; } = 5.0;
+        public double OcrAdaptiveRefinementRadiusSeconds { get; set; } = 10.0;
 
         public bool OcrEnableCreditStructureDetection { get; set; } = false;
         public int OcrMinimumStructureLines { get; set; } = 4;

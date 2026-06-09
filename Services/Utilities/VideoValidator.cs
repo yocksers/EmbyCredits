@@ -42,6 +42,10 @@ namespace EmbyCredits.Services.Utilities
                 };
                 processStartInfo.ArgumentList.Add("-v");
                 processStartInfo.ArgumentList.Add("error");
+                processStartInfo.ArgumentList.Add("-probesize");
+                processStartInfo.ArgumentList.Add("5000000");
+                processStartInfo.ArgumentList.Add("-analyzeduration");
+                processStartInfo.ArgumentList.Add("1000000");
                 processStartInfo.ArgumentList.Add("-select_streams");
                 processStartInfo.ArgumentList.Add("v:0");
                 processStartInfo.ArgumentList.Add("-show_entries");

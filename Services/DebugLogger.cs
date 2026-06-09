@@ -219,6 +219,12 @@ namespace EmbyCredits.Services
                     {
                         _debugLog.AppendLine($"    Minimum Frame Rate:             {_configuration.OcrAdaptiveFrameRateMin:F2}");
                     }
+                    _debugLog.AppendLine($"  Optimized Predictive Sampling:    {_configuration.OcrAdaptiveSamplingEnabled}");
+                    if (_configuration.OcrAdaptiveSamplingEnabled)
+                    {
+                        _debugLog.AppendLine($"    Coarse Scan Interval (s):       {_configuration.OcrAdaptiveCoarseIntervalSeconds:F0}");
+                        _debugLog.AppendLine($"    Refinement Radius (s):          {_configuration.OcrAdaptiveRefinementRadiusSeconds:F0}");
+                    }
                     _debugLog.AppendLine($"  Retry Attempts:                   {_configuration.OcrRetryAttempts}");
                     _debugLog.AppendLine($"  Retry Delay (ms):                 {_configuration.OcrRetryDelayMs}");
                     _debugLog.AppendLine();

@@ -438,7 +438,10 @@ namespace EmbyCredits.Services
                     }
                     else
                     {
-                        _debugLogger.LogWarn($"Failed to detect credits for {episode.Name}: {detectionResult.failureReason}");
+                        var durationStr = episode.RunTimeTicks.HasValue && episode.RunTimeTicks.Value > 0
+                            ? $" ({FormatTime(episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond)})"
+                            : string.Empty;
+                        _debugLogger.LogWarn($"Failed to detect credits for {episode.Name}{durationStr}: {detectionResult.failureReason}");
                         
                         if (_configuration.SkipPreviouslyFailedEpisodes)
                         {

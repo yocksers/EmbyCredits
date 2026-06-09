@@ -511,7 +511,12 @@ namespace EmbyCredits.Services
 
             if (detectionResults.Count == 0)
             {
-                _logger.Info("No credits detected by any method");
+                _logger.Info($"No credits detected (mode: {_configuration.DetectionMode}, duration: {FormatTime(duration)})");
+                if (methodErrors.Count > 0)
+                {
+                    foreach (var kvp in methodErrors)
+                        _logger.Info($"  - {kvp.Key}: {kvp.Value}");
+                }
                 LogDebug("No credits detected by any method");
                 
                 LogDebug("=== DETECTION FAILURE SUMMARY ===");

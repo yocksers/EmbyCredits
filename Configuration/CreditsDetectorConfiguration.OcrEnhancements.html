@@ -74,6 +74,29 @@
         <div class="fieldDescription"><strong>Default: 0.25.</strong> Minimum FPS to drop to (prevents under-sampling)</div>
     </div>
 
+    <h3 style="margin-top: 2em; color: #52b54b;">Optimized Predictive Sampling</h3>
+    <p class="fieldDescription">Two-pass scanning strategy: a fast coarse scan finds candidate regions, then a focused fine scan pinpoints the exact credit boundary. Reduces total scan time on long segments.</p>
+
+    <div class="checkboxContainer">
+        <label>
+            <input is="emby-checkbox" type="checkbox" id="chkOcrAdaptiveSamplingEnabled" data-config-key="OcrAdaptiveSamplingEnabled" />
+            <span>Enable Optimized Predictive Sampling</span>
+        </label>
+        <div class="fieldDescription">Enabled by default. Requires Direct Memory Pipeline (Settings tab). Only activates when the analysis window exceeds 4× the coarse interval</div>
+    </div>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrAdaptiveCoarseIntervalSeconds">Coarse Scan Interval (seconds)</label>
+        <input is="emby-input" type="number" step="1" id="txtOcrAdaptiveCoarseIntervalSeconds" data-config-key="OcrAdaptiveCoarseIntervalSeconds" min="2" max="30" />
+        <div class="fieldDescription"><strong>Default: 5.</strong> Time between frames in the initial coarse pass. Higher values = faster but less precise initial scan</div>
+    </div>
+
+    <div class="inputContainer">
+        <label class="inputLabel inputLabelUnfocused" for="txtOcrAdaptiveRefinementRadiusSeconds">Refinement Radius (seconds)</label>
+        <input is="emby-input" type="number" step="1" id="txtOcrAdaptiveRefinementRadiusSeconds" data-config-key="OcrAdaptiveRefinementRadiusSeconds" min="5" max="60" />
+        <div class="fieldDescription"><strong>Default: 10.</strong> How far before and after each coarse hit to scan at full frame rate</div>
+    </div>
+
     <h3 style="margin-top: 2em; color: #52b54b;">Scrolling Pattern Detection</h3>
     <p class="fieldDescription">Detect rolling credits by analyzing text movement across frames, even without keywords.</p>
 

@@ -2015,7 +2015,7 @@ namespace EmbyCredits.Services
 
                     if (!_isDryRun)
                     {
-                        Plugin.TracerService?.MarkFailed(episodeId, failureReason);
+                        Plugin.TracerService?.MarkFailed(episodeId, failureReason, episode);
                         Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
                     }
                 }
@@ -2024,7 +2024,7 @@ namespace EmbyCredits.Services
             {
                 _logger?.ErrorException($"Error processing episode {episode.Name}", ex);
                 if (!_isDryRun)
-                    Plugin.TracerService?.MarkFailed(episodeId, ex.Message);
+                    Plugin.TracerService?.MarkFailed(episodeId, ex.Message, episode);
                 Plugin.PendingEpisodesService?.MarkProcessed(episodeId);
                 if (Plugin.Instance != null)
                 {
@@ -2149,7 +2149,7 @@ namespace EmbyCredits.Services
 
                     if (!_isDryRun)
                     {
-                        Plugin.TracerService?.MarkFailed(episodeId, failureReason);
+                        Plugin.TracerService?.MarkFailed(episodeId, failureReason, episode);
                         _processedEpisodes.TryAdd(episodeId, DateTime.UtcNow);
                     }
                 }
@@ -2178,7 +2178,7 @@ namespace EmbyCredits.Services
                 _logger?.ErrorException($"Error processing episode {episode.Name}", ex);
 
                 if (!_isDryRun)
-                    Plugin.TracerService?.MarkFailed(episodeId, ex.Message);
+                    Plugin.TracerService?.MarkFailed(episodeId, ex.Message, episode);
 
                 if (Plugin.Instance != null)
                 {

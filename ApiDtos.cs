@@ -254,6 +254,9 @@ namespace EmbyCredits.Api
         public bool? OcrUseHardwareOutputFormat { get; set; }
         public bool? OcrUseHardwareFilters { get; set; }
         public bool? OcrUseDirectMemoryPipeline { get; set; }
+        public bool? OcrAdaptiveSamplingEnabled { get; set; }
+        public double? OcrAdaptiveCoarseIntervalSeconds { get; set; }
+        public double? OcrAdaptiveRefinementRadiusSeconds { get; set; }
         public bool? EnableAnimeDetection { get; set; }
         public string? AnimeDetectionMethod { get; set; }
         public int? BlackFrameMinimumPercentage { get; set; }

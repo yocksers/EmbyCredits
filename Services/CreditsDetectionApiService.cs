@@ -1851,6 +1851,9 @@ namespace EmbyCredits.Services
             if (overrides.OcrUseHardwareOutputFormat.HasValue) clone.OcrUseHardwareOutputFormat = overrides.OcrUseHardwareOutputFormat.Value;
             if (overrides.OcrUseHardwareFilters.HasValue) clone.OcrUseHardwareFilters = overrides.OcrUseHardwareFilters.Value;
             if (overrides.OcrUseDirectMemoryPipeline.HasValue) clone.OcrUseDirectMemoryPipeline = overrides.OcrUseDirectMemoryPipeline.Value;
+            if (overrides.OcrAdaptiveSamplingEnabled.HasValue) clone.OcrAdaptiveSamplingEnabled = overrides.OcrAdaptiveSamplingEnabled.Value;
+            if (overrides.OcrAdaptiveCoarseIntervalSeconds.HasValue) clone.OcrAdaptiveCoarseIntervalSeconds = overrides.OcrAdaptiveCoarseIntervalSeconds.Value;
+            if (overrides.OcrAdaptiveRefinementRadiusSeconds.HasValue) clone.OcrAdaptiveRefinementRadiusSeconds = overrides.OcrAdaptiveRefinementRadiusSeconds.Value;
             if (overrides.EnableAnimeDetection.HasValue) clone.EnableAnimeDetection = overrides.EnableAnimeDetection.Value;
             if (overrides.AnimeDetectionMethod != null && Enum.TryParse<AnimeDetectionMethod>(overrides.AnimeDetectionMethod, true, out var animeMethod))
                 clone.AnimeDetectionMethod = animeMethod;

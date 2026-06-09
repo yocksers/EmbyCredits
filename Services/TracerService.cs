@@ -117,7 +117,7 @@ namespace EmbyCredits.Services
         }
 
         /// <summary>Called when detection ran for an episode but did not find credits.</summary>
-        public void MarkFailed(string episodeId, string reason)
+        public void MarkFailed(string episodeId, string reason, Episode? episode = null)
         {
             try
             {
@@ -126,6 +126,16 @@ namespace EmbyCredits.Services
                 {
                     // Episode may not be in pending if tracer was enabled after the item was added
                     entry = new TracerEntry { EpisodeId = episodeId };
+                }
+
+                // Populate metadata from episode object when the entry has none (e.g. not previously tracked)
+                if (episode != null && string.IsNullOrEmpty(entry.SeriesName))
+                {
+                    entry.SeriesName   = episode.Series?.Name ?? episode.SeriesName ?? string.Empty;
+                    entry.SeasonNumber  = episode.ParentIndexNumber ?? 0;
+                    entry.EpisodeNumber = episode.IndexNumber ?? 0;
+                    entry.EpisodeName  = episode.Name;
+                    entry.FilePath     = episode.Path;
                 }
 
                 entry.FailedUtc = DateTime.UtcNow;

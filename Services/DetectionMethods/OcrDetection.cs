@@ -310,8 +310,17 @@ namespace EmbyCredits.Services.DetectionMethods
                     if (Configuration.OcrUseDirectMemoryPipeline)
                     {
                         LogInfo("Using direct memory pipeline (no disk I/O) for frame extraction");
-                        var result = await ProcessFramesDirectFromMemory(videoPath, duration, startTime, analysisDuration, fps, keywords, recentTextFrames, cancellationToken).ConfigureAwait(false);
-                        return result;
+                        if (Configuration.OcrAdaptiveSamplingEnabled && analysisDuration > Configuration.OcrAdaptiveCoarseIntervalSeconds * 4)
+                        {
+                            LogInfo($"Adaptive sampling: coarse interval {Configuration.OcrAdaptiveCoarseIntervalSeconds:F0}s, refinement radius ±{Configuration.OcrAdaptiveRefinementRadiusSeconds:F0}s");
+                            var result = await ProcessFramesWithAdaptiveSampling(videoPath, duration, startTime, analysisDuration, fps, keywords, recentTextFrames, cancellationToken).ConfigureAwait(false);
+                            return result;
+                        }
+                        else
+                        {
+                            var result = await ProcessFramesDirectFromMemory(videoPath, duration, startTime, analysisDuration, fps, keywords, recentTextFrames, cancellationToken).ConfigureAwait(false);
+                            return result;
+                        }
                     }
                     else
                     {
@@ -901,6 +910,273 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
                 }
             }
+        }
+
+        private async Task<double> ProcessFramesWithAdaptiveSampling(
+            string videoPath,
+            double duration,
+            double startTime,
+            double analysisDuration,
+            double fps,
+            List<string> keywords,
+            List<(double timestamp, string text)> recentTextFrames,
+            CancellationToken cancellationToken)
+        {
+            var coarseInterval = Configuration.OcrAdaptiveCoarseIntervalSeconds;
+            var coarseFps = 1.0 / coarseInterval;
+            var refinementRadius = Configuration.OcrAdaptiveRefinementRadiusSeconds;
+            var searchEnd = startTime + analysisDuration;
+
+            LogInfo($"Adaptive sampling phase 1: scanning {FormatTime(startTime)} to {FormatTime(searchEnd)} at 1 frame/{coarseInterval:F0}s");
+            UpdateProgress(10, "Adaptive: coarse scan");
+
+            var hitTimestamps = await ScanCoarseFrames(videoPath, startTime, analysisDuration, coarseFps, keywords, cancellationToken).ConfigureAwait(false);
+
+            if (hitTimestamps.Count == 0)
+            {
+                LogInfo("Adaptive sampling: no signals found in coarse pass, falling back to full scan");
+                UpdateProgress(20, "Adaptive: no coarse hits, full scan");
+                return await ProcessFramesDirectFromMemory(videoPath, duration, startTime, analysisDuration, fps, keywords, recentTextFrames, cancellationToken).ConfigureAwait(false);
+            }
+
+            LogInfo($"Adaptive sampling: coarse pass found {hitTimestamps.Count} signal(s) at [{string.Join(", ", hitTimestamps.Select(FormatTime))}]");
+
+            var windows = BuildRefinementWindows(hitTimestamps, refinementRadius, startTime, searchEnd);
+            LogInfo($"Adaptive sampling phase 2: refining {windows.Count} window(s) at {fps} fps");
+
+            double earliest = 0;
+            for (int i = 0; i < windows.Count; i++)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    break;
+
+                var (winStart, winEnd) = windows[i];
+                var winDuration = winEnd - winStart;
+                if (winDuration <= 0)
+                    continue;
+
+                LogInfo($"Adaptive sampling: fine scan window {i + 1}/{windows.Count}: {FormatTime(winStart)} - {FormatTime(winEnd)} ({winDuration:F0}s)");
+                UpdateProgress(30 + (i * 60 / windows.Count), $"Adaptive: refining window {i + 1}/{windows.Count}");
+
+                var windowResult = await ProcessFramesDirectFromMemory(
+                    videoPath, duration, winStart, winDuration, fps, keywords,
+                    new List<(double, string)>(), cancellationToken).ConfigureAwait(false);
+
+                if (windowResult > 0 && (earliest == 0 || windowResult < earliest))
+                    earliest = windowResult;
+            }
+
+            if (earliest > 0)
+                LogInfo($"Adaptive sampling: credits pinned at {FormatTime(earliest)} after {windows.Count} refinement window(s)");
+            else
+                LogWarn("Adaptive sampling: fine scan found no matches; returning 0");
+
+            return earliest;
+        }
+
+        private async Task<List<double>> ScanCoarseFrames(
+            string videoPath,
+            double startTime,
+            double analysisDuration,
+            double coarseFps,
+            List<string> keywords,
+            CancellationToken cancellationToken)
+        {
+            var hitTimestamps = new List<double>();
+            var normalizedPath = FFmpegHelper.NormalizeFilePath(videoPath);
+            var preInputArgs = BuildPreInputArgs();
+            var threadArgs = BuildThreadArgs();
+            var filterChain = BuildFilterChain(coarseFps);
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = FFmpegHelper.GetFfmpegPath(),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = null
+            };
+            AddTokenizedArgs(startInfo, preInputArgs);
+            startInfo.ArgumentList.Add("-ss");
+            startInfo.ArgumentList.Add(startTime.ToString(CultureInfo.InvariantCulture));
+            startInfo.ArgumentList.Add("-i");
+            startInfo.ArgumentList.Add(normalizedPath);
+            AddTokenizedArgs(startInfo, threadArgs);
+            startInfo.ArgumentList.Add("-t");
+            startInfo.ArgumentList.Add(analysisDuration.ToString(CultureInfo.InvariantCulture));
+            startInfo.ArgumentList.Add("-vf");
+            startInfo.ArgumentList.Add(filterChain);
+            startInfo.ArgumentList.Add("-f");
+            startInfo.ArgumentList.Add("image2pipe");
+            startInfo.ArgumentList.Add("-vcodec");
+            startInfo.ArgumentList.Add("mjpeg");
+            AddTokenizedArgs(startInfo, $"-q:v {Configuration.OcrJpegQuality}");
+            startInfo.ArgumentList.Add("pipe:1");
+
+            using var process = new Process { StartInfo = startInfo };
+            try
+            {
+                process.Start();
+                Utilities.FFmpegHelper.RegisterProcess(process, $"OCR Coarse: {System.IO.Path.GetFileName(videoPath)}");
+                Utilities.CpuThrottler.SetProcessPriority(process, Configuration);
+
+                var timeoutMinutes = (analysisDuration / 60) + 5;
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMinutes));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+                var token = linkedCts.Token;
+
+                var stderrTask = Task.Run(async () =>
+                {
+                    try { await process.StandardError.ReadToEndAsync().ConfigureAwait(false); }
+                    catch { }
+                });
+
+                var buffer = new List<byte>();
+                var readBuffer = ArrayPool<byte>.Shared.Rent(65536);
+                int frameIndex = 0;
+
+                try
+                {
+                    var stdoutStream = process.StandardOutput.BaseStream;
+
+                    while (!token.IsCancellationRequested)
+                    {
+                        int bytesRead = await stdoutStream.ReadAsync(readBuffer, 0, 65536, token).ConfigureAwait(false);
+
+                        if (bytesRead == 0)
+                        {
+                            if (buffer.Count > 0)
+                            {
+                                int s = FindSequence(buffer, _jpegStartMarker, 0);
+                                if (s >= 0)
+                                {
+                                    int e = FindSequence(buffer, _jpegEndMarker, s);
+                                    if (e >= 0)
+                                    {
+                                        var fd = buffer.GetRange(s, e + _jpegEndMarker.Length - s).ToArray();
+                                        var ts = startTime + (frameIndex / coarseFps);
+                                        if (await HasCreditSignal(fd, keywords, cancellationToken).ConfigureAwait(false))
+                                        {
+                                            hitTimestamps.Add(ts);
+                                            LogDebug($"Adaptive coarse hit at {FormatTime(ts)}");
+                                        }
+                                        frameIndex++;
+                                    }
+                                }
+                            }
+                            break;
+                        }
+
+                        buffer.AddRange(new ArraySegment<byte>(readBuffer, 0, bytesRead));
+
+                        while (!token.IsCancellationRequested)
+                        {
+                            int s = FindSequence(buffer, _jpegStartMarker, 0);
+                            if (s == -1)
+                            {
+                                if (buffer.Count > _jpegStartMarker.Length)
+                                    buffer.RemoveRange(0, buffer.Count - _jpegStartMarker.Length);
+                                break;
+                            }
+                            if (s > 0) { buffer.RemoveRange(0, s); s = 0; }
+
+                            int e = FindSequence(buffer, _jpegEndMarker, s + _jpegStartMarker.Length);
+                            if (e == -1)
+                            {
+                                if (buffer.Count > 20 * 1024 * 1024) buffer.Clear();
+                                break;
+                            }
+
+                            var frameLength = e + _jpegEndMarker.Length - s;
+                            var frameData = buffer.GetRange(s, frameLength).ToArray();
+                            buffer.RemoveRange(0, s + frameLength);
+
+                            if (frameData.Length >= 1024)
+                            {
+                                var timestamp = startTime + (frameIndex / coarseFps);
+                                if (await HasCreditSignal(frameData, keywords, token).ConfigureAwait(false))
+                                {
+                                    hitTimestamps.Add(timestamp);
+                                    LogDebug($"Adaptive coarse hit at {FormatTime(timestamp)}");
+                                }
+                            }
+                            frameIndex++;
+                        }
+                    }
+                }
+                finally
+                {
+                    buffer.Clear();
+                    buffer.TrimExcess();
+                    ArrayPool<byte>.Shared.Return(readBuffer);
+
+                    if (!process.HasExited)
+                    {
+                        try { process.Kill(); } catch { }
+                    }
+                    await stderrTask.ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                Utilities.FFmpegHelper.UnregisterProcess(process);
+            }
+
+            return hitTimestamps;
+        }
+
+        private async Task<bool> HasCreditSignal(byte[] frameData, List<string> keywords, CancellationToken cancellationToken)
+        {
+            var (ocrText, _) = await PerformOcrOnFrameData(frameData, cancellationToken).ConfigureAwait(false);
+
+            if (string.IsNullOrWhiteSpace(ocrText))
+                return false;
+
+            var matches = Configuration.OcrEnableFuzzyMatching
+                ? FindKeywordMatchesFuzzy(ocrText, keywords, Configuration.OcrFuzzyMatchMaxDistance)
+                : FindKeywordMatches(ocrText, keywords);
+
+            if (matches.Count > 0)
+                return true;
+
+            if (Configuration.OcrEnableCharacterDensityDetection &&
+                CountMeaningfulCharacters(ocrText) >= Configuration.OcrCharacterDensityThreshold)
+                return true;
+
+            if (Configuration.OcrEnableCreditStructureDetection &&
+                DetectCreditStructure(ocrText, Configuration.OcrMinimumStructureLines))
+                return true;
+
+            return false;
+        }
+
+        private static List<(double start, double end)> BuildRefinementWindows(
+            List<double> hitTimestamps, double radius, double searchStart, double searchEnd)
+        {
+            var sorted = hitTimestamps.OrderBy(t => t).ToList();
+            var windows = new List<(double start, double end)>();
+
+            double wStart = sorted[0] - radius;
+            double wEnd   = sorted[0] + radius;
+
+            for (int i = 1; i < sorted.Count; i++)
+            {
+                double t = sorted[i];
+                if (t - radius <= wEnd)
+                {
+                    wEnd = Math.Max(wEnd, t + radius);
+                }
+                else
+                {
+                    windows.Add((Math.Max(searchStart, wStart), Math.Min(searchEnd, wEnd)));
+                    wStart = t - radius;
+                    wEnd   = t + radius;
+                }
+            }
+            windows.Add((Math.Max(searchStart, wStart), Math.Min(searchEnd, wEnd)));
+
+            return windows;
         }
 
         private async Task<double> ProcessFramesFromDisk(
@@ -1811,19 +2087,42 @@ namespace EmbyCredits.Services.DetectionMethods
                         break;
                     
                     case "qsv":
-                        args.Add("-hwaccel qsv");
-                        if (!string.IsNullOrWhiteSpace(Configuration.OcrHardwareDevice))
+                        var isLinux = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                            System.Runtime.InteropServices.OSPlatform.Linux);
+                        if (isLinux)
                         {
-                            args.Add($"-qsv_device {Configuration.OcrHardwareDevice}");
-                        }
-                        if (Configuration.OcrUseHardwareOutputFormat)
-                        {
-                            args.Add("-hwaccel_output_format qsv");
-                            LogDebug("Using Intel Quick Sync Video (QSV) hardware acceleration (output format: qsv)");
+                            var qsvDevice = string.IsNullOrWhiteSpace(Configuration.OcrHardwareDevice)
+                                ? "/dev/dri/renderD128"
+                                : Configuration.OcrHardwareDevice;
+                            args.Add($"-init_hw_device qsv=hw:{qsvDevice}");
+                            args.Add("-filter_hw_device hw");
+                            args.Add("-hwaccel qsv");
+                            if (Configuration.OcrUseHardwareOutputFormat)
+                            {
+                                args.Add("-hwaccel_output_format qsv");
+                                LogDebug($"Using Intel Quick Sync Video (QSV) hardware acceleration on Linux via VAAPI (device: {qsvDevice}, output format: qsv)");
+                            }
+                            else
+                            {
+                                LogDebug($"Using Intel Quick Sync Video (QSV) hardware acceleration on Linux via VAAPI (device: {qsvDevice}, output format: software)");
+                            }
                         }
                         else
                         {
-                            LogDebug("Using Intel Quick Sync Video (QSV) hardware acceleration (output format: software)");
+                            args.Add("-hwaccel qsv");
+                            if (!string.IsNullOrWhiteSpace(Configuration.OcrHardwareDevice))
+                            {
+                                args.Add($"-qsv_device {Configuration.OcrHardwareDevice}");
+                            }
+                            if (Configuration.OcrUseHardwareOutputFormat)
+                            {
+                                args.Add("-hwaccel_output_format qsv");
+                                LogDebug("Using Intel Quick Sync Video (QSV) hardware acceleration (output format: qsv)");
+                            }
+                            else
+                            {
+                                LogDebug("Using Intel Quick Sync Video (QSV) hardware acceleration (output format: software)");
+                            }
                         }
                         break;
                     
