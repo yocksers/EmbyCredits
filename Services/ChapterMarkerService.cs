@@ -210,6 +210,57 @@ namespace EmbyCredits.Services
             return _itemRepository.GetChapters(item)?.ToList() ?? new List<ChapterInfo>();
         }
 
+        public bool TryImportEmbeddedCreditChapter(Episode episode)
+        {
+            try
+            {
+                var chapters = _itemRepository.GetChapters(episode)?.ToList() ?? new List<ChapterInfo>();
+                if (chapters.Count == 0)
+                    return false;
+
+                var durationTicks = episode.RunTimeTicks ?? 0;
+
+                var creditsChapter = chapters.FirstOrDefault(c =>
+                {
+                    if (string.IsNullOrWhiteSpace(c.Name))
+                        return false;
+
+                    var name = c.Name.Trim().ToLowerInvariant();
+                    if (!name.Contains("credit") &&
+                        name != "end title" &&
+                        name != "end titles" &&
+                        name != "end card" &&
+                        name != "closing")
+                        return false;
+
+                    if (durationTicks > 0 && (double)c.StartPositionTicks / durationTicks < 0.40)
+                        return false;
+
+                    return true;
+                });
+
+                if (creditsChapter == null)
+                    return false;
+
+                var existingType = GetMarkerType(creditsChapter);
+                if (existingType == "CreditsStart")
+                {
+                    _logger.Info($"Episode {episode.Name} already has a properly typed embedded credits chapter");
+                    return true;
+                }
+
+                var creditsStartSeconds = creditsChapter.StartPositionTicks / (double)TimeSpan.TicksPerSecond;
+                _logger.Info($"Importing embedded credits chapter '{creditsChapter.Name}' at {FormatTime(creditsStartSeconds)} for {episode.Name}");
+                SaveCreditsMarker(episode, creditsStartSeconds);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug($"Error checking embedded credit chapters for {episode.Name}: {ex.Message}");
+                return false;
+            }
+        }
+
         private string? GetMarkerType(ChapterInfo chapter)
         {
             try

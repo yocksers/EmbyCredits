@@ -134,6 +134,8 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtMaxScheduledBackups').value = config.MaxScheduledBackups !== null && config.MaxScheduledBackups !== undefined ? config.MaxScheduledBackups : 10;
             view.querySelector('#chkEnableAutoBackupAfterDetection').checked = config.EnableAutoBackupAfterDetection || false;
             view.querySelector('#chkSkipDetectionIfFileUnchanged').checked = config.SkipDetectionIfFileUnchanged || false;
+            view.querySelector('#chkUseEmbeddedChapterMarkersScheduled').checked = config.UseEmbeddedChapterMarkersScheduled || false;
+            view.querySelector('#chkUseEmbeddedChapterMarkersManual').checked = config.UseEmbeddedChapterMarkersManual || false;
             view.querySelector('#chkEnableTracerMode').checked = config.EnableTracerMode || false;
             view.querySelector('#chkOnlyProcessNewEpisodes').checked = config.OnlyProcessNewEpisodes || false;
             view.querySelector('#chkEnableAutoRestoreAfterScan').checked = config.EnableAutoRestoreAfterScan || false;
@@ -388,6 +390,8 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.MaxScheduledBackups = Number.parseInt(view.querySelector('#txtMaxScheduledBackups').value, 10) || 10;
         instance.config.EnableAutoBackupAfterDetection = view.querySelector('#chkEnableAutoBackupAfterDetection').checked;
         instance.config.SkipDetectionIfFileUnchanged = view.querySelector('#chkSkipDetectionIfFileUnchanged').checked;
+        instance.config.UseEmbeddedChapterMarkersScheduled = view.querySelector('#chkUseEmbeddedChapterMarkersScheduled').checked;
+        instance.config.UseEmbeddedChapterMarkersManual = view.querySelector('#chkUseEmbeddedChapterMarkersManual').checked;
         instance.config.EnableTracerMode = view.querySelector('#chkEnableTracerMode').checked;
         instance.config.OnlyProcessNewEpisodes = view.querySelector('#chkOnlyProcessNewEpisodes').checked;
         instance.config.EnableAutoRestoreAfterScan = view.querySelector('#chkEnableAutoRestoreAfterScan').checked;
@@ -938,6 +942,8 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkEnableLogToFile', false, true);
         setIfExists('#chkEnableAutoBackupAfterDetection', false, true);
         setIfExists('#chkSkipDetectionIfFileUnchanged', false, true);
+        setIfExists('#chkUseEmbeddedChapterMarkersScheduled', false, true);
+        setIfExists('#chkUseEmbeddedChapterMarkersManual', false, true);
         setIfExists('#chkOnlyProcessNewEpisodes', false, true);
         setIfExists('#chkEnableAutoRestoreAfterScan', false, true);
 

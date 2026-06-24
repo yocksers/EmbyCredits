@@ -184,6 +184,14 @@
 
                 <div class="checkboxContainer" style="margin-top: 1em;">
                     <label>
+                        <input is="emby-checkbox" type="checkbox" id="chkUseEmbeddedChapterMarkersScheduled" data-config-key="UseEmbeddedChapterMarkersScheduled" />
+                        <span>Use embedded chapter markers for credits (scheduled / automatic)</span>
+                    </label>
+                    <div class="fieldDescription">When enabled, the scheduled task and automatic detection will check each episode for existing chapter markers with credits-related names (e.g. "Credits", "End Credits"). If one is found in the latter portion of the video it will be converted to the correct Emby format and detection will be skipped for that episode.</div>
+                </div>
+
+                <div class="checkboxContainer" style="margin-top: 1em;">
+                    <label>
                         <input is="emby-checkbox" type="checkbox" id="chkSkipDetectionIfFileUnchanged" data-config-key="SkipDetectionIfFileUnchanged" />
                         <span>Skip detection if file is unchanged</span>
                     </label>
@@ -503,6 +511,14 @@
             <span>Performance & Resource Control</span>
         </h2>
         <div class="collapsible-content" style="display: none; margin-top: 1em;">
+            <div class="checkboxContainer" style="margin-bottom: 1.5em;">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkUseEmbeddedChapterMarkersManual" data-config-key="UseEmbeddedChapterMarkersManual" />
+                    <span>Use embedded chapter markers for credits (manual detection)</span>
+                </label>
+                <div class="fieldDescription">When enabled, manual detection runs will check each episode for existing chapter markers with credits-related names (e.g. "Credits", "End Credits"). If one is found in the latter portion of the video it will be converted to the correct Emby format and detection will be skipped for that episode.</div>
+            </div>
+
             <h3 style="margin-top: 0; margin-bottom: 1em;">CPU & Process Priority</h3>
             
             <div class="checkboxContainer">

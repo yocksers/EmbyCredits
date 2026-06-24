@@ -727,6 +727,27 @@ namespace EmbyCredits.Services
             {
                 if (_configuration != null && _itemRepository != null)
                 {
+                    if (_configuration.UseEmbeddedChapterMarkersScheduled && _chapterMarkerService != null)
+                    {
+                        var imported = _chapterMarkerService.TryImportEmbeddedCreditChapter(episode);
+                        if (imported)
+                        {
+                            LogInfo($"Skipping episode {episode.Name} - credits marker imported from embedded chapter");
+
+                            if (Plugin.Instance != null)
+                            {
+                                var series = episode.Series;
+                                var episodeKey = series != null
+                                    ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
+                                    : episode.Name;
+                                Plugin.Progress.SkipReasons[episodeKey] = "Imported from embedded chapter";
+                                Plugin.Progress.SkippedItems++;
+                            }
+
+                            return;
+                        }
+                    }
+
                     var chapters = _itemRepository.GetChapters(episode);
                     var hasCreditsMarker = chapters.Any(c => 
                     {
@@ -1062,6 +1083,26 @@ namespace EmbyCredits.Services
                 LogDebug($"Cleared episode comparison cache for {series.Name} Season {seasonNumber} (manual detection)");
             }
 
+            if (_configuration?.UseEmbeddedChapterMarkersManual == true && _chapterMarkerService != null)
+            {
+                var imported = _chapterMarkerService.TryImportEmbeddedCreditChapter(episode);
+                if (imported)
+                {
+                    LogInfo($"Skipping episode {episode.Name} - credits marker imported from embedded chapter");
+
+                    if (Plugin.Instance != null)
+                    {
+                        var episodeKey = series != null
+                            ? $"{series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
+                            : episode.Name;
+                        Plugin.Progress.SuccessDetails[episodeKey] = "(imported from embedded chapter)";
+                        Plugin.Progress.SuccessfulItems++;
+                    }
+
+                    return;
+                }
+            }
+
             if (skipExistingMarkers && _itemRepository != null)
             {
                 var chapters = _itemRepository.GetChapters(episode);
@@ -1135,6 +1176,36 @@ namespace EmbyCredits.Services
             {
                 Plugin.Progress.SkipReasons.Clear();
                 Plugin.Progress.SkippedItems = 0;
+            }
+
+            // Import embedded credit chapters when the setting is enabled
+            if (_configuration?.UseEmbeddedChapterMarkersManual == true && _chapterMarkerService != null)
+            {
+                var remainingAfterImport = new List<Episode>();
+                foreach (var episode in episodesToQueue)
+                {
+                    var imported = _chapterMarkerService.TryImportEmbeddedCreditChapter(episode);
+                    if (imported)
+                    {
+                        var series2 = episode.Series;
+                        var episodeKey = series2 != null
+                            ? $"{series2.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
+                            : episode.Name;
+                        LogInfo($"Skipping episode {episode.Name} - credits marker imported from embedded chapter");
+                        skippedEpisodes.Add($"{episodeKey} (imported from embedded chapter)");
+
+                        if (Plugin.Instance != null)
+                        {
+                            Plugin.Progress.SuccessDetails[episodeKey] = "(imported from embedded chapter)";
+                            Plugin.Progress.SuccessfulItems++;
+                        }
+                    }
+                    else
+                    {
+                        remainingAfterImport.Add(episode);
+                    }
+                }
+                episodesToQueue = remainingAfterImport;
             }
 
             // Filter episodes with existing markers if requested

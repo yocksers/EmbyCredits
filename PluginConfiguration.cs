@@ -300,6 +300,8 @@ namespace EmbyCredits
         public bool EnableAutoBackupAfterDetection { get; set; } = false;
         public bool EnableAutoRestoreAfterScan { get; set; } = false;
         public bool SkipDetectionIfFileUnchanged { get; set; } = false;
+        public bool UseEmbeddedChapterMarkersScheduled { get; set; } = false;
+        public bool UseEmbeddedChapterMarkersManual { get; set; } = false;
         public bool EnableTracerMode { get; set; } = false;
         public bool OnlyProcessNewEpisodes { get; set; } = false;
 
