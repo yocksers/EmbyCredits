@@ -1713,6 +1713,18 @@ namespace EmbyCredits.Services
                 
                 var cts = Interlocked.Exchange(ref _cancellationTokenSource, null);
                 cts?.Dispose();
+
+                if (_processingQueue.Count > 0 && _isRunning && !_cancellationRequested)
+                {
+                    LogInfo($"Queue received {_processingQueue.Count} episode(s) during processing — starting follow-up cycle");
+                    _ = Task.Run(ProcessQueue).ContinueWith(t =>
+                    {
+                        if (t.IsFaulted && t.Exception != null)
+                        {
+                            LogError("ProcessQueue follow-up task failed", t.Exception.GetBaseException());
+                        }
+                    }, TaskScheduler.Default);
+                }
             }
         }
 
@@ -2110,7 +2122,7 @@ namespace EmbyCredits.Services
             if (Plugin.Instance != null)
             {
                 Plugin.Progress.CheckAndLimitDictionarySize();
-                if (Plugin.Progress.ProcessedItems >= Plugin.Progress.TotalItems)
+                if (!_isProcessing && Plugin.Progress.ProcessedItems >= Plugin.Progress.TotalItems)
                 {
                     Plugin.Progress.IsRunning = false;
                     Plugin.Progress.EndTime = DateTime.Now;
