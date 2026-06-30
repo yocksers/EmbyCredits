@@ -520,11 +520,13 @@ namespace EmbyCredits.Services.DetectionMethods
                         using (var errorReader = process.StandardError)
                         {
                             var ffmpegError = await errorReader.ReadToEndAsync().ConfigureAwait(false);
-                            if (!string.IsNullOrWhiteSpace(ffmpegError) && 
-                                (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) || 
-                                 ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase)))
+                            if (!string.IsNullOrWhiteSpace(ffmpegError))
                             {
-                                LogDebug($"FFmpeg output: {ffmpegError}");
+                                if (CreditsDetectionService.IsDebugMode)
+                                    CreditsDetectionService.LogToDebug("DEBUG", $"[OCR Detection] FFmpeg stderr: {ffmpegError}");
+                                else if (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+                                         ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase))
+                                    LogDebug($"FFmpeg output: {ffmpegError}");
                             }
                             return ffmpegError;
                         }
@@ -675,6 +677,15 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
 
                     await ffmpegErrorTask.ConfigureAwait(false);
+                    if (process.HasExited && process.ExitCode != 0)
+                    {
+                        var hwType = Configuration.OcrEnableHardwareAcceleration && !string.IsNullOrWhiteSpace(Configuration.OcrHardwareAccelerationType) && Configuration.OcrHardwareAccelerationType != "none"
+                            ? Configuration.OcrHardwareAccelerationType : null;
+                        CreditsDetectionService.LogToDebug(hwType != null ? "WARN" : "DEBUG",
+                            hwType != null
+                                ? $"[OCR Detection] FFmpeg exited with code {process.ExitCode} - hardware acceleration ({hwType}) may have failed"
+                                : $"[OCR Detection] FFmpeg exited with code {process.ExitCode}");
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -1028,7 +1039,18 @@ namespace EmbyCredits.Services.DetectionMethods
 
                 var stderrTask = Task.Run(async () =>
                 {
-                    try { await process.StandardError.ReadToEndAsync().ConfigureAwait(false); }
+                    try
+                    {
+                        var ffmpegError = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
+                        if (!string.IsNullOrWhiteSpace(ffmpegError))
+                        {
+                            if (CreditsDetectionService.IsDebugMode)
+                                CreditsDetectionService.LogToDebug("DEBUG", $"[OCR Detection] FFmpeg coarse scan stderr: {ffmpegError}");
+                            else if (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+                                     ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase))
+                                LogDebug($"FFmpeg coarse scan output: {ffmpegError}");
+                        }
+                    }
                     catch { }
                 });
 
@@ -1116,6 +1138,15 @@ namespace EmbyCredits.Services.DetectionMethods
                         try { process.Kill(); } catch { }
                     }
                     await stderrTask.ConfigureAwait(false);
+                    if (process.HasExited && process.ExitCode != 0)
+                    {
+                        var hwType = Configuration.OcrEnableHardwareAcceleration && !string.IsNullOrWhiteSpace(Configuration.OcrHardwareAccelerationType) && Configuration.OcrHardwareAccelerationType != "none"
+                            ? Configuration.OcrHardwareAccelerationType : null;
+                        CreditsDetectionService.LogToDebug(hwType != null ? "WARN" : "DEBUG",
+                            hwType != null
+                                ? $"[OCR Detection] FFmpeg coarse scan exited with code {process.ExitCode} - hardware acceleration ({hwType}) may have failed"
+                                : $"[OCR Detection] FFmpeg coarse scan exited with code {process.ExitCode}");
+                    }
                 }
             }
             finally
@@ -1266,9 +1297,13 @@ namespace EmbyCredits.Services.DetectionMethods
                             using (var errorReader = process.StandardError)
                             {
                                 var ffmpegError = await errorReader.ReadToEndAsync().ConfigureAwait(false);
-                                if (!string.IsNullOrWhiteSpace(ffmpegError) && (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) || ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase)))
+                                if (!string.IsNullOrWhiteSpace(ffmpegError))
                                 {
-                                    LogDebug($"FFmpeg output: {ffmpegError}");
+                                    if (CreditsDetectionService.IsDebugMode)
+                                        CreditsDetectionService.LogToDebug("DEBUG", $"[OCR Detection] FFmpeg disk pipeline stderr: {ffmpegError}");
+                                    else if (ffmpegError.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+                                             ffmpegError.Contains("invalid", StringComparison.OrdinalIgnoreCase))
+                                        LogDebug($"FFmpeg output: {ffmpegError}");
                                 }
                                 return ffmpegError;
                             }
@@ -1779,11 +1814,20 @@ namespace EmbyCredits.Services.DetectionMethods
 
                     if (process.ExitCode != 0 && !creditsFound)
                     {
+                        var hwType = Configuration.OcrEnableHardwareAcceleration && !string.IsNullOrWhiteSpace(Configuration.OcrHardwareAccelerationType) && Configuration.OcrHardwareAccelerationType != "none"
+                            ? Configuration.OcrHardwareAccelerationType : null;
                         LastError = $"FFmpeg frame extraction failed (exit code {process.ExitCode})";
-                        LogError($"FFmpeg frame extraction failed with exit code {process.ExitCode}");
+                        LogError(hwType != null
+                            ? $"FFmpeg frame extraction failed with exit code {process.ExitCode} - hardware acceleration ({hwType}) may have failed"
+                            : $"FFmpeg frame extraction failed with exit code {process.ExitCode}");
+                        CreditsDetectionService.LogToDebug("ERROR",
+                            hwType != null
+                                ? $"[OCR Detection] FFmpeg frame extraction failed with exit code {process.ExitCode} - hardware acceleration ({hwType}) may have failed"
+                                : $"[OCR Detection] FFmpeg frame extraction failed with exit code {process.ExitCode}");
                         if (!string.IsNullOrWhiteSpace(ffmpegError))
                         {
                             LogError($"FFmpeg error output: {ffmpegError}");
+                            CreditsDetectionService.LogToDebug("ERROR", $"[OCR Detection] FFmpeg error output: {ffmpegError}");
                         }
                         return 0;
                     }
@@ -2094,9 +2138,11 @@ namespace EmbyCredits.Services.DetectionMethods
                             var qsvDevice = string.IsNullOrWhiteSpace(Configuration.OcrHardwareDevice)
                                 ? "/dev/dri/renderD128"
                                 : Configuration.OcrHardwareDevice;
-                            args.Add($"-init_hw_device qsv=hw:{qsvDevice}");
-                            args.Add("-filter_hw_device hw");
+                            args.Add($"-init_hw_device vaapi=va:{qsvDevice}");
+                            args.Add("-init_hw_device qsv=qs@va");
                             args.Add("-hwaccel qsv");
+                            args.Add("-hwaccel_device qs");
+                            args.Add("-filter_hw_device qs");
                             if (Configuration.OcrUseHardwareOutputFormat)
                             {
                                 args.Add("-hwaccel_output_format qsv");
@@ -2109,10 +2155,16 @@ namespace EmbyCredits.Services.DetectionMethods
                         }
                         else
                         {
-                            args.Add("-hwaccel qsv");
                             if (!string.IsNullOrWhiteSpace(Configuration.OcrHardwareDevice))
                             {
-                                args.Add($"-qsv_device {Configuration.OcrHardwareDevice}");
+                                args.Add($"-init_hw_device qsv=qs:{Configuration.OcrHardwareDevice}");
+                                args.Add("-hwaccel qsv");
+                                args.Add("-hwaccel_device qs");
+                                args.Add("-filter_hw_device qs");
+                            }
+                            else
+                            {
+                                args.Add("-hwaccel qsv");
                             }
                             if (Configuration.OcrUseHardwareOutputFormat)
                             {
@@ -2209,7 +2261,10 @@ namespace EmbyCredits.Services.DetectionMethods
                 }
             }
 
-            return args.Count > 0 ? string.Join(" ", args) + " " : "";
+            var effectiveArgs = args.Count > 0 ? string.Join(" ", args) + " " : "";
+            if (!string.IsNullOrWhiteSpace(effectiveArgs))
+                CreditsDetectionService.LogToDebug("DEBUG", $"[OCR Detection] FFmpeg pre-input args: {effectiveArgs.Trim()}");
+            return effectiveArgs;
         }
 
         private static void AddTokenizedArgs(ProcessStartInfo psi, string args)

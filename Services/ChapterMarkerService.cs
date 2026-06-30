@@ -82,6 +82,19 @@ namespace EmbyCredits.Services
 
                 var chapters = _itemRepository.GetChapters(episode)?.ToList() ?? new List<ChapterInfo>();
 
+                var introAfterCredits = chapters
+                    .Where(c => { var mt = GetMarkerType(c); return mt == "IntroStart" || mt == "IntroEnd"; })
+                    .Where(c => c.StartPositionTicks / (double)TimeSpan.TicksPerSecond > creditsStartSeconds)
+                    .OrderBy(c => c.StartPositionTicks)
+                    .FirstOrDefault();
+
+                if (introAfterCredits != null)
+                {
+                    var introSeconds = introAfterCredits.StartPositionTicks / (double)TimeSpan.TicksPerSecond;
+                    _logger.Warn($"Skipping credits marker for {episode.Name}: detected credits at {FormatTime(creditsStartSeconds)} precede {GetMarkerType(introAfterCredits)} marker at {FormatTime(introSeconds)}");
+                    return;
+                }
+
                 var existingCreditsMarkers = chapters.Where(c =>
                 {
                     var markerType = GetMarkerType(c);
