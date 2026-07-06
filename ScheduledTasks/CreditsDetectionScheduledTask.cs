@@ -101,12 +101,17 @@ namespace EmbyCredits.ScheduledTasks
                     var firstPending = kvp.Value.First();
                     var series = firstPending.Series!;
 
+                    var seasonItem = firstPending.ParentId != 0
+                        ? _libraryManager.GetItemById(firstPending.ParentId)
+                        : null;
+                    long ancestorId = seasonItem?.InternalId ?? series.InternalId;
+
                     var seasonEps = _libraryManager.GetItemList(new InternalItemsQuery
                     {
                         IncludeItemTypes = new[] { "Episode" },
                         IsVirtualItem = false,
                         HasPath = true,
-                        AncestorIds = new[] { series.InternalId }
+                        AncestorIds = new[] { ancestorId }
                     }).OfType<Episode>()
                       .Where(e => e.ParentIndexNumber == seasonNumber && e.ParentIndexNumber != 0)
                       .ToList();

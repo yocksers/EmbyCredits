@@ -11,7 +11,8 @@ namespace EmbyCredits.Services.DetectionMethods
         public static async Task<List<(string framePath, string ocrText, double confidence, double timestamp)>> ProcessFramesBatch(
             List<(string path, double timestamp)> frames,
             Func<string, Task<(string text, double confidence)>> ocrFunction,
-            int maxParallelism = 4)
+            int maxParallelism = 4,
+            System.Threading.CancellationToken cancellationToken = default)
         {
             var results = new List<(string, string, double, double)>(frames.Count);
             using (var semaphore = new System.Threading.SemaphoreSlim(maxParallelism, maxParallelism))
@@ -20,7 +21,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
                 foreach (var frame in frames)
                 {
-                    await semaphore.WaitAsync().ConfigureAwait(false);
+                    await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     var task = Task.Run(async () =>
                     {

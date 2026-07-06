@@ -19,14 +19,11 @@ namespace EmbyCredits.Services
         private bool _disposed = false;
         private CancellationTokenSource? _cancellationTokenSource;
 
-        private readonly Dictionary<string, List<(string method, double timestamp)>> _batchDetectionCache;
-
         public DetectionCoordinator(ILogger logger, PluginConfiguration configuration)
         {
             _logger = logger;
             _configuration = configuration;
             _detectionMethods = new List<IDetectionMethod>();
-            _batchDetectionCache = new Dictionary<string, List<(string method, double timestamp)>>();
             _cancellationTokenSource = new CancellationTokenSource();
 
             InitializeDetectionMethods();
@@ -187,264 +184,82 @@ namespace EmbyCredits.Services
             // For anime: If all detection methods failed, apply mode-specific fallback logic
             if (isAnime && detectionResults.Count == 0 && _configuration.AnimeDetectionMethod == AnimeDetectionMethod.BlackFrame && seasonNumber.HasValue && episodeNumber.HasValue)
             {
-                var blackFrameError = methodErrors.ContainsKey("BlackFrame");
-                if (blackFrameError)
+                if (methodErrors.ContainsKey("BlackFrame"))
                 {
                     LogInfo("Anime detection: BlackFrame failed, attempting fallback based on detection mode...");
-                    
-                    // Determine fallback based on detection mode
-                    if (_configuration.DetectionMode == DetectionMode.HashOnly)
+
+                    foreach (var fallbackMethod in GetAnimeFallbackOrder())
                     {
-                        // HashOnly: Try Chromaprint
-                        var chromaprint = _detectionMethods.FirstOrDefault(m => m is ChromaprintDetection) as ChromaprintDetection;
-                        if (chromaprint != null)
-                        {
-                            try
-                            {
-                                LogDebug("Running Chromaprint fallback for anime (HashOnly mode)...");
-                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame failed, trying Chromaprint");
-                                double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
-                                
-                                if (timestamp > 0)
-                                {
-                                    LogInfo($"Chromaprint fallback successful at {FormatTime(timestamp)}");
-                                    var reason = chromaprint.GetDetectionReason();
-                                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Anime fallback: {reason}", chromaprint.Confidence, chromaprint.MethodName, reason);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                LogWarn($"Chromaprint fallback error: {ex.Message}");
-                            }
-                        }
+                        EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, $"BlackFrame failed, trying {fallbackMethod.MethodName}");
+                        var fbResult = await TryFallbackDetectionMethod(fallbackMethod, videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, "Anime fallback");
+                        if (fbResult.HasValue)
+                            return fbResult.Value;
                     }
-                    else if (_configuration.DetectionMode == DetectionMode.OcrOnly)
-                    {
-                        // OcrOnly: Try OCR
-                        var ocr = _detectionMethods.FirstOrDefault(m => m is OcrDetection) as OcrDetection;
-                        if (ocr != null)
-                        {
-                            try
-                            {
-                                LogDebug("Running OCR fallback for anime (OcrOnly mode)...");
-                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame failed, trying OCR");
-                                double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
-                                
-                                if (timestamp > 0)
-                                {
-                                    LogInfo($"OCR fallback successful at {FormatTime(timestamp)}");
-                                    var reason = ocr.GetDetectionReason();
-                                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Anime fallback: {reason}", ocr.Confidence, ocr.MethodName, reason);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                LogWarn($"OCR fallback error: {ex.Message}");
-                            }
-                        }
-                    }
-                    else if (_configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
-                    {
-                        // OcrWithHashFallback: Try OCR first, then Chromaprint
-                        var ocr = _detectionMethods.FirstOrDefault(m => m is OcrDetection) as OcrDetection;
-                        if (ocr != null)
-                        {
-                            try
-                            {
-                                LogDebug("Running OCR fallback for anime (OcrWithHashFallback mode)...");
-                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame failed, trying OCR");
-                                double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
-                                
-                                if (timestamp > 0)
-                                {
-                                    LogInfo($"OCR fallback successful at {FormatTime(timestamp)}");
-                                    var reason = ocr.GetDetectionReason();
-                                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Anime fallback: {reason}", ocr.Confidence, ocr.MethodName, reason);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                LogWarn($"OCR fallback error: {ex.Message}");
-                            }
-                        }
-                        
-                        // If OCR failed, try Chromaprint
-                        var chromaprint = _detectionMethods.FirstOrDefault(m => m is ChromaprintDetection) as ChromaprintDetection;
-                        if (chromaprint != null)
-                        {
-                            try
-                            {
-                                LogDebug("OCR failed, running Chromaprint fallback for anime...");
-                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "OCR failed, trying Chromaprint");
-                                double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
-                                
-                                if (timestamp > 0)
-                                {
-                                    LogInfo($"Chromaprint fallback successful at {FormatTime(timestamp)}");
-                                    var reason = chromaprint.GetDetectionReason();
-                                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Anime fallback: {reason}", chromaprint.Confidence, chromaprint.MethodName, reason);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                LogWarn($"Chromaprint fallback error: {ex.Message}");
-                            }
-                        }
-                    }
-                    else if (_configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
-                    {
-                        // HashWithOcrFallback: Try Chromaprint first, then OCR
-                        var chromaprint = _detectionMethods.FirstOrDefault(m => m is ChromaprintDetection) as ChromaprintDetection;
-                        if (chromaprint != null)
-                        {
-                            try
-                            {
-                                LogDebug("Running Chromaprint fallback for anime (HashWithOcrFallback mode)...");
-                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame failed, trying Chromaprint");
-                                double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
-                                
-                                if (timestamp > 0)
-                                {
-                                    LogInfo($"Chromaprint fallback successful at {FormatTime(timestamp)}");
-                                    var reason = chromaprint.GetDetectionReason();
-                                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Anime fallback: {reason}", chromaprint.Confidence, chromaprint.MethodName, reason);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                LogWarn($"Chromaprint fallback error: {ex.Message}");
-                            }
-                        }
-                        
-                        // If Chromaprint failed, try OCR
-                        var ocr = _detectionMethods.FirstOrDefault(m => m is OcrDetection) as OcrDetection;
-                        if (ocr != null)
-                        {
-                            try
-                            {
-                                LogDebug("Chromaprint failed, running OCR fallback for anime...");
-                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Chromaprint failed, trying OCR");
-                                double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
-                                
-                                if (timestamp > 0)
-                                {
-                                    LogInfo($"OCR fallback successful at {FormatTime(timestamp)}");
-                                    var reason = ocr.GetDetectionReason();
-                                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Anime fallback: {reason}", ocr.Confidence, ocr.MethodName, reason);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                LogWarn($"OCR fallback error: {ex.Message}");
-                            }
-                        }
-                    }
-                    
+
                     LogDebug("All anime fallback attempts failed");
                 }
             }
 
             if (!isAnime && detectionResults.Count == 0 && seasonNumber.HasValue && episodeNumber.HasValue)
             {
-                if (_configuration.DetectionMode == DetectionMode.BlackFrameOnly)
+                if (_configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
                 {
-                    // BlackFrameOnly: no fallback, black frame is the only method
-                }
-                else if (_configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
-                {
-                    // OcrWithHashFallback: OCR failed, try Hash
-                    var chromaprint = _detectionMethods.FirstOrDefault(m => m is ChromaprintDetection) as ChromaprintDetection;
-                    if (chromaprint != null && chromaprint.IsEnabled)
+                    var chromaprint = _detectionMethods.FirstOrDefault(m => m is ChromaprintDetection && m.IsEnabled) as ChromaprintDetection;
+                    if (chromaprint != null)
                     {
-                        try
+                        LogDebug("OCR detection failed, attempting Hash fallback...");
+                        EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "OCR failed, trying Hash fallback");
+                        var fbResult = await TryFallbackDetectionMethod(chromaprint, videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, "Fallback");
+                        if (fbResult.HasValue)
                         {
-                            LogDebug("OCR detection failed, attempting Hash fallback...");
-                            EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "OCR failed, trying Hash fallback");
-                            double timestamp = await chromaprint.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
-                            
-                            if (timestamp > 0)
-                            {
-                                LogInfo($"Hash fallback successful at {FormatTime(timestamp)}");
-                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash fallback successful");
-                                var reason = chromaprint.GetDetectionReason();
-                                return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Fallback: {reason}", chromaprint.Confidence, chromaprint.MethodName, reason);
-                            }
-                            else
-                            {
-                                LogDebug("Hash fallback also failed");
-                            }
+                            EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash fallback successful");
+                            return fbResult.Value;
                         }
-                        catch (Exception ex)
-                        {
-                            LogWarn($"Hash fallback error: {ex.Message}");
-                        }
+                        LogDebug("Hash fallback also failed");
                     }
                 }
                 else if (_configuration.DetectionMode == DetectionMode.HashWithOcrFallback)
                 {
-                    // HashWithOcrFallback: Hash failed, try OCR
-                    var ocr = _detectionMethods.FirstOrDefault(m => m is OcrDetection) as OcrDetection;
-                    if (ocr != null && ocr.IsEnabled)
+                    var ocr = _detectionMethods.FirstOrDefault(m => m is OcrDetection && m.IsEnabled) as OcrDetection;
+                    if (ocr != null)
                     {
-                        try
+                        LogDebug("Hash detection failed, attempting OCR fallback...");
+                        EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash failed, trying OCR fallback");
+                        var fbResult = await TryFallbackDetectionMethod(ocr, videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, "Fallback");
+                        if (fbResult.HasValue)
                         {
-                            LogDebug("Hash detection failed, attempting OCR fallback...");
-                            EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash failed, trying OCR fallback");
-                            double timestamp = await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId ?? string.Empty, seasonNumber.Value, episodeNumber.Value, _cancellationTokenSource?.Token ?? default);
-                            
-                            if (timestamp > 0)
-                            {
-                                LogInfo($"OCR fallback successful at {FormatTime(timestamp)}");
-                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "OCR fallback successful");
-                                var reason = ocr.GetDetectionReason();
-                                return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Fallback: {reason}", ocr.Confidence, ocr.MethodName, reason);
-                            }
-                            else
-                            {
-                                LogDebug("OCR fallback also failed");
-                            }
+                            EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "OCR fallback successful");
+                            return fbResult.Value;
                         }
-                        catch (Exception ex)
-                        {
-                            LogWarn($"OCR fallback error: {ex.Message}");
-                        }
+                        LogDebug("OCR fallback also failed");
                     }
                 }
-                else if (_configuration.DetectionMode == DetectionMode.HashOnly)
+                else if (_configuration.DetectionMode == DetectionMode.HashOnly && _configuration.ChromaprintEnableBlackFrameFallback)
                 {
-                    if (_configuration.ChromaprintEnableBlackFrameFallback)
+                    LogDebug("Hash detection failed for non-anime series, attempting BlackFrame detection as fallback...");
+                    EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash failed, trying BlackFrame fallback");
+                    var blackFrame = new BlackFrameDetection(_logger, _configuration);
+                    try
                     {
-                        LogDebug("Hash detection failed for non-anime series, attempting BlackFrame detection as fallback...");
-                        EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Hash failed, trying BlackFrame fallback");
-                        
-                        var blackFrame = new BlackFrameDetection(_logger, _configuration);
-                        try
+                        double timestamp = await blackFrame.DetectCredits(videoPath, duration, _cancellationTokenSource?.Token ?? default);
+                        if (timestamp > 0)
                         {
-                            double timestamp = await blackFrame.DetectCredits(videoPath, duration, _cancellationTokenSource?.Token ?? default);
-                            
-                            if (timestamp > 0)
-                            {
-                                LogInfo($"BlackFrame fallback successful at {FormatTime(timestamp)}");
-                                EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame fallback successful");
-                                var reason = blackFrame.GetDetectionReason();
-                                return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Fallback: {reason}", blackFrame.Confidence, blackFrame.MethodName, reason);
-                            }
-                            else
-                            {
-                                LogDebug("BlackFrame fallback also failed");
-                                var bfError = string.IsNullOrWhiteSpace(blackFrame.GetLastError()) ? "No black frame transition detected" : blackFrame.GetLastError();
-                                methodErrors[blackFrame.MethodName] = bfError;
-                            }
+                            LogInfo($"BlackFrame fallback successful at {FormatTime(timestamp)}");
+                            EmbyCredits.Services.CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "BlackFrame fallback successful");
+                            var reason = blackFrame.GetDetectionReason();
+                            return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"Fallback: {reason}", blackFrame.Confidence, blackFrame.MethodName, reason);
                         }
-                        catch (Exception ex)
-                        {
-                            LogWarn($"BlackFrame fallback error: {ex.Message}");
-                            methodErrors["BlackFrame (Fallback)"] = ex.Message;
-                        }
-                        finally
-                        {
-                            try { blackFrame?.Dispose(); } catch { }
-                        }
+                        LogDebug("BlackFrame fallback also failed");
+                        methodErrors[blackFrame.MethodName] = string.IsNullOrWhiteSpace(blackFrame.GetLastError()) ? "No black frame transition detected" : blackFrame.GetLastError();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWarn($"BlackFrame fallback error: {ex.Message}");
+                        methodErrors["BlackFrame (Fallback)"] = ex.Message;
+                    }
+                    finally
+                    {
+                        try { blackFrame?.Dispose(); } catch { }
                     }
                 }
             }
@@ -732,8 +547,6 @@ namespace EmbyCredits.Services
 
         public void ClearCache()
         {
-            _batchDetectionCache.Clear();
-            _batchDetectionCache.TrimExcess();
         }
 
         public List<IDetectionMethod> GetAllDetectionMethods()
@@ -940,8 +753,60 @@ namespace EmbyCredits.Services
 
         private string FormatTime(double seconds) => Utilities.ItemLookupHelper.FormatTime(seconds);
 
-        public void CancelDetection()
+        private IEnumerable<IDetectionMethod> GetAnimeFallbackOrder()
         {
+            var candidates = new List<IDetectionMethod?>();
+            switch (_configuration.DetectionMode)
+            {
+                case DetectionMode.HashOnly:
+                    candidates.Add(_detectionMethods.FirstOrDefault(m => m is ChromaprintDetection));
+                    break;
+                case DetectionMode.OcrOnly:
+                    candidates.Add(_detectionMethods.FirstOrDefault(m => m is OcrDetection));
+                    break;
+                case DetectionMode.OcrWithHashFallback:
+                    candidates.Add(_detectionMethods.FirstOrDefault(m => m is OcrDetection));
+                    candidates.Add(_detectionMethods.FirstOrDefault(m => m is ChromaprintDetection));
+                    break;
+                case DetectionMode.HashWithOcrFallback:
+                    candidates.Add(_detectionMethods.FirstOrDefault(m => m is ChromaprintDetection));
+                    candidates.Add(_detectionMethods.FirstOrDefault(m => m is OcrDetection));
+                    break;
+            }
+            return candidates.OfType<IDetectionMethod>();
+        }
+
+        private async Task<(double timestamp, string failureReason, double confidence, string methodName, string detectionReason)?> TryFallbackDetectionMethod(
+            IDetectionMethod method,
+            string videoPath, double duration, string episodeId, string seriesId, int seasonNumber, int episodeNumber,
+            string reasonPrefix)
+        {
+            LogDebug($"Running {method.MethodName} fallback...");
+            try
+            {
+                double timestamp = method switch
+                {
+                    ChromaprintDetection cp => await cp.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber, _cancellationTokenSource?.Token ?? default),
+                    OcrDetection ocr => await ocr.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber, _cancellationTokenSource?.Token ?? default),
+                    BlackFrameDetection bf => await bf.DetectCreditsWithContext(videoPath, duration, episodeId, seriesId, seasonNumber, episodeNumber, _cancellationTokenSource?.Token ?? default),
+                    _ => await method.DetectCredits(videoPath, duration, _cancellationTokenSource?.Token ?? default)
+                };
+
+                if (timestamp > 0)
+                {
+                    LogInfo($"{method.MethodName} fallback successful at {FormatTime(timestamp)}");
+                    var reason = method.GetDetectionReason();
+                    return await ApplySilenceRefinementAndReturn(videoPath, duration, timestamp, $"{reasonPrefix}: {reason}", method.Confidence, method.MethodName, reason);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogWarn($"{method.MethodName} fallback error: {ex.Message}");
+            }
+            return null;
+        }
+
+        public void CancelDetection()        {
             try
             {
                 _cancellationTokenSource?.Cancel();
@@ -979,7 +844,6 @@ namespace EmbyCredits.Services
                     catch { }
                 }
                 _detectionMethods.Clear();
-                _batchDetectionCache.Clear();
                 
                 _disposed = true;
                 

@@ -22,6 +22,7 @@ namespace EmbyCredits.Services
             _saveTimer?.Dispose();
             _saveTimer = null;
             FlushSave();
+            GC.SuppressFinalize(this);
         }
     }
 }

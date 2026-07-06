@@ -52,6 +52,9 @@ namespace EmbyCredits.Services.DetectionMethods
         private static readonly byte[] _jpegStartMarker = { 0xFF, 0xD8, 0xFF };
         private static readonly byte[] _jpegEndMarker = { 0xFF, 0xD9 };
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string lower, string lowerCollapsed)[]> _normalizedKeywordsByString
+            = new System.Collections.Concurrent.ConcurrentDictionary<string, (string, string)[]>(StringComparer.Ordinal);
+
         private (string lower, string lowerCollapsed)[] _normalizedKeywordCache = Array.Empty<(string, string)>();
 
         private static readonly DetectionTimestampCache _cache = new DetectionTimestampCache();
@@ -1415,7 +1418,8 @@ namespace EmbyCredits.Services.DetectionMethods
                                 var batchResults = await OcrOptimizations.ProcessFramesBatch(
                                     frameBatchWithTimestamps,
                                     async (path) => await PerformOcr(path, effectiveToken).ConfigureAwait(false),
-                                    batchSize
+                                    batchSize,
+                                    effectiveToken
                                 ).ConfigureAwait(false);
 
                                 foreach (var (framePath, ocrText, ocrConfidence, timestamp) in batchResults)
@@ -2752,12 +2756,13 @@ namespace EmbyCredits.Services.DetectionMethods
                 .Distinct()
                 .ToList();
 
-            _normalizedKeywordCache = keywords.Select(k =>
-            {
-                var lower = k.ToLowerInvariant();
-                var lowerCollapsed = _multipleWhitespaceRegex.Replace(lower, "");
-                return (lower, lowerCollapsed);
-            }).ToArray();
+            _normalizedKeywordCache = _normalizedKeywordsByString.GetOrAdd(keywordString, _ =>
+                keywords.Select(k =>
+                {
+                    var lower = k.ToLowerInvariant();
+                    var lowerCollapsed = _multipleWhitespaceRegex.Replace(lower, "");
+                    return (lower, lowerCollapsed);
+                }).ToArray());
 
             return keywords;
         }

@@ -20,7 +20,8 @@ namespace EmbyCredits.Services.DetectionMethods
         public override string MethodName => "BlackFrame";
         public override double Confidence => _calculatedConfidence;
         public override int Priority => Configuration.BlackScreenPriority;
-        public override bool IsEnabled => true;
+        public override bool IsEnabled => Configuration.DetectionMode == DetectionMode.BlackFrameOnly ||
+                                          (Configuration.EnableAnimeDetection && Configuration.AnimeDetectionMethod == AnimeDetectionMethod.BlackFrame);
 
         public BlackFrameDetection(ILogger logger, PluginConfiguration configuration) 
             : base(logger, configuration)

@@ -33,7 +33,8 @@ namespace EmbyCredits.Services
             DetectionCoordinator detectionCoordinator,
             ChapterMarkerService chapterMarkerService,
             DebugLogger debugLogger,
-            PluginConfiguration configuration)
+            PluginConfiguration configuration,
+            RuleMatchingService ruleMatchingService)
         {
             _logger = logger;
             _libraryManager = libraryManager;
@@ -42,7 +43,7 @@ namespace EmbyCredits.Services
             _debugLogger = debugLogger;
             _configuration = configuration;
             _cpuThrottler = new CpuThrottler(configuration);
-            _ruleMatchingService = new RuleMatchingService(logger, configuration);
+            _ruleMatchingService = ruleMatchingService;
             _videoValidator = new VideoValidator(logger, configuration);
         }
 

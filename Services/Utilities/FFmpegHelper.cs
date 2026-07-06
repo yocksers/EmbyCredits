@@ -284,7 +284,7 @@ namespace EmbyCredits.Services.Utilities
                     {
                         var dirInfo = new DirectoryInfo(dir);
 
-                        if (dirInfo.Exists && (DateTime.Now - dirInfo.CreationTime).TotalHours > 1)
+                        if (dirInfo.Exists && (DateTime.UtcNow - dirInfo.CreationTimeUtc).TotalHours > 1)
                         {
                             Directory.Delete(dir, true);
                             deletedCount++;

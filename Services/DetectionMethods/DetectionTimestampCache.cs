@@ -38,12 +38,20 @@ namespace EmbyCredits.Services.DetectionMethods
         public void ClearSeries(string seriesId, int seasonNumber)
         {
             var key = MakeCacheKey(seriesId, seasonNumber);
+            if (_timestamps.TryGetValue(key, out var list))
+            {
+                lock (list) { list.Clear(); }
+            }
             _timestamps.TryRemove(key, out _);
             _lastAccess.TryRemove(key, out _);
         }
 
         public void ClearAll()
         {
+            foreach (var kvp in _timestamps)
+            {
+                lock (kvp.Value) { kvp.Value.Clear(); }
+            }
             _timestamps.Clear();
             _lastAccess.Clear();
         }
