@@ -1,5 +1,21 @@
 <form class="creditsDetectorForm" novalidate>
     <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
+        <h2 style="margin-top:0; display: flex; align-items: center; gap: 0.5em;">
+            <span>TheIntroDB</span>
+            <span style="font-size: 0.6em; background: #52B54B; color: white; padding: 0.2em 0.6em; border-radius: 4px; vertical-align: middle;">Community Database</span>
+        </h2>
+        <p class="fieldDescription" style="margin-bottom: 1em;">When enabled, the plugin will first query <strong>TheIntroDB</strong> community database for credits timestamps before running local detection. If a timestamp is found in the database it is used directly, skipping CPU-intensive detection entirely. Local detection only runs as a fallback when no database entry exists.</p>
+
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkEnableTheIntroDB" data-config-key="EnableTheIntroDB" />
+                <span>Enable TheIntroDB Lookup</span>
+            </label>
+            <div class="fieldDescription">Query the community database for credits timestamps before running detection. No account or API key required.</div>
+        </div>
+    </div>
+
+    <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
         <h2 style="margin-top:0;">General Settings</h2>
 
         <div class="selectContainer">
@@ -12,7 +28,7 @@
                 <option value="BlackFrameOnly">Enable Black Frame Detection Only</option>
             </select>
             <div class="fieldDescription">
-                <strong>OCR Detection:</strong> Uses OCR (Tesseract or PaddleOCR) to detect credits by reading text. More accurate but requires Docker container.<br>
+                <strong>OCR Detection:</strong> Uses OCR to detect credits by reading text. Can use a Docker container or a locally installed Tesseract binary.<br>
                 <strong>Hash Detection:</strong> Uses audio fingerprinting and black frame/silence detection. Faster but less accurate.<br>
                 <strong>With Fallback:</strong> If primary method fails to detect credits, automatically tries the fallback method.<br>
                 <strong>Black Frame Detection Only:</strong> Uses only black frame analysis. No fallback. Works on a per-episode basis without requiring the full season.
@@ -39,16 +55,31 @@
         <div class="selectContainer" style="margin-top: 1.5em;">
             <label class="selectLabel" for="selectOcrEngine">OCR Engine</label>
             <select is="emby-select" id="selectOcrEngine" data-config-key="OcrEngine" style="padding: 0.6em 1em; border-radius: 8px; background-color: rgba(82, 181, 75, 0.1); border: 2px solid rgba(82, 181, 75, 0.3); font-size: 1em; max-width: 400px;">
-                <option value="Tesseract">Tesseract OCR</option>
-                <option value="PaddleOCR">PaddleOCR</option>
+                <option value="Tesseract">Tesseract OCR (Docker)</option>
+                <option value="PaddleOCR">PaddleOCR (Docker)</option>
+                <option value="LocalTesseract">Tesseract OCR (Local / No Docker)</option>
             </select>
             <div class="fieldDescription">
-                <strong>Tesseract OCR:</strong> Traditional OCR engine with extensive language support. Requires yock1/embycreditocr Docker container.<br>
-                <strong>PaddleOCR:</strong> Deep learning based OCR with GPU acceleration and excellent multi-language support. Requires yock1/embycreditpaddle Docker container (NVIDIA GPU recommended, ~20GB).
+                <strong>Tesseract OCR (Docker):</strong> Traditional OCR engine with extensive language support. Requires yock1/embycreditocr Docker container.<br>
+                <strong>PaddleOCR (Docker):</strong> Deep learning based OCR with GPU acceleration and excellent multi-language support. Requires yock1/embycreditpaddle Docker container (NVIDIA GPU recommended, ~20GB).<br>
+                <strong>Tesseract OCR (Local):</strong> Runs a locally installed Tesseract binary directly — no Docker required. Install Tesseract on the host OS and point the path below to the executable.
             </div>
         </div>
 
-        <div class="inputContainer">
+        <div class="inputContainer" id="localTesseractPathContainer" style="display:none;">
+            <label class="inputLabel inputLabelUnfocused" for="txtLocalTesseractPath">Local Tesseract Binary Path</label>
+            <input is="emby-input" type="text" id="txtLocalTesseractPath" data-config-key="LocalTesseractPath" placeholder="Leave empty to auto-detect from PATH" />
+            <div class="fieldDescription">Full path to the <code>tesseract</code> executable (e.g. <code>/usr/bin/tesseract</code> on Linux, <code>C:\Program Files\Tesseract-OCR\tesseract.exe</code> on Windows). Leave empty to auto-detect from the system PATH or the default install location.</div>
+            <div style="display: flex; align-items: center; gap: 0.5em; margin-top: 0.5em;">
+                <button is="emby-button" type="button" class="raised button-submit" id="btnTestLocalTesseract">
+                    <i class="md-icon">check_circle</i>
+                    <span>Test Local Tesseract</span>
+                </button>
+                <span id="localTesseractTestResult" style="margin-left: 0.5em;"></span>
+            </div>
+        </div>
+
+        <div class="inputContainer" id="ocrEndpointContainer">
             <label class="inputLabel inputLabelUnfocused" for="txtOcrEndpoint" id="lblOcrEndpoint">OCR API Endpoint</label>
             <input is="emby-input" type="text" id="txtOcrEndpoint" data-config-key="OcrEndpoint" />
             <div class="fieldDescription" id="descOcrEndpoint">URL of your OCR API (e.g., <code>http://localhost:8884</code> - default port for both engines)</div>

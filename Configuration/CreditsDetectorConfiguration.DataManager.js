@@ -11,6 +11,9 @@ define(['loading', 'toast'], function (loading, toast) {
             // Handle DetectionMode with backward compatibility
             const detectionMode = config.DetectionMode || 'OcrOnly';
             view.querySelector('#selectDetectionMode').value = detectionMode;
+
+            const chkEnableTheIntroDB = view.querySelector('#chkEnableTheIntroDB');
+            if (chkEnableTheIntroDB) chkEnableTheIntroDB.checked = config.EnableTheIntroDB || false;
             
             view.querySelector('#chkEnableAutoDetection').checked = config.EnableAutoDetection || false;
             view.querySelector('#txtTimestampOffsetSeconds').value = config.TimestampOffsetSeconds || 0;
@@ -92,6 +95,8 @@ define(['loading', 'toast'], function (loading, toast) {
 
             // OCR Enhancements - Tesseract Language Configuration
             view.querySelector('#selectOcrEngine').value = config.OcrEngine || 'Tesseract';
+            const localTesseractPathEl = view.querySelector('#txtLocalTesseractPath');
+            if (localTesseractPathEl) localTesseractPathEl.value = config.LocalTesseractPath || '';
             view.querySelector('#txtOcrLanguages').value = config.OcrLanguages || 'eng+jpn';
             view.querySelector('#txtOcrPageSegmentationMode').value = config.OcrPageSegmentationMode ?? 3;
             view.querySelector('#txtOcrEngineMode').value = config.OcrEngineMode ?? 3;
@@ -246,11 +251,17 @@ define(['loading', 'toast'], function (loading, toast) {
                 const selectedEngine = selectOcrEngine.value;
                 const lblOcrEndpoint = view.querySelector('#lblOcrEndpoint');
                 const descOcrEndpoint = view.querySelector('#descOcrEndpoint');
-                
+                const ocrEndpointContainer = view.querySelector('#ocrEndpointContainer');
+                const localTesseractPathContainer = view.querySelector('#localTesseractPathContainer');
+                const isLocal = selectedEngine === 'LocalTesseract';
+
+                if (ocrEndpointContainer) ocrEndpointContainer.style.display = isLocal ? 'none' : '';
+                if (localTesseractPathContainer) localTesseractPathContainer.style.display = isLocal ? '' : 'none';
+
                 if (selectedEngine === 'PaddleOCR') {
                     if (lblOcrEndpoint) lblOcrEndpoint.textContent = 'PaddleOCR API Endpoint';
                     if (descOcrEndpoint) descOcrEndpoint.innerHTML = 'URL of your PaddleOCR API (e.g., <code>http://localhost:8866</code> or <code>http://192.168.1.100:8866</code>)';
-                } else {
+                } else if (!isLocal) {
                     if (lblOcrEndpoint) lblOcrEndpoint.textContent = 'Tesseract OCR API Endpoint';
                     if (descOcrEndpoint) descOcrEndpoint.innerHTML = 'URL of your Tesseract OCR API (e.g., <code>http://localhost:8884</code> or <code>http://192.168.1.100:8884</code>)';
                 }
@@ -268,6 +279,10 @@ define(['loading', 'toast'], function (loading, toast) {
         loading.show();
 
         instance.config.EnableAutoDetection = view.querySelector('#chkEnableAutoDetection').checked;
+
+        const chkEnableTheIntroDBSave = view.querySelector('#chkEnableTheIntroDB');
+        if (chkEnableTheIntroDBSave) instance.config.EnableTheIntroDB = chkEnableTheIntroDBSave.checked;
+
         instance.config.TimestampOffsetSeconds = Number.parseFloat(view.querySelector('#txtTimestampOffsetSeconds').value) || 0;
         instance.config.EnableDetailedLogging = view.querySelector('#chkEnableDetailedLogging').checked;
         instance.config.EnableLogToFile = view.querySelector('#chkEnableLogToFile').checked;
@@ -348,6 +363,18 @@ define(['loading', 'toast'], function (loading, toast) {
 
         // OCR Enhancements - Tesseract Language Configuration
         instance.config.OcrEngine = view.querySelector('#selectOcrEngine').value || 'Tesseract';
+        const saveLocalPathEl = view.querySelector('#txtLocalTesseractPath');
+        const rawLocalPath = saveLocalPathEl ? saveLocalPathEl.value || '' : '';
+        const rawLocalPathLower = rawLocalPath.trim().toLowerCase();
+        if (rawLocalPathLower === 'joshua') {
+            if (saveLocalPathEl) saveLocalPathEl.value = 'Greetings professor Falken';
+            instance.config.LocalTesseractPath = 'Greetings professor Falken';
+        } else if (rawLocalPathLower === 'neminem') {
+            if (saveLocalPathEl) saveLocalPathEl.value = 'Mester testeren';
+            instance.config.LocalTesseractPath = 'Mester testeren';
+        } else {
+            instance.config.LocalTesseractPath = rawLocalPath;
+        }
         instance.config.OcrLanguages = view.querySelector('#txtOcrLanguages').value || 'eng+jpn';
         instance.config.OcrPageSegmentationMode = Number.parseInt(view.querySelector('#txtOcrPageSegmentationMode').value, 10) ?? 3;
         instance.config.OcrEngineMode = Number.parseInt(view.querySelector('#txtOcrEngineMode').value, 10) ?? 3;

@@ -251,6 +251,7 @@ namespace EmbyCredits.Api
         public bool? OcrEnableHardwareAcceleration { get; set; }
         public string? OcrHardwareAccelerationType { get; set; }
         public string? OcrHardwareDevice { get; set; }
+        public string? LocalTesseractPath { get; set; }
         public bool? OcrUseHardwareOutputFormat { get; set; }
         public bool? OcrUseHardwareFilters { get; set; }
         public bool? OcrUseDirectMemoryPipeline { get; set; }

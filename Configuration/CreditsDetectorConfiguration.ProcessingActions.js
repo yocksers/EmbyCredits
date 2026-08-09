@@ -212,17 +212,18 @@ define(['loading', 'toast'], function (loading, toast) {
     function testOcrConnection(view) {
         const ocrEngineSelect = view.querySelector('#selectOcrEngine');
         const ocrEngine = ocrEngineSelect ? ocrEngineSelect.value : 'Tesseract';
-        const ocrEndpoint = view.querySelector('#txtOcrEndpoint').value;
-        
-        if (!ocrEndpoint) {
+        const isLocal = ocrEngine === 'LocalTesseract';
+        const ocrEndpoint = isLocal ? '' : view.querySelector('#txtOcrEndpoint').value;
+
+        if (!isLocal && !ocrEndpoint) {
             toast({ type: 'error', text: 'Please enter an OCR endpoint URL first.' });
             return;
         }
 
         const successIndicator = view.querySelector('#ocrTestSuccess');
-        if (successIndicator) {
-            successIndicator.style.display = 'none';
-        }
+        const localResult = view.querySelector('#localTesseractTestResult');
+        if (successIndicator) successIndicator.style.display = 'none';
+        if (localResult) localResult.textContent = '';
 
         loading.show();
         ApiClient.fetch({
@@ -235,25 +236,27 @@ define(['loading', 'toast'], function (loading, toast) {
             loading.hide();
             if (response && response.Success) {
                 toast({ type: 'success', text: response.Message || 'OCR connection successful!' });
-                if (successIndicator) {
+                if (isLocal && localResult) {
+                    localResult.textContent = response.Message || '✓ OK';
+                    localResult.style.color = 'green';
+                } else if (successIndicator) {
                     successIndicator.style.display = 'inline';
-                    setTimeout(() => {
-                        successIndicator.style.display = 'none';
-                    }, 5000);
+                    setTimeout(() => { successIndicator.style.display = 'none'; }, 5000);
                 }
             } else {
-                if (successIndicator) {
-                    successIndicator.style.display = 'none';
+                if (successIndicator) successIndicator.style.display = 'none';
+                if (isLocal && localResult) {
+                    localResult.textContent = response.Message || 'Failed';
+                    localResult.style.color = 'red';
                 }
                 toast({ type: 'error', text: response.Message || 'OCR connection failed' });
             }
         }).catch(error => {
             loading.hide();
-            if (successIndicator) {
-                successIndicator.style.display = 'none';
-            }
+            if (successIndicator) successIndicator.style.display = 'none';
+            if (isLocal && localResult) { localResult.textContent = 'Request failed'; localResult.style.color = 'red'; }
             console.error('Error testing OCR connection:', error);
-            toast({ type: 'error', text: 'Failed to test OCR connection. Check endpoint URL.' });
+            toast({ type: 'error', text: 'Failed to test OCR connection.' });
         });
     }
 

@@ -133,6 +133,13 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 });
             }
 
+            const btnTestLocalTesseract = view.querySelector('#btnTestLocalTesseract');
+            if (btnTestLocalTesseract) {
+                btnTestLocalTesseract.addEventListener('click', () => {
+                    processingActions.testOcrConnection(view);
+                });
+            }
+
             const selectLibraryFilter = view.querySelector('#selectLibraryFilter');
             if (selectLibraryFilter) {
                 selectLibraryFilter.addEventListener('change', () => {
@@ -530,21 +537,27 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
         
         toggleOcrEngineFields(view) {
             const selectOcrEngine = view.querySelector('#selectOcrEngine');
+            const ocrEndpointContainer = view.querySelector('#ocrEndpointContainer');
+            const localTesseractPathContainer = view.querySelector('#localTesseractPathContainer');
             const lblOcrEndpoint = view.querySelector('#lblOcrEndpoint');
             const descOcrEndpoint = view.querySelector('#descOcrEndpoint');
             const txtOcrEndpoint = view.querySelector('#txtOcrEndpoint');
-            
+
             if (selectOcrEngine) {
                 const selectedEngine = selectOcrEngine.value;
                 const currentValue = txtOcrEndpoint ? txtOcrEndpoint.value : '';
-                
+                const isLocal = selectedEngine === 'LocalTesseract';
+
+                if (ocrEndpointContainer) ocrEndpointContainer.style.display = isLocal ? 'none' : '';
+                if (localTesseractPathContainer) localTesseractPathContainer.style.display = isLocal ? '' : 'none';
+
                 if (selectedEngine === 'PaddleOCR') {
                     if (lblOcrEndpoint) lblOcrEndpoint.textContent = 'PaddleOCR API Endpoint';
                     if (descOcrEndpoint) descOcrEndpoint.innerHTML = 'URL of your PaddleOCR API (e.g., <code>http://localhost:8866</code> or <code>http://192.168.1.100:8866</code>)';
                     if (txtOcrEndpoint && (currentValue === 'http://localhost:8884' || currentValue === '')) {
                         txtOcrEndpoint.value = 'http://localhost:8866';
                     }
-                } else {
+                } else if (!isLocal) {
                     if (lblOcrEndpoint) lblOcrEndpoint.textContent = 'Tesseract OCR API Endpoint';
                     if (descOcrEndpoint) descOcrEndpoint.innerHTML = 'URL of your Tesseract OCR API (e.g., <code>http://localhost:8884</code> or <code>http://192.168.1.100:8884</code>)';
                     if (txtOcrEndpoint && (currentValue === 'http://localhost:8866' || currentValue === '')) {

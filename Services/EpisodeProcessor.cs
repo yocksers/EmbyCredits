@@ -26,6 +26,7 @@ namespace EmbyCredits.Services
         private readonly CpuThrottler _cpuThrottler;
         private readonly RuleMatchingService _ruleMatchingService;
         private readonly VideoValidator _videoValidator;
+        private readonly TheIntroDbService? _theIntroDbService;
 
         public EpisodeProcessor(
             ILogger logger,
@@ -34,7 +35,8 @@ namespace EmbyCredits.Services
             ChapterMarkerService chapterMarkerService,
             DebugLogger debugLogger,
             PluginConfiguration configuration,
-            RuleMatchingService ruleMatchingService)
+            RuleMatchingService ruleMatchingService,
+            TheIntroDbService? theIntroDbService = null)
         {
             _logger = logger;
             _libraryManager = libraryManager;
@@ -45,6 +47,7 @@ namespace EmbyCredits.Services
             _cpuThrottler = new CpuThrottler(configuration);
             _ruleMatchingService = ruleMatchingService;
             _videoValidator = new VideoValidator(logger, configuration);
+            _theIntroDbService = theIntroDbService;
         }
 
         public async Task<(bool success, double creditsStart, string failureReason, double confidence, string methodName, string detectionReason)> ProcessEpisode(
@@ -132,6 +135,44 @@ namespace EmbyCredits.Services
                 {
                     _debugLogger.LogInfo($"Detection disabled by rule for {episode.Name}, skipping");
                     return (false, 0, "Detection disabled by rule", 0, string.Empty, string.Empty);
+                }
+
+                if (_configuration.EnableTheIntroDB && _theIntroDbService != null)
+                {
+                    CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "Querying TheIntroDB...");
+                    var introDbTimestamp = await _theIntroDbService.GetCreditsTimestamp(episode).ConfigureAwait(false);
+                    if (introDbTimestamp.HasValue && introDbTimestamp.Value > 0)
+                    {
+                        double introDbCreditsStart = introDbTimestamp.Value;
+                        double introDbFinalTimestamp = introDbCreditsStart + _configuration.TimestampOffsetSeconds;
+
+                        if (introDbFinalTimestamp < 0)
+                        {
+                            _debugLogger.LogWarn($"[TheIntroDB] Final timestamp with offset ({FormatTime(introDbFinalTimestamp)}) is negative for {episode.Name}");
+                        }
+                        else if (introDbFinalTimestamp >= duration)
+                        {
+                            _debugLogger.LogWarn($"[TheIntroDB] Final timestamp with offset ({FormatTime(introDbFinalTimestamp)}) exceeds video duration for {episode.Name}");
+                        }
+                        else
+                        {
+                            if (!isDryRun)
+                                _chapterMarkerService.SaveCreditsMarker(episode, introDbFinalTimestamp);
+
+                            if (episode.ProviderIds != null && episode.ProviderIds.ContainsKey("EmbyCredits.Fail"))
+                            {
+                                episode.ProviderIds.Remove("EmbyCredits.Fail");
+                                _libraryManager?.UpdateItem(episode, episode.Parent, ItemUpdateType.MetadataEdit, null!);
+                            }
+
+                            _debugLogger.LogInfo($"✓ [{(isDryRun ? "DRY RUN" : "SAVED")}] [TheIntroDB] Credits at {FormatTime(introDbCreditsStart)}, saved at {FormatTime(introDbFinalTimestamp)} for {episode.Name}");
+                            return (true, introDbCreditsStart, string.Empty, 1.0, "TheIntroDB", "Community database timestamp");
+                        }
+                    }
+                    else
+                    {
+                        CreditsDetectionService.AddEpisodeStatusMessage(episodeId, "TheIntroDB: no data, falling back to detection");
+                    }
                 }
                 
                 DetectionCoordinator coordinatorForEpisode;

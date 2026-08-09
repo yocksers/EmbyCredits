@@ -13,6 +13,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using EmbyCredits.Services;
 using EmbyCredits.Services.Utilities;
 
 namespace EmbyCredits.Services.DetectionMethods
@@ -58,6 +59,9 @@ namespace EmbyCredits.Services.DetectionMethods
         private (string lower, string lowerCollapsed)[] _normalizedKeywordCache = Array.Empty<(string, string)>();
 
         private static readonly DetectionTimestampCache _cache = new DetectionTimestampCache();
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _av1VideoCache
+            = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
         public OcrDetection(ILogger logger, PluginConfiguration configuration, bool isForAnime = false)
             : base(logger, configuration)
@@ -220,19 +224,32 @@ namespace EmbyCredits.Services.DetectionMethods
             
             try
             {
-                if (string.IsNullOrWhiteSpace(Configuration.OcrEndpoint))
+                if (Configuration.OcrEngine == OcrEngine.LocalTesseract)
                 {
-                    LastError = "OCR endpoint not configured";
-                    LogWarn("OCR endpoint not configured. Please set the OCR API URL in settings.");
-                    return 0;
+                    try { LocalTesseractService.ResolveBinaryPath(Configuration.LocalTesseractPath); }
+                    catch (FileNotFoundException ex)
+                    {
+                        LastError = ex.Message;
+                        LogWarn(ex.Message);
+                        return 0;
+                    }
                 }
-
-                var endpointAvailable = await TestOcrEndpoint(cancellationToken).ConfigureAwait(false);
-                if (!endpointAvailable)
+                else
                 {
-                    LastError = $"OCR endpoint {Configuration.OcrEndpoint} is not accessible";
-                    LogWarn($"OCR endpoint {Configuration.OcrEndpoint} is not accessible. Skipping OCR detection.");
-                    return 0;
+                    if (string.IsNullOrWhiteSpace(Configuration.OcrEndpoint))
+                    {
+                        LastError = "OCR endpoint not configured";
+                        LogWarn("OCR endpoint not configured. Please set the OCR API URL in settings.");
+                        return 0;
+                    }
+
+                    var endpointAvailable = await TestOcrEndpoint(cancellationToken).ConfigureAwait(false);
+                    if (!endpointAvailable)
+                    {
+                        LastError = $"OCR endpoint {Configuration.OcrEndpoint} is not accessible";
+                        LogWarn($"OCR endpoint {Configuration.OcrEndpoint} is not accessible. Skipping OCR detection.");
+                        return 0;
+                    }
                 }
 
                 LogDebug("Analyzing video for OCR-based credits detection...");
@@ -460,7 +477,7 @@ namespace EmbyCredits.Services.DetectionMethods
             CancellationToken cancellationToken)
         {
             var normalizedVideoPath = FFmpegHelper.NormalizeFilePath(videoPath);
-            var preInputArgs = BuildPreInputArgs();
+            var preInputArgs = BuildPreInputArgs(videoPath);
             var threadArgs = BuildThreadArgs();
             var filterChain = BuildFilterChain(fps);
             
@@ -746,7 +763,9 @@ namespace EmbyCredits.Services.DetectionMethods
                     LogDebug($"  Time range analyzed: {FormatTime(startTime)} to {FormatTime(endTime)}");
                     LogDebug($"  Search criteria: {keywords.Count} keywords configured");
                     LogDebug($"  OCR engine: {currentEngine}");
-                    LogDebug($"  OCR endpoint: {Configuration.OcrEndpoint}");
+                    LogDebug(Configuration.OcrEngine == OcrEngine.LocalTesseract
+                        ? $"  Local tesseract path: {(string.IsNullOrWhiteSpace(Configuration.LocalTesseractPath) ? "(auto from PATH)" : Configuration.LocalTesseractPath)}"
+                        : $"  OCR endpoint: {Configuration.OcrEndpoint}");
                     LogDebug($"  Possible reasons:");
                     LogDebug($"    - No text matching configured keywords was found in the analyzed frames");
                     LogDebug($"    - Credits may start outside the analyzed time range");
@@ -998,7 +1017,7 @@ namespace EmbyCredits.Services.DetectionMethods
         {
             var hitTimestamps = new List<double>();
             var normalizedPath = FFmpegHelper.NormalizeFilePath(videoPath);
-            var preInputArgs = BuildPreInputArgs();
+            var preInputArgs = BuildPreInputArgs(videoPath);
             var threadArgs = BuildThreadArgs();
             var filterChain = BuildFilterChain(coarseFps);
 
@@ -1239,7 +1258,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 
                 var normalizedVideoPathDisk = FFmpegHelper.NormalizeFilePath(videoPath);
 
-                var preInputArgs = BuildPreInputArgs();
+                var preInputArgs = BuildPreInputArgs(videoPath);
                 var threadArgs = BuildThreadArgs();
                 var filterChain = BuildFilterChain(fps);
 
@@ -1907,13 +1926,19 @@ namespace EmbyCredits.Services.DetectionMethods
         private async Task<(string text, double confidence)> PerformOcrOnFrameData(byte[] frameData, CancellationToken cancellationToken)
         {
             if (Configuration.OcrEngine == OcrEngine.PaddleOCR)
-            {
                 return await PerformPaddleOcrOnFrameData(frameData, cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                return await PerformTesseractOcrOnFrameData(frameData, cancellationToken).ConfigureAwait(false);
-            }
+
+            if (Configuration.OcrEngine == OcrEngine.LocalTesseract)
+                return await LocalTesseractService.RunOcrAsync(
+                    frameData,
+                    Configuration.OcrLanguages,
+                    Configuration.OcrPageSegmentationMode,
+                    Configuration.OcrEngineMode,
+                    Configuration.LocalTesseractPath,
+                    Logger,
+                    cancellationToken).ConfigureAwait(false);
+
+            return await PerformTesseractOcrOnFrameData(frameData, cancellationToken).ConfigureAwait(false);
         }
 
         private async Task<(string text, double confidence)> PerformTesseractOcrOnFrameData(byte[] frameData, CancellationToken cancellationToken)
@@ -2065,7 +2090,44 @@ namespace EmbyCredits.Services.DetectionMethods
             return (string.Empty, 0);
         }
 
-        private string BuildPreInputArgs()
+        private bool IsAv1Video(string videoPath)
+        {
+            return _av1VideoCache.GetOrAdd(videoPath, path =>
+            {
+                try
+                {
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = FFmpegHelper.GetFfprobePath(),
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true
+                    };
+                    psi.ArgumentList.Add("-v");
+                    psi.ArgumentList.Add("error");
+                    psi.ArgumentList.Add("-select_streams");
+                    psi.ArgumentList.Add("v:0");
+                    psi.ArgumentList.Add("-show_entries");
+                    psi.ArgumentList.Add("stream=codec_name");
+                    psi.ArgumentList.Add("-of");
+                    psi.ArgumentList.Add("default=noprint_wrappers=1:nokey=1");
+                    psi.ArgumentList.Add(FFmpegHelper.NormalizeFilePath(path));
+
+                    using var process = new Process { StartInfo = psi };
+                    process.Start();
+                    var output = process.StandardOutput.ReadToEnd();
+                    process.WaitForExit(5000);
+                    return output.Trim().Equals("av1", StringComparison.OrdinalIgnoreCase);
+                }
+                catch
+                {
+                    return false;
+                }
+            });
+        }
+
+        private string BuildPreInputArgs(string? videoPath = null)
         {
             var args = new List<string>(5);
 
@@ -2188,6 +2250,11 @@ namespace EmbyCredits.Services.DetectionMethods
                         {
                             args.Add($"-hwaccel_device {Configuration.OcrHardwareDevice}");
                         }
+                        if (!string.IsNullOrWhiteSpace(videoPath) && IsAv1Video(videoPath))
+                        {
+                            args.Add("-c:v av1_cuvid");
+                            LogDebug("AV1 source detected - using av1_cuvid hardware decoder");
+                        }
                         if (Configuration.OcrUseHardwareOutputFormat)
                         {
                             args.Add("-hwaccel_output_format cuda");
@@ -2204,6 +2271,11 @@ namespace EmbyCredits.Services.DetectionMethods
                         if (!string.IsNullOrWhiteSpace(Configuration.OcrHardwareDevice))
                         {
                             args.Add($"-hwaccel_device {Configuration.OcrHardwareDevice}");
+                        }
+                        if (!string.IsNullOrWhiteSpace(videoPath) && IsAv1Video(videoPath))
+                        {
+                            args.Add("-c:v av1_cuvid");
+                            LogDebug("AV1 source detected - using av1_cuvid hardware decoder");
                         }
                         if (Configuration.OcrUseHardwareOutputFormat)
                         {

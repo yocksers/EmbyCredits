@@ -814,6 +814,13 @@ namespace EmbyCredits.Services
         {
             try
             {
+                if (request.OcrEngine == "LocalTesseract")
+                {
+                    var configuredPath = Plugin.Instance?.Configuration?.LocalTesseractPath ?? string.Empty;
+                    var (available, message) = LocalTesseractService.TestAvailability(configuredPath);
+                    return new { Success = available, Message = message };
+                }
+
                 if (string.IsNullOrWhiteSpace(request.OcrEndpoint))
                 {
                     return new { Success = false, Message = "OCR endpoint URL is required" };
@@ -1811,6 +1818,7 @@ namespace EmbyCredits.Services
             if (overrides.OcrEngine != null && Enum.TryParse<OcrEngine>(overrides.OcrEngine, true, out var ocrEngine))
                 clone.OcrEngine = ocrEngine;
             if (overrides.OcrEndpoint != null) clone.OcrEndpoint = overrides.OcrEndpoint;
+            if (overrides.LocalTesseractPath != null) clone.LocalTesseractPath = overrides.LocalTesseractPath;
             if (overrides.OcrLanguages != null) clone.OcrLanguages = overrides.OcrLanguages;
             if (overrides.OcrDetectionKeywords != null) clone.OcrDetectionKeywords = overrides.OcrDetectionKeywords;
             if (overrides.OcrSearchStartValue.HasValue) clone.OcrSearchStartValue = overrides.OcrSearchStartValue.Value;

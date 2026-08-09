@@ -22,7 +22,8 @@ namespace EmbyCredits
     public enum OcrEngine
     {
         Tesseract,
-        PaddleOCR
+        PaddleOCR,
+        LocalTesseract
     }
 
     public class DetectionRule
@@ -155,6 +156,9 @@ namespace EmbyCredits
         public OcrEngine OcrEngine { get; set; } = OcrEngine.Tesseract;
         
         public string OcrEndpoint { get; set; } = "http://localhost:8884";
+
+        // Path to the local tesseract binary; leave empty to use PATH
+        public string LocalTesseractPath { get; set; } = "";
         public string OcrDetectionKeywords { get; set; } = "associate producer,based on,cast,casting,cinematography,co-producer,composer,costume design,created by,credits,developed by,directed by,director of photography,editing,editor,end credits,ende,executive producer,fim,fin,fine,guest starring,music by,produced by,producer,production company,production design,screenplay,series producer,sound,special thanks,starring,story by,the end,visual effects,written by,끝,終,キャスト,スタッフ,監督,脚本,音楽,製作,制作,プロデューサー,原作,演出,撮影,編集,おわり,提供,協力,出演";
         
         public string OcrLanguages { get; set; } = "eng+jpn";
@@ -358,6 +362,8 @@ namespace EmbyCredits
 
         public bool DisableDetection { get; set; } = false;
         public List<DetectionRule> DetectionRules { get; set; } = new List<DetectionRule>();
+
+        public bool EnableTheIntroDB { get; set; } = false;
 
         public PluginConfiguration ShallowClone()
         {

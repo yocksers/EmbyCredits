@@ -53,6 +53,7 @@ namespace EmbyCredits.Services
         private static ChapterMarkerService? _chapterMarkerService;
         private static EpisodeProcessor? _episodeProcessor;
         private static PluginCoordinationService? _pluginCoordination;
+        private static TheIntroDbService? _theIntroDbService;
 
         private static ConcurrentDictionary<string, DateTime> _recentlyRestoredEpisodes = new ConcurrentDictionary<string, DateTime>();
         private const int RestoreGuardSeconds = 120;
@@ -146,8 +147,10 @@ namespace EmbyCredits.Services
             if (_itemRepository != null)
             {
                 _chapterMarkerService = new ChapterMarkerService(_logger, _itemRepository);
+                _theIntroDbService?.Dispose();
+                _theIntroDbService = configuration.EnableTheIntroDB ? new TheIntroDbService(_logger, configuration) : null;
                 _episodeProcessor = new EpisodeProcessor(_logger, _libraryManager, _detectionCoordinator, 
-                    _chapterMarkerService, _debugLogger, configuration, _cachedRuleMatchingService!);
+                    _chapterMarkerService, _debugLogger, configuration, _cachedRuleMatchingService!, _theIntroDbService);
             }
 
             _logger.Info("Credits Detection Service started");
@@ -196,12 +199,14 @@ namespace EmbyCredits.Services
 
                 var oldChapterMarkerService = _chapterMarkerService;
                 var oldEpisodeProcessor = _episodeProcessor;
+                var oldTheIntroDbService = _theIntroDbService;
                 
                 if (_itemRepository != null)
                 {
                     _chapterMarkerService = new ChapterMarkerService(_logger, _itemRepository);
+                    _theIntroDbService = configuration.EnableTheIntroDB ? new TheIntroDbService(_logger, configuration) : null;
                     _episodeProcessor = new EpisodeProcessor(_logger, _libraryManager, _detectionCoordinator, 
-                        _chapterMarkerService, _debugLogger, configuration, _cachedRuleMatchingService!);
+                        _chapterMarkerService, _debugLogger, configuration, _cachedRuleMatchingService!, _theIntroDbService);
                 }
 
                 // Delay disposal of old services to allow in-flight background tasks to finish using them
@@ -213,6 +218,7 @@ namespace EmbyCredits.Services
                         oldDetectionCoordinator?.Dispose();
                         oldDebugLogger?.Dispose();
                         oldPluginCoordination?.Dispose();
+                        oldTheIntroDbService?.Dispose();
                     }
                     catch { }
                 }, TaskScheduler.Default);
@@ -412,11 +418,22 @@ namespace EmbyCredits.Services
             }
             
             _debugLogger?.Dispose();
-            
+            _debugLogger = null;
+
             _pluginCoordination?.Dispose();
-            
+            _pluginCoordination = null;
+
+            _episodeProcessor = null;
+            _chapterMarkerService = null;
+            _cachedRuleMatchingService = null;
+
+            _theIntroDbService?.Dispose();
+            _theIntroDbService = null;
+
             while (_processingQueue.TryDequeue(out _)) { }
-            
+            _processingQueue.Dispose();
+            _processingQueue = new EpisodeQueue(MaxQueueSize);
+
             // Recreate dictionaries to release capacity
             _batchDetectionCache.Clear();
             System.Threading.Interlocked.Exchange(ref _batchDetectionCache, new ConcurrentDictionary<string, List<(string method, double timestamp)>>());
@@ -428,6 +445,10 @@ namespace EmbyCredits.Services
             
             _episodeStatusMessages.Clear();
             System.Threading.Interlocked.Exchange(ref _episodeStatusMessages, new ConcurrentDictionary<string, ConcurrentQueue<string>>());
+
+            _recentlyRestoredEpisodes.Clear();
+            _pendingDeferredRestoreChecks.Clear();
+            _singleEpisodeTargets.Clear();
 
             foreach (var s in _pendingSeasonDispatches.Values)
                 s.Dispose();
@@ -1865,6 +1886,130 @@ namespace EmbyCredits.Services
             if (Plugin.Instance != null)
             {
                 Plugin.Progress.CurrentItem = $"Preparing: {seriesName} Season {seasonNumber} ({seasonEpisodes.Count} episodes)";
+            }
+
+            // Pre-query TheIntroDB for all episodes before any CPU-intensive detection runs.
+            // Episodes with a database hit are handled directly here and removed from the list
+            // so that Chromaprint / OCR / BlackFrame detection is never started for them.
+            if (_configuration != null && _configuration.EnableTheIntroDB && _theIntroDbService != null && Plugin.ChapterMarkerService != null)
+            {
+                var detectionNeeded = new List<Episode>();
+                var introDbHits = 0;
+
+                if (Plugin.Instance != null)
+                    Plugin.Progress.CurrentItem = $"Querying TheIntroDB: {seriesName} Season {seasonNumber}";
+
+                foreach (var ep in seasonEpisodes)
+                {
+                    if (cancellationToken.IsCancellationRequested || _cancellationRequested)
+                        break;
+
+                    var epId = ep.Id.ToString();
+                    var epKey = $"{seriesName} S{ep.ParentIndexNumber:00}E{ep.IndexNumber:00}";
+
+                    // Honour scheduled-task "only process missing" before querying the external API
+                    if (!isManualRun && _configuration.ScheduledTaskOnlyProcessMissing && _itemRepository != null)
+                    {
+                        var existingChapters = _itemRepository.GetChapters(ep);
+                        var alreadyHasMarker = existingChapters?.Any(c => GetMarkerType(c) == "CreditsStart") ?? false;
+                        if (alreadyHasMarker)
+                        {
+                            _logger?.Info($"[TheIntroDB pre-filter] Skipping {ep.Name} - already has credits marker");
+                            if (Plugin.Instance != null)
+                            {
+                                Plugin.Progress.SkipReasons[epKey] = "Already has credits marker";
+                                Plugin.Progress.IncrementSkipped();
+                            }
+                            continue;
+                        }
+                    }
+
+                    var ts = await _theIntroDbService.GetCreditsTimestamp(ep, cancellationToken).ConfigureAwait(false);
+                    if (!ts.HasValue || ts.Value <= 0)
+                    {
+                        detectionNeeded.Add(ep);
+                        continue;
+                    }
+
+                    double creditsStart = ts.Value;
+                    double epDuration = ep.RunTimeTicks.HasValue && ep.RunTimeTicks.Value > 0
+                        ? ep.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond
+                        : 0;
+                    double finalTimestamp = creditsStart + _configuration.TimestampOffsetSeconds;
+
+                    if (finalTimestamp < 0 || (epDuration > 0 && finalTimestamp >= epDuration))
+                    {
+                        _logger?.Warn($"[TheIntroDB pre-filter] Timestamp out of range for {ep.Name} ({FormatTime(finalTimestamp)}), falling back to detection");
+                        detectionNeeded.Add(ep);
+                        continue;
+                    }
+
+                    bool isTargetEp = _singleEpisodeTargets.Count == 0 || _singleEpisodeTargets.ContainsKey(epId);
+                    bool effectiveDryRun = _isDryRun || !isTargetEp;
+
+                    if (!effectiveDryRun)
+                    {
+                        Plugin.ChapterMarkerService.SaveCreditsMarker(ep, finalTimestamp);
+
+                        if (ep.ProviderIds != null && ep.ProviderIds.ContainsKey("EmbyCredits.Fail"))
+                        {
+                            ep.ProviderIds.Remove("EmbyCredits.Fail");
+                            _libraryManager?.UpdateItem(ep, ep.Parent, ItemUpdateType.MetadataEdit, null!);
+                        }
+                    }
+
+                    _logger?.Info($"✓ [{(effectiveDryRun ? "DRY RUN" : "SAVED")}] [TheIntroDB] Credits at {FormatTime(creditsStart)}, saved at {FormatTime(finalTimestamp)} for {ep.Name}");
+                    introDbHits++;
+
+                    if (Plugin.Instance != null)
+                    {
+                        Plugin.Progress.StartProcessingItem($"{seriesName} - S{ep.ParentIndexNumber:D2}E{ep.IndexNumber:D2} - {ep.Name}", "TheIntroDB");
+                        Plugin.Progress.CompleteProcessingItem(true);
+
+                        var offsetSeconds = _configuration.TimestampOffsetSeconds;
+                        var successDetail = $"{FormatTime(creditsStart)} / {FormatTime(epDuration)} [TheIntroDB] - Community database timestamp";
+                        if (offsetSeconds != 0)
+                            successDetail += $" (offset: {offsetSeconds:+0;-0}s, final: {FormatTime(finalTimestamp)})";
+
+                        Plugin.Progress.SuccessDetails[epKey] = successDetail;
+                        Plugin.Progress.ConfidenceScores[epKey] = 1.0;
+                        Plugin.Progress.EpisodeIds[epKey] = epId;
+                        if (!string.IsNullOrEmpty(matchedRuleName))
+                            Plugin.Progress.AppliedRules[epKey] = matchedRuleName;
+
+                        if (Plugin.Instance.Configuration.EnableThumbnailGeneration)
+                        {
+                            try
+                            {
+                                var thumbnailPath = await GenerateThumbnail(ep, creditsStart, epKey);
+                                if (!string.IsNullOrEmpty(thumbnailPath))
+                                    Plugin.Progress.ThumbnailPaths[epKey] = thumbnailPath;
+                            }
+                            catch (Exception thumbEx)
+                            {
+                                _logger?.Debug($"Failed to generate thumbnail for {epKey}: {thumbEx.Message}");
+                            }
+                        }
+                    }
+
+                    if (!effectiveDryRun)
+                    {
+                        _processedEpisodes.TryAdd(epId, DateTime.UtcNow);
+                        Plugin.TracerService?.MarkDetected(epId);
+                        Plugin.PendingEpisodesService?.MarkProcessed(epId);
+                    }
+                }
+
+                if (introDbHits > 0)
+                    _logger?.Info($"[TheIntroDB] Found timestamps for {introDbHits} episode(s) in {seriesName} Season {seasonNumber}, {detectionNeeded.Count} episode(s) need detection");
+
+                seasonEpisodes = detectionNeeded;
+
+                if (seasonEpisodes.Count == 0)
+                {
+                    _logger?.Info($"[TheIntroDB] All episodes in {seriesName} Season {seasonNumber} resolved from database — skipping detection");
+                    return;
+                }
             }
 
             bool isAnime = false;
