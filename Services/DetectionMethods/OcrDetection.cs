@@ -888,25 +888,21 @@ namespace EmbyCredits.Services.DetectionMethods
                     try
                     {
                         var (ocrText, ocrConfidence) = await PerformOcrOnFrameData(frame.data, cancellationToken).ConfigureAwait(false);
-                        
-                        if (ocrConfidence > 0)
-                        {
-                            _ocrTextConfidences.Add(ocrConfidence);
-                        }
-                        
-                        return (frame.timestamp, frame.index, ocrText);
+                        return (frame.timestamp, frame.index, ocrText, ocrConfidence);
                     }
                     catch (Exception ex)
                     {
                         LogWarn($"Error processing frame {frame.index}: {ex.Message}");
-                        return (frame.timestamp, frame.index, string.Empty);
+                        return (frame.timestamp, frame.index, string.Empty, 0.0);
                     }
                 }).ToList();
 
                 var results = await Task.WhenAll(ocrTasks).ConfigureAwait(false);
 
-                foreach (var (timestamp, index, ocrText) in results.OrderBy(r => r.timestamp))
+                foreach (var (timestamp, index, ocrText, ocrConfidence) in results.OrderBy(r => r.timestamp))
                 {
+                    if (ocrConfidence > 0)
+                        _ocrTextConfidences.Add(ocrConfidence);
                     await ProcessOcrResult(ocrText, timestamp, index, analysisDuration, fps, keywords,
                         detectionScores, characterDensityHistory, recentTextFrames, maxFramesToProcess).ConfigureAwait(false);
                     _totalFramesProcessed++;
@@ -1427,6 +1423,7 @@ namespace EmbyCredits.Services.DetectionMethods
                             }
 
                             noNewFramesCount = 0;
+                            waitingForFirstFrame = false;
 
                             if (Configuration.OcrEnableParallelProcessing && currentFrames.Count > 1)
                             {
@@ -2185,6 +2182,11 @@ namespace EmbyCredits.Services.DetectionMethods
                             ? "/dev/dri/renderD128" 
                             : Configuration.OcrHardwareDevice;
                         args.Add($"-vaapi_device {vaapiDevice}");
+                        if (!string.IsNullOrWhiteSpace(videoPath) && IsAv1Video(videoPath))
+                        {
+                            args.Add("-c:v av1_vaapi");
+                            LogDebug("AV1 source detected - using av1_vaapi hardware decoder");
+                        }
                         if (Configuration.OcrUseHardwareOutputFormat)
                         {
                             args.Add("-hwaccel_output_format vaapi");
@@ -2209,6 +2211,11 @@ namespace EmbyCredits.Services.DetectionMethods
                             args.Add("-hwaccel qsv");
                             args.Add("-hwaccel_device qs");
                             args.Add("-filter_hw_device qs");
+                            if (!string.IsNullOrWhiteSpace(videoPath) && IsAv1Video(videoPath))
+                            {
+                                args.Add("-c:v av1_qsv");
+                                LogDebug("AV1 source detected - using av1_qsv hardware decoder");
+                            }
                             if (Configuration.OcrUseHardwareOutputFormat)
                             {
                                 args.Add("-hwaccel_output_format qsv");
@@ -2231,6 +2238,11 @@ namespace EmbyCredits.Services.DetectionMethods
                             else
                             {
                                 args.Add("-hwaccel qsv");
+                            }
+                            if (!string.IsNullOrWhiteSpace(videoPath) && IsAv1Video(videoPath))
+                            {
+                                args.Add("-c:v av1_qsv");
+                                LogDebug("AV1 source detected - using av1_qsv hardware decoder");
                             }
                             if (Configuration.OcrUseHardwareOutputFormat)
                             {
@@ -2294,6 +2306,11 @@ namespace EmbyCredits.Services.DetectionMethods
                         {
                             args.Add($"-hwaccel_device {Configuration.OcrHardwareDevice}");
                         }
+                        if (!string.IsNullOrWhiteSpace(videoPath) && IsAv1Video(videoPath))
+                        {
+                            args.Add("-c:v av1");
+                            LogDebug("AV1 source detected - using av1 decoder with D3D11VA acceleration");
+                        }
                         if (Configuration.OcrUseHardwareOutputFormat)
                         {
                             args.Add("-hwaccel_output_format d3d11");
@@ -2307,6 +2324,10 @@ namespace EmbyCredits.Services.DetectionMethods
                     
                     case "dxva2":
                         args.Add("-hwaccel dxva2");
+                        if (!string.IsNullOrWhiteSpace(videoPath) && IsAv1Video(videoPath))
+                        {
+                            LogWarn("AV1 source detected but DXVA2 does not support AV1 hardware decoding - falling back to software decoder");
+                        }
                         if (Configuration.OcrUseHardwareOutputFormat)
                         {
                             args.Add("-hwaccel_output_format dxva2_vld");
