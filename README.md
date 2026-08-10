@@ -1,4 +1,4 @@
-# EmbyCredits - Credits Detection Plugin for Emby
+# The original EmbyCredits - Credits Detection Plugin for Emby
 
 Automatically detects and marks end credits in TV show episodes using OCR, audio fingerprinting, or black frame analysis.
 
