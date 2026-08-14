@@ -13,16 +13,6 @@ Automatically detects and marks end credits in TV show episodes using OCR, audio
 - **Batch Processing** - Process entire series or individual seasons at once
 - **Notifications** - Receive alerts when detection is complete
 
-## Installation
-
-### 1. Install the OCR Server (Optional)
-
-Only required if you plan to use OCR-based detection:
-
-```bash
-docker run -d --name tesseract-ocr -p 8884:8884 --restart unless-stopped yock1/embycreditocr
-```
-
 ## Usage
 
 ### Process Episodes
@@ -72,10 +62,6 @@ Enable **Enable Auto Detection** in settings to automatically process new episod
 | CPU Throttling | Limit CPU usage during processing |
 | Auto-Detection | Process new episodes automatically |
 | Detection Rules | Override settings for specific series, studios, or tags |
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Support
 
