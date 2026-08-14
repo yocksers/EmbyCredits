@@ -10,8 +10,8 @@
 
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
-	<AssemblyVersion>2.6.9.8</AssemblyVersion>
-	<FileVersion>2.6.9.8</FileVersion>
+	<AssemblyVersion>2.7.0.0</AssemblyVersion>
+	<FileVersion>2.7.0.0</FileVersion>
 		<RootNamespace>EmbyCredits</RootNamespace>
 		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**;credit\**;test\**;introskipper\**</DefaultItemExcludes>
 		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>

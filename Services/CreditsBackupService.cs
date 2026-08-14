@@ -92,11 +92,17 @@ namespace EmbyCredits.Services
             if (files.Length == 0)
                 return null;
 
-            return files
-                .Select(f => new FileInfo(f))
-                .OrderByDescending(f => f.LastWriteTimeUtc)
-                .First()
-                .FullName;
+            if (files.Length == 1)
+                return files[0];
+
+            string? latest = null;
+            DateTime latestTime = DateTime.MinValue;
+            foreach (var f in files)
+            {
+                var t = File.GetLastWriteTimeUtc(f);
+                if (t > latestTime) { latestTime = t; latest = f; }
+            }
+            return latest;
         }
 
         public async Task SaveSeriesBackupToFile(Series series, List<Episode> episodes, string backupFolder, int maxBackups)
@@ -184,11 +190,34 @@ namespace EmbyCredits.Services
             }
         }
 
-        /// <summary>
-        /// Returns true when the episode's media file has changed (size or modification time differs)
-        /// since the last time a fingerprint was recorded in the backup, or when no fingerprint exists.
-        /// Returns true on any error so detection is never silently skipped.
-        /// </summary>
+        private static readonly ConcurrentDictionary<string, (DateTime Modified, CreditsBackup? Data)> _backupReadCache =
+            new ConcurrentDictionary<string, (DateTime, CreditsBackup?)>(StringComparer.OrdinalIgnoreCase);
+
+        private CreditsBackup? ReadBackupCached(string filePath)
+        {
+            try
+            {
+                var modified = new FileInfo(filePath).LastWriteTimeUtc;
+                if (_backupReadCache.TryGetValue(filePath, out var cached) && cached.Modified == modified)
+                    return cached.Data;
+
+                CreditsBackup? backup;
+                try { backup = JsonSerializer.Deserialize<CreditsBackup>(File.ReadAllText(filePath)); }
+                catch { backup = null; }
+
+                _backupReadCache[filePath] = (modified, backup);
+
+                if (_backupReadCache.Count > 100)
+                    _backupReadCache.Clear();
+
+                return backup;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public bool HasFileChanged(Episode episode, string backupFolder)
         {
             try
@@ -202,10 +231,7 @@ namespace EmbyCredits.Services
                 var backupFile = FindLatestSeriesBackupFile(series.Name, backupFolder);
                 if (backupFile == null) return true;
 
-                CreditsBackup? backup;
-                try { backup = JsonSerializer.Deserialize<CreditsBackup>(File.ReadAllText(backupFile)); }
-                catch { return true; }
-
+                var backup = ReadBackupCached(backupFile);
                 if (backup?.Entries == null) return true;
 
                 CreditsBackupEntry? entry = null;
@@ -218,7 +244,7 @@ namespace EmbyCredits.Services
                     entry = backup.Entries.FirstOrDefault(e => e.SeasonNumber == episode.ParentIndexNumber.Value && e.EpisodeNumber == episode.IndexNumber.Value);
 
                 if (entry == null || !entry.LastDetectedFileSize.HasValue || !entry.LastDetectedModified.HasValue)
-                    return true; // no fingerprint yet — run detection
+                    return true;
 
                 if (!File.Exists(episode.Path)) return true;
 
@@ -726,7 +752,7 @@ namespace EmbyCredits.Services
 
                 var backup = JsonSerializer.Deserialize<CreditsBackup>(jsonData);
 
-                if (backup == null || backup.Entries == null || backup.Entries.Count == 0)
+                if (backup == null || backup.Entries == null || backup.Entries.Count == 0 || string.IsNullOrEmpty(backup.Version))
                 {
                     result.Success = false;
                     result.Message = "Invalid backup file format or no entries found";
@@ -907,6 +933,17 @@ namespace EmbyCredits.Services
                     {
                         _logger.Debug($"Skipping {episode.Name} - no valid runtime information");
                         notFound++;
+                        if (progress != null) progress.FailedItems++;
+                        processed++;
+                        if (progress != null && processed % 5 == 0)
+                            progress.ProcessedItems = processed;
+                        continue;
+                    }
+
+                    if (entry.CreditsStartTicks <= 0)
+                    {
+                        _logger.Warn($"Skipping {episode.Name} - invalid timestamp ({entry.CreditsStartTicks} ticks)");
+                        skipped++;
                         if (progress != null) progress.FailedItems++;
                         processed++;
                         if (progress != null && processed % 5 == 0)

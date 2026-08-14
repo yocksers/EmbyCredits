@@ -301,29 +301,30 @@ namespace EmbyCredits.Services
                 if (batchDetectedTime.HasValue && batchDetectedTime.Value > 0)
                 {
                     double creditsStart = batchDetectedTime.Value;
-                    double finalTimestamp = creditsStart + _configuration.TimestampOffsetSeconds;
-                    
+                    var normalizedPath = Utilities.FFmpegHelper.NormalizeFilePath(episode.Path);
+                    var containerStartTime = await GetVideoContainerStartTime(normalizedPath).ConfigureAwait(false);
+                    if (containerStartTime > 0)
+                        _debugLogger.LogInfo($"Applying container start_time correction of {containerStartTime:F3}s to {episode.Name}");
+                    double finalTimestamp = creditsStart + containerStartTime + _configuration.TimestampOffsetSeconds;
+
+                    double duration = episode.RunTimeTicks.HasValue && episode.RunTimeTicks.Value > 0
+                        ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond
+                        : 0;
+
+                    if (finalTimestamp < 0)
+                    {
+                        _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) is negative for {episode.Name}");
+                        return (false, 0, $"Final timestamp with offset is negative: {finalTimestamp:F1}s", 0, string.Empty, string.Empty);
+                    }
+
+                    if (duration > 0 && finalTimestamp >= duration)
+                    {
+                        _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) exceeds video duration ({FormatTime(duration)}) for {episode.Name}");
+                        return (false, 0, $"Final timestamp with offset exceeds duration: {finalTimestamp:F1}s >= {duration:F1}s", 0, string.Empty, string.Empty);
+                    }
+
                     if (!isDryRun)
                     {
-                        var normalizedPath = Utilities.FFmpegHelper.NormalizeFilePath(episode.Path);
-                        double duration = 0;
-                        if (episode.RunTimeTicks.HasValue && episode.RunTimeTicks.Value > 0)
-                        {
-                            duration = episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond;
-                        }
-
-                        if (finalTimestamp < 0)
-                        {
-                            _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) is negative for {episode.Name}");
-                            return (false, 0, $"Final timestamp with offset is negative: {finalTimestamp:F1}s", 0, string.Empty, string.Empty);
-                        }
-                        
-                        if (finalTimestamp >= duration)
-                        {
-                            _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) exceeds video duration ({FormatTime(duration)}) for {episode.Name}");
-                            return (false, 0, $"Final timestamp with offset exceeds duration: {finalTimestamp:F1}s >= {duration:F1}s", 0, string.Empty, string.Empty);
-                        }
-
                         if (_configuration.TimestampOffsetSeconds != 0)
                         {
                             _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(finalTimestamp)} (detected: {FormatTime(creditsStart)}, offset: {_configuration.TimestampOffsetSeconds:+0;-0}s)");

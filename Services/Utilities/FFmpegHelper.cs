@@ -10,6 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace EmbyCredits.Services.Utilities
 {
@@ -22,6 +23,7 @@ namespace EmbyCredits.Services.Utilities
         private static readonly ConcurrentDictionary<int, (Process process, DateTime startTime, string description)> _activeProcesses = new ConcurrentDictionary<int, (Process, DateTime, string)>();
         private static readonly ConcurrentDictionary<int, DateTime> _lastOutputTime = new ConcurrentDictionary<int, DateTime>();
         private static readonly object _cleanupLock = new object();
+        private static Timer? _hungProcessCleanupTimer;
 
         public static void UpdateLastOutputTime(int pid)
         {
@@ -195,6 +197,8 @@ namespace EmbyCredits.Services.Utilities
         {
             _ffmpegManager = ffmpegManager ?? throw new ArgumentNullException(nameof(ffmpegManager));
             _mediaEncoder = mediaEncoder ?? throw new ArgumentNullException(nameof(mediaEncoder));
+            _hungProcessCleanupTimer?.Dispose();
+            _hungProcessCleanupTimer = new Timer(_ => KillHungProcesses(), null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
         }
 
         public static void SetCustomTempPath(string? customPath)

@@ -87,6 +87,13 @@ namespace EmbyCredits.Services
 
             var libraryManager = Plugin.Instance?.LibraryManager;
 
+            var seriesTagSet = series.Tags != null && series.Tags.Length > 0
+                ? new HashSet<string>(series.Tags, StringComparer.OrdinalIgnoreCase)
+                : null;
+            var seriesStudioSet = series.Studios != null && series.Studios.Length > 0
+                ? new HashSet<string>(series.Studios, StringComparer.OrdinalIgnoreCase)
+                : null;
+
             for (int i = 0; i < _baseConfig.DetectionRules.Count; i++)
             {
                 var rule = _baseConfig.DetectionRules[i];
@@ -109,39 +116,31 @@ namespace EmbyCredits.Services
 
                 if (matchScore < SpecificityTag &&
                     rule.Tags != null && rule.Tags.Count > 0 &&
-                    series.Tags != null && series.Tags.Length > 0)
+                    seriesTagSet != null)
                 {
                     foreach (var ruleTag in rule.Tags)
                     {
-                        foreach (var seriesTag in series.Tags)
+                        if (seriesTagSet.Contains(ruleTag))
                         {
-                            if (string.Equals(ruleTag, seriesTag, StringComparison.OrdinalIgnoreCase))
-                            {
-                                matchReason = $"tag '{ruleTag}'";
-                                matchScore = SpecificityTag;
-                                break;
-                            }
+                            matchReason = $"tag '{ruleTag}'";
+                            matchScore = SpecificityTag;
+                            break;
                         }
-                        if (matchScore >= SpecificityTag) break;
                     }
                 }
 
                 if (matchScore < SpecificityStudio &&
                     rule.Studios != null && rule.Studios.Count > 0 &&
-                    series.Studios != null && series.Studios.Length > 0)
+                    seriesStudioSet != null)
                 {
                     foreach (var ruleStudio in rule.Studios)
                     {
-                        foreach (var seriesStudio in series.Studios)
+                        if (seriesStudioSet.Contains(ruleStudio))
                         {
-                            if (string.Equals(ruleStudio, seriesStudio, StringComparison.OrdinalIgnoreCase))
-                            {
-                                matchReason = $"studio '{ruleStudio}'";
-                                matchScore = SpecificityStudio;
-                                break;
-                            }
+                            matchReason = $"studio '{ruleStudio}'";
+                            matchScore = SpecificityStudio;
+                            break;
                         }
-                        if (matchScore >= SpecificityStudio) break;
                     }
                 }
 

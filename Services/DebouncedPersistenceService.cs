@@ -8,10 +8,12 @@ namespace EmbyCredits.Services
         private Timer? _saveTimer;
         private const int SaveDebounceMs = 1000;
         protected readonly object _lock = new object();
+        private volatile bool _disposed;
 
         protected void ScheduleSave()
         {
-            var newTimer = new Timer(_ => FlushSave(), null, SaveDebounceMs, Timeout.Infinite);
+            if (_disposed) return;
+            var newTimer = new Timer(_ => { if (!_disposed) FlushSave(); }, null, SaveDebounceMs, Timeout.Infinite);
             Interlocked.Exchange(ref _saveTimer, newTimer)?.Dispose();
         }
 
@@ -19,8 +21,8 @@ namespace EmbyCredits.Services
 
         public void Dispose()
         {
-            _saveTimer?.Dispose();
-            _saveTimer = null;
+            _disposed = true;
+            Interlocked.Exchange(ref _saveTimer, null)?.Dispose();
             FlushSave();
             GC.SuppressFinalize(this);
         }

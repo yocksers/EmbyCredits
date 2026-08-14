@@ -28,10 +28,10 @@
                 <option value="BlackFrameOnly">Enable Black Frame Detection Only</option>
             </select>
             <div class="fieldDescription">
-                <strong>OCR Detection:</strong> Uses OCR to detect credits by reading text. Can use a Docker container or a locally installed Tesseract binary.<br>
-                <strong>Hash Detection:</strong> Uses audio fingerprinting and black frame/silence detection. Faster but less accurate.<br>
+                <strong>OCR Detection:</strong> The most precise method. Uses OCR to detect credits by reading text. Can use a Docker container or a locally installed Tesseract binary.<br>
+                <strong>Hash Detection:</strong> Uses audio fingerprinting and black frame/silence detection. The fastest method but can be less precise.<br>
                 <strong>With Fallback:</strong> If primary method fails to detect credits, automatically tries the fallback method.<br>
-                <strong>Black Frame Detection Only:</strong> Uses only black frame analysis. No fallback. Works on a per-episode basis without requiring the full season.
+                <strong>Black Frame Detection Only:</strong> Recommended when OCR is not used. Uses only black frame analysis. No fallback. Works on a per-episode basis without requiring the full season.
             </div>
         </div>
 
@@ -764,6 +764,22 @@
                 <label class="inputLabel inputLabelUnfocused" for="txtOcrMinimumConfidence">Minimum OCR Confidence (0-1)</label>
                 <input is="emby-input" type="number" step="0.1" id="txtOcrMinimumConfidence" data-config-key="OcrMinimumConfidence" />
                 <div class="fieldDescription"><strong>Recommended: 0 (disabled).</strong> Minimum OCR confidence score to accept a match (0 = accept all). Set to 0.6-0.8 to filter out false positives. Requires OCR API that returns confidence scores.</div>
+            </div>
+
+            <h3 style="margin-top: 2em; margin-bottom: 1em;">PaddleOCR Concurrent File Processing</h3>
+
+            <div class="checkboxContainer">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="chkPaddleOcrEnableConcurrentFiles" data-config-key="PaddleOcrEnableConcurrentFiles" />
+                    <span>Enable Concurrent File Processing (PaddleOCR only)</span>
+                </label>
+                <div class="fieldDescription"><strong>PaddleOCR only — not supported with Tesseract.</strong> Process multiple video files simultaneously. Please note: This is not recommended on normal systems as it requires a powerful and/or dedicated machine, otherwise it might bottleneck the system.</div>
+            </div>
+
+            <div class="inputContainer">
+                <label class="inputLabel inputLabelUnfocused" for="txtPaddleOcrConcurrentFiles">Max Concurrent Files</label>
+                <input is="emby-input" type="number" id="txtPaddleOcrConcurrentFiles" data-config-key="PaddleOcrConcurrentFiles" min="2" max="8" />
+                <div class="fieldDescription"><strong>Recommended: 2–3.</strong> Maximum number of video files processed in parallel. Higher values increase OCR server and FFmpeg load. Start at 2 and raise only if your hardware can handle it.</div>
             </div>
         </div>
     </div>

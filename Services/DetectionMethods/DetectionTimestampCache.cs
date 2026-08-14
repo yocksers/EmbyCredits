@@ -7,10 +7,14 @@ namespace EmbyCredits.Services.DetectionMethods
 {
     internal sealed class DetectionTimestampCache
     {
-        private readonly ConcurrentDictionary<string, List<double>> _timestamps =
-            new ConcurrentDictionary<string, List<double>>();
-        private readonly ConcurrentDictionary<string, DateTime> _lastAccess =
-            new ConcurrentDictionary<string, DateTime>();
+        private sealed class CacheEntry
+        {
+            public readonly List<double> Timestamps = new List<double>();
+            public DateTime LastAccess = DateTime.UtcNow;
+        }
+
+        private readonly ConcurrentDictionary<string, CacheEntry> _entries =
+            new ConcurrentDictionary<string, CacheEntry>();
 
         private const int MaxEntries = 100;
         private static readonly TimeSpan Expiration = TimeSpan.FromHours(24);
@@ -20,76 +24,73 @@ namespace EmbyCredits.Services.DetectionMethods
 
         public void TouchAccess(string cacheKey)
         {
-            _lastAccess[cacheKey] = DateTime.UtcNow;
+            if (_entries.TryGetValue(cacheKey, out var entry))
+                entry.LastAccess = DateTime.UtcNow;
         }
 
-        public bool TryGetTimestamps(string cacheKey, out List<double> timestamps) =>
-            _timestamps.TryGetValue(cacheKey, out timestamps!);
+        public bool TryGetTimestamps(string cacheKey, out List<double> timestamps)
+        {
+            if (_entries.TryGetValue(cacheKey, out var entry))
+            {
+                timestamps = entry.Timestamps;
+                return true;
+            }
+            timestamps = null!;
+            return false;
+        }
 
-        public List<double> GetOrAddList(string cacheKey) =>
-            _timestamps.GetOrAdd(cacheKey, _ => new List<double>());
+        public List<double> GetOrAddList(string cacheKey)
+        {
+            var entry = _entries.GetOrAdd(cacheKey, _ => new CacheEntry());
+            entry.LastAccess = DateTime.UtcNow;
+            return entry.Timestamps;
+        }
 
         public void EnsureCleanedIfNeeded()
         {
-            if (_timestamps.Count > MaxEntries || _lastAccess.Count > MaxEntries)
+            if (_entries.Count > MaxEntries)
                 Cleanup();
         }
 
         public void ClearSeries(string seriesId, int seasonNumber)
         {
             var key = MakeCacheKey(seriesId, seasonNumber);
-            if (_timestamps.TryGetValue(key, out var list))
+            if (_entries.TryRemove(key, out var entry))
             {
-                lock (list) { list.Clear(); }
+                lock (entry.Timestamps) { entry.Timestamps.Clear(); }
             }
-            _timestamps.TryRemove(key, out _);
-            _lastAccess.TryRemove(key, out _);
         }
 
         public void ClearAll()
         {
-            foreach (var kvp in _timestamps)
+            foreach (var kvp in _entries)
             {
-                lock (kvp.Value) { kvp.Value.Clear(); }
+                lock (kvp.Value.Timestamps) { kvp.Value.Timestamps.Clear(); }
             }
-            _timestamps.Clear();
-            _lastAccess.Clear();
+            _entries.Clear();
         }
 
         private void Cleanup()
         {
             var now = DateTime.UtcNow;
-            var expired = _lastAccess
-                .Where(kvp => now - kvp.Value > Expiration)
-                .Select(kvp => kvp.Key)
-                .ToList();
 
-            foreach (var key in expired)
+            foreach (var kvp in _entries)
             {
-                _timestamps.TryRemove(key, out _);
-                _lastAccess.TryRemove(key, out _);
+                if (now - kvp.Value.LastAccess > Expiration)
+                    _entries.TryRemove(kvp.Key, out _);
             }
 
-            if (_timestamps.Count > MaxEntries)
+            if (_entries.Count > MaxEntries)
             {
-                var toRemove = _lastAccess
-                    .OrderBy(kvp => kvp.Value)
-                    .Take(_timestamps.Count - MaxEntries)
+                var toRemove = _entries
+                    .OrderBy(kvp => kvp.Value.LastAccess)
+                    .Take(_entries.Count - MaxEntries)
                     .Select(kvp => kvp.Key)
                     .ToList();
 
                 foreach (var key in toRemove)
-                {
-                    _timestamps.TryRemove(key, out _);
-                    _lastAccess.TryRemove(key, out _);
-                }
+                    _entries.TryRemove(key, out _);
             }
-
-            var orphans = _lastAccess.Keys
-                .Where(k => !_timestamps.ContainsKey(k))
-                .ToList();
-            foreach (var key in orphans)
-                _lastAccess.TryRemove(key, out _);
         }
     }
 }

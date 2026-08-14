@@ -173,6 +173,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     
                     var episodeOffsets = new Dictionary<string, List<int>>(episodeFingerprints.Count);
                     var episodeMatchScores = new Dictionary<string, List<double>>(episodeFingerprints.Count);
+                    var episodeBestPeer = new Dictionary<string, (string peerId, int peerOffset, double score)>();
                     var allMatchScores = new List<double>();
                     
                     var episodeList = episodeFingerprints.Keys.ToList();
@@ -206,6 +207,11 @@ namespace EmbyCredits.Services.DetectionMethods
                             episodeOffsets[ep2].Add(match.offsetFp2);
                             episodeMatchScores[ep1].Add(match.score);
                             episodeMatchScores[ep2].Add(match.score);
+
+                            if (!episodeBestPeer.TryGetValue(ep1, out var bp1) || match.score > bp1.score)
+                                episodeBestPeer[ep1] = (ep2, match.offsetFp2, match.score);
+                            if (!episodeBestPeer.TryGetValue(ep2, out var bp2) || match.score > bp2.score)
+                                episodeBestPeer[ep2] = (ep1, match.offsetFp1, match.score);
                         }
                     }
                     
@@ -278,12 +284,23 @@ namespace EmbyCredits.Services.DetectionMethods
                         
                         LogDebug($"Episode {epId}: Coarse detection - {filteredOffsets.Count} matches, weighted median offset={weightedMedianOffset} points ({coarseOffsetSeconds:F1}s)");
                         
-                        var refinedCreditsStartTime = await RefineTimestampWithFineGrainedPass(
-                            episode.VideoPath,
-                            coarseCreditsStartTime,
-                            episodeFingerprints[epId].fingerprint,
-                            startTime,
-                            cancellationToken);
+                        uint[]? referenceFingerprint = null;
+                        var referenceMatchOffset = 0;
+                        if (episodeBestPeer.TryGetValue(epId, out var bestPeer) &&
+                            episodeFingerprints.TryGetValue(bestPeer.peerId, out var peerFpData))
+                        {
+                            referenceFingerprint = peerFpData.fingerprint;
+                            referenceMatchOffset = bestPeer.peerOffset;
+                        }
+
+                        var refinedCreditsStartTime = referenceFingerprint != null
+                            ? await RefineTimestampWithFineGrainedPass(
+                                episode.VideoPath,
+                                coarseCreditsStartTime,
+                                referenceFingerprint,
+                                referenceMatchOffset,
+                                cancellationToken)
+                            : 0;
                         
                         var finalTimestamp = refinedCreditsStartTime > 0 ? refinedCreditsStartTime : coarseCreditsStartTime;
                         var creditsDuration = episode.Duration - finalTimestamp;
@@ -575,8 +592,8 @@ namespace EmbyCredits.Services.DetectionMethods
         private async Task<double> RefineTimestampWithFineGrainedPass(
             string videoPath,
             double coarseTimestamp,
-            uint[] coarseFingerprint,
-            double coarseFingerprintStartTime,
+            uint[] referenceFingerprint,
+            int referenceMatchOffset,
             CancellationToken cancellationToken)
         {
             try
@@ -603,12 +620,11 @@ namespace EmbyCredits.Services.DetectionMethods
                     var coarseOffsetInFine = (int)((coarseTimestamp - fineStartTime) / 0.13);
                     var searchRange = 40;
                     
-                    var bestScore = 0.0;
-                    var bestOffset = coarseOffsetInFine;
-                    
                     var startSearch = Math.Max(0, coarseOffsetInFine - searchRange);
                     var endSearch = Math.Min(fineFingerprint.Length - 50, coarseOffsetInFine + searchRange);
-                    
+
+                    var scoredCandidates = new List<(int offset, double score)>();
+
                     for (int offset = startSearch; offset <= endSearch; offset += 2)
                     {
                         if (cancellationToken.IsCancellationRequested)
@@ -617,42 +633,63 @@ namespace EmbyCredits.Services.DetectionMethods
                         var windowSize = Math.Min(50, fineFingerprint.Length - offset);
                         if (windowSize < 20)
                             continue;
-                        
-                        var coarseCompareStart = (int)((fineStartTime + offset * 0.13 - coarseFingerprintStartTime) / 0.13);
-                        if (coarseCompareStart < 0 || coarseCompareStart + windowSize > coarseFingerprint.Length)
-                            continue;
-                        
-                        int matchCount = 0;
-                        int compareCount = 0;
-                        
-                        for (int i = 0; i < windowSize; i++)
+
+                        // Search ±10 positions in reference to absorb stride-10 alignment error from coarse pass.
+                        var refBase = referenceMatchOffset + (offset - coarseOffsetInFine);
+                        var localBest = 0.0;
+                        for (int refDelta = -10; refDelta <= 10; refDelta++)
                         {
-                            var xorResult = fineFingerprint[offset + i] ^ coarseFingerprint[coarseCompareStart + i];
-                            var matchingBits = 32 - System.Numerics.BitOperations.PopCount(xorResult);
-                            matchCount += matchingBits;
-                            compareCount += 32;
+                            var refPos = refBase + refDelta;
+                            if (refPos < 0 || refPos + windowSize > referenceFingerprint.Length)
+                                continue;
+
+                            int matchCount = 0;
+                            for (int i = 0; i < windowSize; i++)
+                            {
+                                var xorResult = fineFingerprint[offset + i] ^ referenceFingerprint[refPos + i];
+                                matchCount += 32 - System.Numerics.BitOperations.PopCount(xorResult);
+                            }
+                            var sc = (double)matchCount / (windowSize * 32);
+                            if (sc > localBest)
+                                localBest = sc;
                         }
-                        
-                        var score = (double)matchCount / compareCount;
-                        
-                        if (score > bestScore)
-                        {
-                            bestScore = score;
-                            bestOffset = offset;
-                        }
+
+                        if (localBest > 0)
+                            scoredCandidates.Add((offset, localBest));
                     }
-                    
-                    if (bestScore > 0.80)
+
+                    if (scoredCandidates.Count == 0)
+                        return 0;
+
+                    var peakScore = scoredCandidates.Max(s => s.score);
+
+                    if (peakScore <= 0.80)
                     {
-                        var refinedTimestamp = fineStartTime + bestOffset * 0.13;
-                        LogDebug($"Fine-grained pass: Best match at offset {bestOffset} (score={bestScore:F3}), refined timestamp={FormatTime(refinedTimestamp)}");
-                        return refinedTimestamp;
-                    }
-                    else
-                    {
-                        LogDebug($"Fine-grained pass: Best score {bestScore:F3} below threshold, keeping coarse result");
+                        LogDebug($"Fine-grained pass: Peak score {peakScore:F3} below threshold, keeping coarse result");
                         return 0;
                     }
+
+                    // Onset: leftmost position where similarity first rises to within 3% of peak.
+                    var onsetThreshold = peakScore * 0.97;
+                    var onsetOffset = -1;
+                    var onsetScore = 0.0;
+                    foreach (var (off, score) in scoredCandidates)
+                    {
+                        if (score >= onsetThreshold)
+                        {
+                            onsetOffset = off;
+                            onsetScore = score;
+                            break;
+                        }
+                    }
+
+                    if (onsetOffset < 0)
+                        return 0;
+
+                    var refinedTimestamp = fineStartTime + onsetOffset * 0.13;
+                    LogDebug($"Fine-grained pass: Onset at offset {onsetOffset} (score={onsetScore:F3}, peak={peakScore:F3}), refined timestamp={FormatTime(refinedTimestamp)}");
+                    return refinedTimestamp;
+                    
                 }, cancellationToken);
             }
             catch (Exception ex)

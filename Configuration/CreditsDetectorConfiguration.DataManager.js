@@ -79,6 +79,9 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtOcrConsecutiveMatchesForEarlyStop').value = config.OcrConsecutiveMatchesForEarlyStop || 3;
             view.querySelector('#txtOcrMinimumConfidence').value = config.OcrMinimumConfidence || 0;
 
+            view.querySelector('#chkPaddleOcrEnableConcurrentFiles').checked = config.PaddleOcrEnableConcurrentFiles || false;
+            view.querySelector('#txtPaddleOcrConcurrentFiles').value = config.PaddleOcrConcurrentFiles !== undefined ? config.PaddleOcrConcurrentFiles : 2;
+
             // Character Density Detection settings
             view.querySelector('#chkOcrEnableCharacterDensityDetection').checked = config.OcrEnableCharacterDensityDetection !== false;
             view.querySelector('#txtOcrCharacterDensityThreshold').value = config.OcrCharacterDensityThreshold || 20;
@@ -346,6 +349,9 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrEnableSmartFrameSkipping = view.querySelector('#chkOcrEnableSmartFrameSkipping').checked;
         instance.config.OcrConsecutiveMatchesForEarlyStop = Number.parseInt(view.querySelector('#txtOcrConsecutiveMatchesForEarlyStop').value, 10) || 3;
         instance.config.OcrMinimumConfidence = Number.parseFloat(view.querySelector('#txtOcrMinimumConfidence').value) || 0;
+
+        instance.config.PaddleOcrEnableConcurrentFiles = view.querySelector('#chkPaddleOcrEnableConcurrentFiles').checked;
+        instance.config.PaddleOcrConcurrentFiles = Math.max(2, Number.parseInt(view.querySelector('#txtPaddleOcrConcurrentFiles').value, 10) || 2);
 
         // Character Density Detection settings
         instance.config.OcrEnableCharacterDensityDetection = view.querySelector('#chkOcrEnableCharacterDensityDetection').checked;

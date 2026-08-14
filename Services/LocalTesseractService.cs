@@ -128,38 +128,43 @@ namespace EmbyCredits.Services
 
                 using var process = new Process { StartInfo = psi };
                 FFmpegHelper.RegisterProcess(process, "LocalTesseract OCR");
-
-                process.Start();
-
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                cts.CancelAfter(TimeSpan.FromSeconds(30));
-
-                var stdoutTask = process.StandardOutput.ReadToEndAsync();
-                var stderrTask = process.StandardError.ReadToEndAsync();
-
-                await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
-
-                // WaitForExit with a deadline to avoid blocking forever
-                var exited = await Task.Run(() => process.WaitForExit(28000), cts.Token).ConfigureAwait(false);
-                FFmpegHelper.UnregisterProcess(process);
-
-                if (!exited)
+                try
                 {
-                    try { process.Kill(); } catch { }
-                    logger?.Warn("LocalTesseract: process timed out");
-                    return (string.Empty, 0);
-                }
+                    process.Start();
 
-                var text = stdoutTask.Result.Trim();
-                if (process.ExitCode != 0 && string.IsNullOrWhiteSpace(text))
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    cts.CancelAfter(TimeSpan.FromSeconds(30));
+
+                    var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                    var stderrTask = process.StandardError.ReadToEndAsync();
+
+                    await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+
+                    // WaitForExit with a deadline to avoid blocking forever
+                    var exited = await Task.Run(() => process.WaitForExit(28000), cts.Token).ConfigureAwait(false);
+
+                    if (!exited)
+                    {
+                        try { process.Kill(); } catch { }
+                        logger?.Warn("LocalTesseract: process timed out");
+                        return (string.Empty, 0);
+                    }
+
+                    var text = stdoutTask.Result.Trim();
+                    if (process.ExitCode != 0 && string.IsNullOrWhiteSpace(text))
+                    {
+                        logger?.Debug($"LocalTesseract stderr: {stderrTask.Result.Trim()}");
+                        return (string.Empty, 0);
+                    }
+
+                    // Tesseract CLI does not output confidence; synthesize a plausible value
+                    var confidence = CalculateSyntheticConfidence(text);
+                    return (text, confidence);
+                }
+                finally
                 {
-                    logger?.Debug($"LocalTesseract stderr: {stderrTask.Result.Trim()}");
-                    return (string.Empty, 0);
+                    FFmpegHelper.UnregisterProcess(process);
                 }
-
-                // Tesseract CLI does not output confidence; synthesize a plausible value
-                var confidence = CalculateSyntheticConfidence(text);
-                return (text, confidence);
             }
             finally
             {

@@ -14,7 +14,6 @@ namespace EmbyCredits.Services.DetectionMethods
             int maxParallelism = 4,
             System.Threading.CancellationToken cancellationToken = default)
         {
-            var results = new List<(string, string, double, double)>(frames.Count);
             using (var semaphore = new System.Threading.SemaphoreSlim(maxParallelism, maxParallelism))
             {
                 var tasks = new List<Task<(string, string, double, double)>>(frames.Count);
@@ -39,9 +38,8 @@ namespace EmbyCredits.Services.DetectionMethods
                     tasks.Add(task);
                 }
 
-                results = (await Task.WhenAll(tasks).ConfigureAwait(false)).ToList();
+                return (await Task.WhenAll(tasks).ConfigureAwait(false)).ToList();
             }
-            return results;
         }
 
         public static int CalculateSmartSkip(int consecutiveMatches, int defaultSkip = 1)
@@ -115,25 +113,30 @@ namespace EmbyCredits.Services.DetectionMethods
             if (lines1.Count == 0 || lines2.Count == 0)
                 return 0;
 
-            var set2 = new HashSet<string>(lines2, StringComparer.OrdinalIgnoreCase);
+            var set2Exact = new HashSet<string>(lines2, StringComparer.OrdinalIgnoreCase);
+            var set2Lower = new HashSet<string>(lines2.Select(l => l.ToLowerInvariant()), StringComparer.Ordinal);
 
             int matches = 0;
             foreach (var line in lines1)
             {
-                if (set2.Contains(line))
+                if (set2Exact.Contains(line))
                 {
                     matches++;
                     continue;
                 }
-                foreach (var l2 in lines2)
+
+                var lineLower = line.ToLowerInvariant();
+                bool found = false;
+                foreach (var l2Lower in set2Lower)
                 {
-                    if (l2.Contains(line, StringComparison.OrdinalIgnoreCase) ||
-                        line.Contains(l2, StringComparison.OrdinalIgnoreCase))
+                    if (l2Lower.Contains(lineLower, StringComparison.Ordinal) ||
+                        lineLower.Contains(l2Lower, StringComparison.Ordinal))
                     {
-                        matches++;
+                        found = true;
                         break;
                     }
                 }
+                if (found) matches++;
             }
 
             return (double)matches / Math.Max(lines1.Count, lines2.Count);

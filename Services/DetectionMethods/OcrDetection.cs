@@ -55,6 +55,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string lower, string lowerCollapsed)[]> _normalizedKeywordsByString
             = new System.Collections.Concurrent.ConcurrentDictionary<string, (string, string)[]>(StringComparer.Ordinal);
+        private const int MaxNormalizedKeywordCacheEntries = 64;
 
         private (string lower, string lowerCollapsed)[] _normalizedKeywordCache = Array.Empty<(string, string)>();
 
@@ -62,6 +63,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _av1VideoCache
             = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        private const int MaxAv1CacheEntries = 2000;
 
         public OcrDetection(ILogger logger, PluginConfiguration configuration, bool isForAnime = false)
             : base(logger, configuration)
@@ -88,16 +90,25 @@ namespace EmbyCredits.Services.DetectionMethods
 
             double result;
             
-            if (_cache.TryGetTimestamps(cacheKey, out var cachedTimestamps) && cachedTimestamps.Count >= Configuration.OcrEpisodeComparisonMinimumEpisodes)
+            double averageTimestamp = 0;
+            double standardDeviation = 0;
+            bool cacheReady = false;
+            if (_cache.TryGetTimestamps(cacheKey, out var cachedTimestamps))
             {
-                double averageTimestamp;
-                double standardDeviation;
                 lock (cachedTimestamps)
                 {
-                    averageTimestamp = cachedTimestamps.Average();
-                    var variance = cachedTimestamps.Select(t => Math.Pow(t - averageTimestamp, 2)).Average();
-                    standardDeviation = Math.Sqrt(variance);
+                    if (cachedTimestamps.Count >= Configuration.OcrEpisodeComparisonMinimumEpisodes)
+                    {
+                        cacheReady = true;
+                        averageTimestamp = cachedTimestamps.Average();
+                        var variance = cachedTimestamps.Select(t => Math.Pow(t - averageTimestamp, 2)).Average();
+                        standardDeviation = Math.Sqrt(variance);
+                    }
                 }
+            }
+
+            if (cacheReady)
+            {
 
                 var tolerance = Math.Max(Configuration.OcrEpisodeComparisonTolerance, standardDeviation * 4);
                 var narrowStartTime = Math.Max(0, averageTimestamp - tolerance);
@@ -207,13 +218,7 @@ namespace EmbyCredits.Services.DetectionMethods
         {
             LastError = string.Empty;
             
-            // Clear and release memory from previous detection
-            if (_ocrTextConfidences.Count > 0)
-            {
-                _ocrTextConfidences.Clear();
-                _ocrTextConfidences.TrimExcess();
-                _ocrTextConfidences = new List<double>();
-            }
+            _ocrTextConfidences = new List<double>();
             _totalKeywordMatches = 0;
             _totalFramesProcessed = 0;
             _calculatedConfidence = 0.95;
@@ -2089,6 +2094,8 @@ namespace EmbyCredits.Services.DetectionMethods
 
         private bool IsAv1Video(string videoPath)
         {
+            if (_av1VideoCache.Count >= MaxAv1CacheEntries)
+                _av1VideoCache.Clear();
             return _av1VideoCache.GetOrAdd(videoPath, path =>
             {
                 try
@@ -2850,12 +2857,16 @@ namespace EmbyCredits.Services.DetectionMethods
                 .ToList();
 
             _normalizedKeywordCache = _normalizedKeywordsByString.GetOrAdd(keywordString, _ =>
-                keywords.Select(k =>
+            {
+                if (_normalizedKeywordsByString.Count >= MaxNormalizedKeywordCacheEntries)
+                    _normalizedKeywordsByString.Clear();
+                return keywords.Select(k =>
                 {
                     var lower = k.ToLowerInvariant();
                     var lowerCollapsed = _multipleWhitespaceRegex.Replace(lower, "");
                     return (lower, lowerCollapsed);
-                }).ToArray());
+                }).ToArray();
+            });
 
             return keywords;
         }

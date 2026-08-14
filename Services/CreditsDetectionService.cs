@@ -48,7 +48,7 @@ namespace EmbyCredits.Services
         private const int MaxBatchDetectionCacheSize = 5000;
         private const int MaxEpisodeStatusMessagesCache = 1000;
 
-        private static DetectionCoordinator? _detectionCoordinator;
+        private static volatile DetectionCoordinator? _detectionCoordinator;
         private static DebugLogger? _debugLogger;
         private static ChapterMarkerService? _chapterMarkerService;
         private static EpisodeProcessor? _episodeProcessor;
@@ -71,6 +71,7 @@ namespace EmbyCredits.Services
         private static ConcurrentDictionary<string, ConcurrentQueue<string>> _episodeStatusMessages = new ConcurrentDictionary<string, ConcurrentQueue<string>>();
 
         private static RuleMatchingService? _cachedRuleMatchingService;
+        private static Timer? _cacheCleanupTimer;
         private static readonly ConcurrentDictionary<string, SeasonDispatchState> _pendingSeasonDispatches =
             new ConcurrentDictionary<string, SeasonDispatchState>(StringComparer.Ordinal);
 
@@ -107,14 +108,13 @@ namespace EmbyCredits.Services
         public static void AddEpisodeStatusMessage(string episodeId, string message)
         {
             var messages = _episodeStatusMessages.GetOrAdd(episodeId, _ => new ConcurrentQueue<string>());
-            
+
             messages.Enqueue(message);
             while (messages.Count > 50)
-            {
                 messages.TryDequeue(out _);
-            }
-            
-            CleanupEpisodeStatusMessages();
+
+            if (_episodeStatusMessages.Count > MaxEpisodeStatusMessagesCache)
+                CleanupEpisodeStatusMessages();
         }
         
         private static List<string> GetAndClearEpisodeStatusMessages(string episodeId)
@@ -173,6 +173,12 @@ namespace EmbyCredits.Services
                     _logger.Info("Auto-restore enabled: ItemUpdated event handler registered");
                 }
             }
+
+            _cacheCleanupTimer?.Dispose();
+            _cacheCleanupTimer = new Timer(_ =>
+            {
+                if (!_isProcessing) { CleanupBatchDetectionCache(); CleanupOldProcessedEpisodes(); }
+            }, null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
         }
 
         public static void UpdateConfiguration(PluginConfiguration configuration)
@@ -365,18 +371,25 @@ namespace EmbyCredits.Services
             if (_episodeStatusMessages.Count <= MaxEpisodeStatusMessagesCache)
                 return;
 
-            var entriesToRemove = _episodeStatusMessages.Count - MaxEpisodeStatusMessagesCache;
             var removed = 0;
-            
+            var entriesToRemove = _episodeStatusMessages.Count - MaxEpisodeStatusMessagesCache;
+
+            // Prefer removing already-drained queues (episode finished, messages consumed)
             foreach (var kvp in _episodeStatusMessages)
             {
-                if (removed >= entriesToRemove)
-                    break;
-                    
+                if (removed >= entriesToRemove) break;
+                if (kvp.Value.IsEmpty && _episodeStatusMessages.TryRemove(kvp.Key, out _))
+                    removed++;
+            }
+
+            // Fall back to arbitrary removal if still over limit
+            foreach (var kvp in _episodeStatusMessages)
+            {
+                if (removed >= entriesToRemove) break;
                 if (_episodeStatusMessages.TryRemove(kvp.Key, out _))
                     removed++;
             }
-            
+
             LogDebug($"Cleaned up episode status messages cache: removed {removed} entries");
         }
 
@@ -384,6 +397,9 @@ namespace EmbyCredits.Services
         {
             _isRunning = false;
             _isProcessing = false;
+
+            _cacheCleanupTimer?.Dispose();
+            _cacheCleanupTimer = null;
 
             if (_libraryManager != null)
             {
@@ -2092,7 +2108,55 @@ namespace EmbyCredits.Services
             var blackFrameParallelSessions = _configuration?.BlackFrameParallelSessions ?? 1;
             var shouldRunParallel = isAnime && blackFrameParallelSessions > 1 && seasonEpisodes.Count > 2;
 
-            if (shouldRunParallel)
+            var isPaddleOcr = effectiveConfig?.OcrEngine == OcrEngine.PaddleOCR;
+            var paddleConcurrentFiles = _configuration?.PaddleOcrConcurrentFiles ?? 2;
+            var shouldRunPaddleParallel = !isAnime &&
+                isPaddleOcr &&
+                (_configuration?.PaddleOcrEnableConcurrentFiles ?? false) &&
+                paddleConcurrentFiles > 1 &&
+                seasonEpisodes.Count > 1 &&
+                (effectiveConfig?.DetectionMode == DetectionMode.OcrOnly ||
+                 effectiveConfig?.DetectionMode == DetectionMode.OcrWithHashFallback);
+
+            if (shouldRunPaddleParallel)
+            {
+                const int seedCount = 1;
+                var seedEpisodes = seasonEpisodes.Take(seedCount).ToList();
+                var remainingEpisodes = seasonEpisodes.Skip(seedCount).ToList();
+
+                _logger?.Info($"[PaddleOCR] Concurrent file mode: processing {seedCount} seed episode sequentially, then {remainingEpisodes.Count} in parallel (max {paddleConcurrentFiles} concurrent)");
+
+                // Sequential seed phase — populates the episode-comparison timestamp cache
+                foreach (var episode in seedEpisodes)
+                {
+                    if (cancellationToken.IsCancellationRequested || _cancellationRequested) break;
+                    await ProcessSingleEpisodeInBatch(episode, seriesName, matchedRuleName, batchResults, chromaprintMethod, tempCoordinator, isManualRun, cancellationToken);
+                }
+
+                if (!cancellationToken.IsCancellationRequested && !_cancellationRequested)
+                {
+                    using var paddleSemaphore = new SemaphoreSlim(paddleConcurrentFiles, paddleConcurrentFiles);
+                    var parallelTasks = remainingEpisodes.Select(async episode =>
+                    {
+                        if (cancellationToken.IsCancellationRequested || _cancellationRequested) return;
+                        try
+                        {
+                            await paddleSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException) { return; }
+                        try
+                        {
+                            await ProcessSingleEpisodeInBatch(episode, seriesName, matchedRuleName, batchResults, chromaprintMethod, tempCoordinator, isManualRun, cancellationToken);
+                        }
+                        finally
+                        {
+                            paddleSemaphore.Release();
+                        }
+                    }).ToList();
+                    await Task.WhenAll(parallelTasks).ConfigureAwait(false);
+                }
+            }
+            else if (shouldRunParallel)
             {
                 const int seedCount = 2;
                 var seedEpisodes = seasonEpisodes.Take(seedCount).ToList();
