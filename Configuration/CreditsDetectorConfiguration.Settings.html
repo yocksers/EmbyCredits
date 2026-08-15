@@ -18,6 +18,14 @@
     <div class="paper-card" style="padding: 1.5em; margin-top: 2em;">
         <h2 style="margin-top:0;">General Settings</h2>
 
+        <div class="checkboxContainer">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkSkipStrmEpisodes" data-config-key="SkipStrmEpisodes" />
+                <span>Skip STRM Episodes</span>
+            </label>
+            <div class="fieldDescription"><strong>Recommended and enabled by default.</strong> Skip .strm wrapper episodes before runtime probing, TheIntroDB fallback, video validation or FFmpeg processing. This prevents the credits detector from opening provider streams in mixed libraries.</div>
+        </div>
+
         <div class="selectContainer">
             <label class="selectLabel" for="selectDetectionMode">Detection Mode</label>
             <select id="selectDetectionMode" data-config-key="DetectionMode" class="emby-select-withcolor emby-select" style="max-width: 400px; padding: 0.6em 1em; border-radius: 8px; background-color: rgba(82, 181, 75, 0.1); border: 2px solid rgba(82, 181, 75, 0.3); font-size: 1em;">

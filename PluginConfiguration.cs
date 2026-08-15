@@ -43,6 +43,8 @@ namespace EmbyCredits
     public partial class PluginConfiguration : BasePluginConfiguration
     {
         public bool EnableAutoDetection { get; set; } = false;
+
+        public bool SkipStrmEpisodes { get; set; } = true;
         
         public double TimestampOffsetSeconds { get; set; } = 0.0;
 

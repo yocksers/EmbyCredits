@@ -17,6 +17,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using EmbyCredits.Services;
+using EmbyCredits.Services.Utilities;
 
 namespace EmbyCredits.Services
 {
@@ -2461,6 +2462,20 @@ namespace EmbyCredits.Services
                 return;
 
             var episodeId = episode.Id.ToString();
+
+            if (_configuration.SkipStrmEpisodes && EpisodeEligibility.IsStrmPath(episode.Path))
+            {
+                LogInfo($"Skipping STRM episode by configuration: {episode.Name}");
+                if (Plugin.Instance != null)
+                {
+                    var episodeKey = episode.Series != null
+                        ? $"{episode.Series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
+                        : episode.Name;
+                    Plugin.Progress.SkipReasons[episodeKey] = "STRM episode skipped by configuration";
+                    Plugin.Progress.SkippedItems++;
+                }
+                return;
+            }
 
             try
             {

@@ -5,6 +5,8 @@ VisualStudioVersion = 17.14.36429.23
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EmbyCredits", "EmbyCredits.csproj", "{A9776F62-A78A-86D0-C0BB-2A157097209B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EmbyCredits.Tests", "EmbyCredits.Tests\EmbyCredits.Tests.csproj", "{F94A465C-0060-4099-9081-070645317830}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{A9776F62-A78A-86D0-C0BB-2A157097209B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A9776F62-A78A-86D0-C0BB-2A157097209B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A9776F62-A78A-86D0-C0BB-2A157097209B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F94A465C-0060-4099-9081-070645317830}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F94A465C-0060-4099-9081-070645317830}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F94A465C-0060-4099-9081-070645317830}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F94A465C-0060-4099-9081-070645317830}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

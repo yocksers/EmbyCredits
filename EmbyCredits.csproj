@@ -13,7 +13,7 @@
 	<AssemblyVersion>2.7.0.1</AssemblyVersion>
 	<FileVersion>2.7.0.1</FileVersion>
 		<RootNamespace>EmbyCredits</RootNamespace>
-		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**;credit\**;test\**;introskipper\**</DefaultItemExcludes>
+		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**;credit\**;test\**;introskipper\**;EmbyCredits.Tests\**</DefaultItemExcludes>
 		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
 	</PropertyGroup>
 

@@ -65,6 +65,12 @@ namespace EmbyCredits.Services
             {
                 _debugLogger.LogInfo($"Processing episode: {episode.Name} (S{episode.ParentIndexNumber}E{episode.IndexNumber})");
 
+                if (_configuration.SkipStrmEpisodes && EpisodeEligibility.IsStrmPath(episode.Path))
+                {
+                    _debugLogger.LogInfo($"Skipping STRM episode by configuration: {episode.Name}");
+                    return (false, 0, "STRM episode skipped by configuration", 0, string.Empty, string.Empty);
+                }
+
                 var normalizedPath = Utilities.FFmpegHelper.NormalizeFilePath(episode.Path);
 
                 if (string.IsNullOrEmpty(normalizedPath))
