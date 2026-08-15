@@ -23,5 +23,15 @@ namespace EmbyCredits.Tests
         {
             Assert.False(EpisodeEligibility.IsStrmPath(path));
         }
+
+        [Theory]
+        [InlineData("/media/show/episode.strm", true, true)]
+        [InlineData("/media/show/episode.STRM", true, true)]
+        [InlineData("/media/show/episode.strm", false, false)]
+        [InlineData("/media/show/episode.mkv", true, false)]
+        public void ShouldSkipMediaProcessingHonorsConfiguration(string path, bool enabled, bool expected)
+        {
+            Assert.Equal(expected, EpisodeEligibility.ShouldSkipMediaProcessing(path, enabled));
+        }
     }
 }

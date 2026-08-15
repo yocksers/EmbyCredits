@@ -10,5 +10,10 @@ namespace EmbyCredits.Services.Utilities
             return !string.IsNullOrWhiteSpace(path) &&
                 string.Equals(Path.GetExtension(path), ".strm", StringComparison.OrdinalIgnoreCase);
         }
+
+        public static bool ShouldSkipMediaProcessing(string? path, bool skipStrmEpisodes)
+        {
+            return skipStrmEpisodes && IsStrmPath(path);
+        }
     }
 }

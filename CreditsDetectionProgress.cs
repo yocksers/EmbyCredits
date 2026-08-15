@@ -138,6 +138,12 @@ namespace EmbyCredits
         
         public void IncrementSkipped() => Interlocked.Increment(ref _skippedItems);
 
+        public void CompleteSkippedItem()
+        {
+            Interlocked.Increment(ref _processedItems);
+            CheckAndLimitDictionarySize();
+        }
+
         public void CompleteProcessingItem(bool success)
         {
             if (_currentItemStartTime.HasValue)

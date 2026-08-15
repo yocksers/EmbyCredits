@@ -16,6 +16,7 @@ define(['loading', 'toast'], function (loading, toast) {
             if (chkEnableTheIntroDB) chkEnableTheIntroDB.checked = config.EnableTheIntroDB || false;
             
             view.querySelector('#chkEnableAutoDetection').checked = config.EnableAutoDetection || false;
+            view.querySelector('#chkSkipStrmEpisodes').checked = config.SkipStrmEpisodes !== false;
             view.querySelector('#txtTimestampOffsetSeconds').value = config.TimestampOffsetSeconds || 0;
             view.querySelector('#chkEnableDetailedLogging').checked = config.EnableDetailedLogging || false;
             view.querySelector('#chkEnableLogToFile').checked = config.EnableLogToFile || false;
@@ -282,6 +283,7 @@ define(['loading', 'toast'], function (loading, toast) {
         loading.show();
 
         instance.config.EnableAutoDetection = view.querySelector('#chkEnableAutoDetection').checked;
+        instance.config.SkipStrmEpisodes = view.querySelector('#chkSkipStrmEpisodes').checked;
 
         const chkEnableTheIntroDBSave = view.querySelector('#chkEnableTheIntroDB');
         if (chkEnableTheIntroDBSave) instance.config.EnableTheIntroDB = chkEnableTheIntroDBSave.checked;

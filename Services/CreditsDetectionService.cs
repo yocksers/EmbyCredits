@@ -1840,6 +1840,32 @@ namespace EmbyCredits.Services
             if (_episodeProcessor == null || _configuration == null || seasonEpisodes.Count == 0)
                 return;
 
+            if (_configuration.SkipStrmEpisodes)
+            {
+                var skippedEpisodes = seasonEpisodes.Where(ep =>
+                    EpisodeEligibility.ShouldSkipMediaProcessing(ep.Path, _configuration.SkipStrmEpisodes)).ToList();
+                foreach (var skippedEpisode in skippedEpisodes)
+                {
+                    LogInfo($"Skipping STRM episode by configuration: {skippedEpisode.Name}");
+                    if (Plugin.Instance != null)
+                    {
+                        var skippedKey = skippedEpisode.Series != null
+                            ? $"{skippedEpisode.Series.Name} S{skippedEpisode.ParentIndexNumber:00}E{skippedEpisode.IndexNumber:00}"
+                            : skippedEpisode.Name;
+                        Plugin.Progress.SkipReasons[skippedKey] = "STRM episode skipped by configuration";
+                        Plugin.Progress.IncrementSkipped();
+                        Plugin.Progress.CompleteSkippedItem();
+                    }
+                }
+
+                seasonEpisodes = seasonEpisodes.Where(ep =>
+                    !EpisodeEligibility.ShouldSkipMediaProcessing(ep.Path, _configuration.SkipStrmEpisodes)).ToList();
+                if (seasonEpisodes.Count == 0)
+                {
+                    return;
+                }
+            }
+
             var firstEpisode = seasonEpisodes.First();
             var seriesId = firstEpisode.Series?.Id.ToString() ?? string.Empty;
             var seasonNumber = firstEpisode.ParentIndexNumber ?? 0;
@@ -2463,7 +2489,7 @@ namespace EmbyCredits.Services
 
             var episodeId = episode.Id.ToString();
 
-            if (_configuration.SkipStrmEpisodes && EpisodeEligibility.IsStrmPath(episode.Path))
+            if (EpisodeEligibility.ShouldSkipMediaProcessing(episode.Path, _configuration.SkipStrmEpisodes))
             {
                 LogInfo($"Skipping STRM episode by configuration: {episode.Name}");
                 if (Plugin.Instance != null)
@@ -2472,7 +2498,14 @@ namespace EmbyCredits.Services
                         ? $"{episode.Series.Name} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}"
                         : episode.Name;
                     Plugin.Progress.SkipReasons[episodeKey] = "STRM episode skipped by configuration";
-                    Plugin.Progress.SkippedItems++;
+                    Plugin.Progress.IncrementSkipped();
+                    Plugin.Progress.CompleteSkippedItem();
+                    if (Plugin.Progress.ProcessedItems >= Plugin.Progress.TotalItems)
+                    {
+                        Plugin.Progress.IsRunning = false;
+                        Plugin.Progress.EndTime = DateTime.Now;
+                        Plugin.Progress.CurrentItem = "Complete";
+                    }
                 }
                 return;
             }
