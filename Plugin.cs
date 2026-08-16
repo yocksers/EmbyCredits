@@ -310,6 +310,11 @@ namespace EmbyCredits
                 },
                 new PluginPageInfo
                 {
+                    Name = "CreditsDetectorConfigurationOcrStatusManager",
+                    EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.OcrStatusManager.js"
+                },
+                new PluginPageInfo
+                {
                     Name = "CreditsDetectorConfiguration.Tracer",
                     EmbeddedResourcePath = "EmbyCredits.Configuration.CreditsDetectorConfiguration.Tracer.html"
                 }

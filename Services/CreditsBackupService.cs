@@ -28,17 +28,35 @@ namespace EmbyCredits.Services
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
 
-        private static readonly ConcurrentDictionary<string, SemaphoreSlim> _fileLocks =
-            new ConcurrentDictionary<string, SemaphoreSlim>(StringComparer.OrdinalIgnoreCase);
-
-        private static SemaphoreSlim GetFileLock(string key) =>
-            _fileLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
-
-        private static void TryEvictFileLock(string key, SemaphoreSlim semaphore)
+        private sealed class FileLockEntry
         {
-            if (_fileLocks.Count <= 200) return;
-            if (semaphore.CurrentCount != 1) return;
-            _fileLocks.TryRemove(new KeyValuePair<string, SemaphoreSlim>(key, semaphore));
+            public readonly SemaphoreSlim Semaphore = new SemaphoreSlim(1, 1);
+            public int RefCount;
+        }
+
+        private static readonly ConcurrentDictionary<string, FileLockEntry> _fileLocks =
+            new ConcurrentDictionary<string, FileLockEntry>(StringComparer.OrdinalIgnoreCase);
+        private static readonly object _fileLocksGate = new object();
+
+        // RefCount is guarded by _fileLocksGate so eviction can never remove an entry another caller is about to use.
+        private static FileLockEntry AcquireFileLock(string key)
+        {
+            lock (_fileLocksGate)
+            {
+                var entry = _fileLocks.GetOrAdd(key, _ => new FileLockEntry());
+                entry.RefCount++;
+                return entry;
+            }
+        }
+
+        private static void ReleaseFileLock(string key, FileLockEntry entry)
+        {
+            lock (_fileLocksGate)
+            {
+                entry.RefCount--;
+                if (entry.RefCount <= 0 && _fileLocks.Count > 200)
+                    _fileLocks.TryRemove(key, out _);
+            }
         }
 
         public CreditsBackupService(ILogger logger, ILibraryManager libraryManager, IItemRepository itemRepository)
@@ -115,8 +133,8 @@ namespace EmbyCredits.Services
                     return;
                 }
 
-                var seriesLock = GetFileLock(series.Name);
-                await seriesLock.WaitAsync().ConfigureAwait(false);
+                var seriesLock = AcquireFileLock(series.Name);
+                await seriesLock.Semaphore.WaitAsync().ConfigureAwait(false);
                 try
                 {
                 if (!Directory.Exists(backupFolder))
@@ -180,8 +198,8 @@ namespace EmbyCredits.Services
                 }
                 finally
                 {
-                    seriesLock.Release();
-                    TryEvictFileLock(series.Name, seriesLock);
+                    seriesLock.Semaphore.Release();
+                    ReleaseFileLock(series.Name, seriesLock);
                 }
             }
             catch (Exception ex)
@@ -190,8 +208,16 @@ namespace EmbyCredits.Services
             }
         }
 
-        private static readonly ConcurrentDictionary<string, (DateTime Modified, CreditsBackup? Data)> _backupReadCache =
-            new ConcurrentDictionary<string, (DateTime, CreditsBackup?)>(StringComparer.OrdinalIgnoreCase);
+        private sealed class BackupCacheEntry
+        {
+            public DateTime Modified;
+            public CreditsBackup? Data;
+            public DateTime LastAccessUtc;
+        }
+
+        private const int MaxBackupReadCacheEntries = 100;
+        private static readonly ConcurrentDictionary<string, BackupCacheEntry> _backupReadCache =
+            new ConcurrentDictionary<string, BackupCacheEntry>(StringComparer.OrdinalIgnoreCase);
 
         private CreditsBackup? ReadBackupCached(string filePath)
         {
@@ -199,16 +225,27 @@ namespace EmbyCredits.Services
             {
                 var modified = new FileInfo(filePath).LastWriteTimeUtc;
                 if (_backupReadCache.TryGetValue(filePath, out var cached) && cached.Modified == modified)
+                {
+                    cached.LastAccessUtc = DateTime.UtcNow;
                     return cached.Data;
+                }
 
                 CreditsBackup? backup;
                 try { backup = JsonSerializer.Deserialize<CreditsBackup>(File.ReadAllText(filePath)); }
                 catch { backup = null; }
 
-                _backupReadCache[filePath] = (modified, backup);
+                _backupReadCache[filePath] = new BackupCacheEntry { Modified = modified, Data = backup, LastAccessUtc = DateTime.UtcNow };
 
-                if (_backupReadCache.Count > 100)
-                    _backupReadCache.Clear();
+                if (_backupReadCache.Count > MaxBackupReadCacheEntries)
+                {
+                    var stale = _backupReadCache
+                        .OrderBy(kvp => kvp.Value.LastAccessUtc)
+                        .Take(_backupReadCache.Count - MaxBackupReadCacheEntries)
+                        .Select(kvp => kvp.Key)
+                        .ToList();
+                    foreach (var key in stale)
+                        _backupReadCache.TryRemove(key, out _);
+                }
 
                 return backup;
             }
@@ -271,8 +308,8 @@ namespace EmbyCredits.Services
                 if (series == null || string.IsNullOrWhiteSpace(backupFolder))
                     return;
 
-                var seriesLock = GetFileLock(series.Name);
-                await seriesLock.WaitAsync().ConfigureAwait(false);
+                var seriesLock = AcquireFileLock(series.Name);
+                await seriesLock.Semaphore.WaitAsync().ConfigureAwait(false);
                 try
                 {
                 if (!Directory.Exists(backupFolder))
@@ -353,8 +390,8 @@ namespace EmbyCredits.Services
                 }
                 finally
                 {
-                    seriesLock.Release();
-                    TryEvictFileLock(series.Name, seriesLock);
+                    seriesLock.Semaphore.Release();
+                    ReleaseFileLock(series.Name, seriesLock);
                 }
             }
             catch (Exception ex)
@@ -400,8 +437,8 @@ namespace EmbyCredits.Services
                 if (series == null || string.IsNullOrWhiteSpace(backupFolder))
                     return false;
 
-                var seriesLock = GetFileLock(series.Name);
-                await seriesLock.WaitAsync().ConfigureAwait(false);
+                var seriesLock = AcquireFileLock(series.Name);
+                await seriesLock.Semaphore.WaitAsync().ConfigureAwait(false);
                 try
                 {
                 var backupFile = FindLatestSeriesBackupFile(series.Name, backupFolder);
@@ -469,8 +506,8 @@ namespace EmbyCredits.Services
                 }
                 finally
                 {
-                    seriesLock.Release();
-                    TryEvictFileLock(series.Name, seriesLock);
+                    seriesLock.Semaphore.Release();
+                    ReleaseFileLock(series.Name, seriesLock);
                 }
             }
             catch (Exception ex)

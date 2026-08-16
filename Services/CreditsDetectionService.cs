@@ -1844,6 +1844,29 @@ namespace EmbyCredits.Services
             var seasonNumber = firstEpisode.ParentIndexNumber ?? 0;
             var seriesName = firstEpisode.Series?.Name ?? "Unknown Series";
 
+            // .strm files point to remote/virtual streams rather than a real media file and
+            // cause problems with duration/frame-based detection, so exclude them up front.
+            var strmEpisodes = seasonEpisodes.Where(ep => IsStrmFile(ep.Path)).ToList();
+            if (strmEpisodes.Count > 0)
+            {
+                _logger?.Info($"Skipping {strmEpisodes.Count} .strm episode(s) in {seriesName} Season {seasonNumber} - not supported for detection");
+                foreach (var ep in strmEpisodes)
+                {
+                    var epKey = $"{seriesName} S{ep.ParentIndexNumber:00}E{ep.IndexNumber:00}";
+                    if (Plugin.Instance != null)
+                    {
+                        Plugin.Progress.SkipReasons[epKey] = "Strm file (not supported)";
+                        Plugin.Progress.IncrementSkipped();
+                    }
+                }
+
+                seasonEpisodes = seasonEpisodes.Except(strmEpisodes).ToList();
+                if (seasonEpisodes.Count == 0)
+                {
+                    return;
+                }
+            }
+
             _logger?.Info($"Starting batch processing for {seriesName} Season {seasonNumber} ({seasonEpisodes.Count} episodes)");
 
             var ruleMatchingService = _logger != null ? new RuleMatchingService(_logger, _configuration) : null;
@@ -2595,6 +2618,11 @@ namespace EmbyCredits.Services
         {
             var time = TimeSpan.FromSeconds(seconds);
             return $"{(int)time.TotalHours:D2}:{time.Minutes:D2}:{time.Seconds:D2}";
+        }
+
+        private static bool IsStrmFile(string? path)
+        {
+            return !string.IsNullOrEmpty(path) && string.Equals(Path.GetExtension(path), ".strm", StringComparison.OrdinalIgnoreCase);
         }
 
         private static async Task<string> GenerateThumbnail(Episode episode, double timestamp, string episodeKey)

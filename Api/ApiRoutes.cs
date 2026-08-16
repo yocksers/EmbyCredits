@@ -16,6 +16,7 @@ namespace EmbyCredits.Api
         public const string ClearQueue = "/CreditsDetector/ClearQueue";
         public const string GetSeriesMarkers = "/CreditsDetector/GetSeriesMarkers";
         public const string TestOcrConnection = "/CreditsDetector/TestOcrConnection";
+        public const string GetOcrEngineStatus = "/CreditsDetector/GetOcrEngineStatus";
         public const string DryRunSeries = "/CreditsDetector/DryRunSeries";
         public const string DryRunSeriesDebug = "/CreditsDetector/DryRunSeriesDebug";
         public const string GetDebugLog = "/CreditsDetector/GetDebugLog";

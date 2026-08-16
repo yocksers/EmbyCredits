@@ -5,7 +5,7 @@ define(['loading', 'toast'], function (loading, toast) {
 
     function loadData(instance, view) {
         loading.show();
-        ApiClient.getPluginConfiguration(pluginId).then(config => {
+        return ApiClient.getPluginConfiguration(pluginId).then(config => {
             instance.config = config;
 
             // Handle DetectionMode with backward compatibility

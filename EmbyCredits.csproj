@@ -10,8 +10,8 @@
 
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
-	<AssemblyVersion>2.7.0.1</AssemblyVersion>
-	<FileVersion>2.7.0.1</FileVersion>
+	<AssemblyVersion>2.7.0.5</AssemblyVersion>
+	<FileVersion>2.7.0.5</FileVersion>
 		<RootNamespace>EmbyCredits</RootNamespace>
 		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**;credit\**;test\**;introskipper\**</DefaultItemExcludes>
 		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
@@ -88,6 +88,9 @@
 		</EmbeddedResource>
 		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.TracerManager.js">
 			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.TracerManager.js</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.OcrStatusManager.js">
+			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.OcrStatusManager.js</LogicalName>
 		</EmbeddedResource>
 		<EmbeddedResource Include="Configuration\CreditsDetectorConfiguration.Tracer.html">
 			<LogicalName>EmbyCredits.Configuration.CreditsDetectorConfiguration.Tracer.html</LogicalName>

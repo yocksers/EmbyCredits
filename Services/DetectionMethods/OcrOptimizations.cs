@@ -18,27 +18,36 @@ namespace EmbyCredits.Services.DetectionMethods
             {
                 var tasks = new List<Task<(string, string, double, double)>>(frames.Count);
 
-                foreach (var frame in frames)
+                try
                 {
-                    await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                    var task = Task.Run(async () =>
+                    foreach (var frame in frames)
                     {
-                        try
-                        {
-                            var (text, confidence) = await ocrFunction(frame.path).ConfigureAwait(false);
-                            return (frame.path, text, confidence, frame.timestamp);
-                        }
-                        finally
-                        {
-                            semaphore.Release();
-                        }
-                    });
+                        await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-                    tasks.Add(task);
+                        var task = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                var (text, confidence) = await ocrFunction(frame.path).ConfigureAwait(false);
+                                return (frame.path, text, confidence, frame.timestamp);
+                            }
+                            finally
+                            {
+                                semaphore.Release();
+                            }
+                        });
+
+                        tasks.Add(task);
+                    }
+
+                    return (await Task.WhenAll(tasks).ConfigureAwait(false)).ToList();
                 }
-
-                return (await Task.WhenAll(tasks).ConfigureAwait(false)).ToList();
+                catch
+                {
+                    // Wait for already-scheduled tasks so they release the semaphore before it's disposed
+                    try { await Task.WhenAll(tasks).ConfigureAwait(false); } catch { }
+                    throw;
+                }
             }
         }
 

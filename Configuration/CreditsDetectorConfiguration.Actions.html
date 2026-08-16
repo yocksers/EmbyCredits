@@ -49,6 +49,11 @@
         <label style="margin: 0;">seconds before the timestamp</label>
     </div>
 
+    <div id="ocrEngineReadyIndicator" style="display: none; align-items: center; gap: 0.5em; margin-bottom: 0.75em; padding: 0.5em 0.75em; border-radius: 4px; background: rgba(128,128,128,0.12); font-size: 0.9em;">
+        <span id="ocrEngineReadyDot" style="width: 10px; height: 10px; border-radius: 50%; background: #9e9e9e; flex-shrink: 0;"></span>
+        <span id="ocrEngineReadyText">Checking OCR engine status...</span>
+    </div>
+
     <div style="margin-top: 0;">
         <button is="emby-button" type="button" class="raised button-submit" id="btnProcessSeries">
             <span>Process Selection</span>

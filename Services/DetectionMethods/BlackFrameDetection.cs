@@ -421,7 +421,7 @@ namespace EmbyCredits.Services.DetectionMethods
         }
 
         private static readonly Regex _blackFrameRegex = new Regex(
-            @"frame:(\d+)\s+pblack:(\d+)\s+pts:\d+\s+t:(\d+\.?\d*)",
+            @"frame:(\d+)\s+pblack:(\d+)\s+pts:\d+\s+t:(\d+(?:\.\d+)?)",
             RegexOptions.Compiled);
 
         private static List<BlackFrameData> ParseBlackFrameOutput(List<string> lines)

@@ -9,6 +9,60 @@
         </p>
     </div>
 
+    <div style="margin-bottom: 1.5em; padding: 1.25em; background: rgba(74, 159, 229, 0.08); border-left: 4px solid #4A9FE5; border-radius: 4px;">
+        <h3 style="margin-top: 0; margin-bottom: 0.5em; color: #4A9FE5;">Command Generator</h3>
+        <p class="fieldDescription" style="margin-bottom: 1em;">Answer a couple questions and copy the exact command for your setup - no editing required. You still run this yourself, wherever you manage Docker (a terminal, Unraid's Docker UI, Docker Desktop, etc.).</p>
+
+        <div class="selectContainer" style="margin-bottom: 1em;">
+            <label class="selectLabel" for="selectDockerGenEngine">OCR Engine</label>
+            <select is="emby-select" id="selectDockerGenEngine" style="padding: 0.6em 1em; border-radius: 8px; background-color: rgba(82, 181, 75, 0.1); border: 2px solid rgba(82, 181, 75, 0.3); font-size: 1em; max-width: 400px;">
+                <option value="Tesseract">Tesseract OCR</option>
+                <option value="PaddleOCR">PaddleOCR</option>
+            </select>
+        </div>
+
+        <div class="checkboxContainer" id="dockerGenGpuContainer" style="margin-bottom: 1em;">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkDockerGenGpu" checked />
+                <span>I have an NVIDIA GPU (with drivers + Container Toolkit installed)</span>
+            </label>
+            <div class="fieldDescription">PaddleOCR requires an NVIDIA GPU. Uncheck this only if you plan to use a CPU-only image.</div>
+        </div>
+
+        <div class="inputContainer" style="margin-bottom: 1em; max-width: 300px;">
+            <label class="inputLabel inputLabelUnfocused" for="txtDockerGenPort">Port</label>
+            <input is="emby-input" type="number" id="txtDockerGenPort" value="8884" />
+        </div>
+
+        <div class="checkboxContainer" style="margin-bottom: 1em;">
+            <label>
+                <input is="emby-checkbox" type="checkbox" id="chkDockerGenPersist" />
+                <span>Persist downloaded models across container restarts (recommended)</span>
+            </label>
+        </div>
+
+        <p class="fieldDescription" style="margin-bottom: 0.35em;"><strong>docker run</strong></p>
+        <div style="display: flex; gap: 0.5em; align-items: flex-start; margin-bottom: 1em;">
+            <pre id="dockerGenRunCommand" style="flex: 1; margin: 0; background: rgba(128,128,128,0.2); border-radius: 4px; padding: 1em; font-family: monospace; overflow-x: auto; white-space: pre-wrap; word-break: break-all;"></pre>
+            <button is="emby-button" type="button" class="raised" id="btnCopyDockerRun" title="Copy to clipboard">
+                <i class="md-icon">content_copy</i>
+            </button>
+        </div>
+
+        <p class="fieldDescription" style="margin-bottom: 0.35em;"><strong>docker-compose.yml</strong></p>
+        <div style="display: flex; gap: 0.5em; align-items: flex-start; margin-bottom: 1em;">
+            <pre id="dockerGenComposeCommand" style="flex: 1; margin: 0; background: rgba(128,128,128,0.2); border-radius: 4px; padding: 1em; font-family: monospace; overflow-x: auto; white-space: pre-wrap; word-break: break-all;"></pre>
+            <button is="emby-button" type="button" class="raised" id="btnCopyDockerCompose" title="Copy to clipboard">
+                <i class="md-icon">content_copy</i>
+            </button>
+        </div>
+
+        <div id="dockerGenStatusIndicator" style="display: flex; align-items: center; gap: 0.5em; padding: 0.5em 0.75em; border-radius: 4px; background: rgba(128,128,128,0.12); font-size: 0.9em;">
+            <span id="dockerGenStatusDot" style="width: 10px; height: 10px; border-radius: 50%; background: #9e9e9e; flex-shrink: 0;"></span>
+            <span id="dockerGenStatusText">Waiting to check readiness...</span>
+        </div>
+    </div>
+
     <div style="margin-bottom: 1.5em;">
         <h3 style="margin-bottom: 0.5em; color: #52b54b;">Option 1: Tesseract OCR (Default)</h3>
         <p class="fieldDescription">Traditional OCR engine with extensive language support.</p>

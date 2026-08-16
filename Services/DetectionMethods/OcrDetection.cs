@@ -329,7 +329,7 @@ namespace EmbyCredits.Services.DetectionMethods
 
                 try
                 {
-                    var fps = Configuration.OcrFrameRate;
+                    var fps = Configuration.OcrFrameRate > 0 ? Configuration.OcrFrameRate : 1.0;
                     var recentTextFrames = new List<(double timestamp, string text)>();
                     
                     if (Configuration.OcrUseDirectMemoryPipeline)
@@ -660,10 +660,9 @@ namespace EmbyCredits.Services.DetectionMethods
                                 await ProcessFrameBatch(frameQueue, keywords, detectionScores, characterDensityHistory, 
                                     recentTextFrames, analysisDuration, fps, maxFramesToProcess, effectiveToken).ConfigureAwait(false);
                                 frameQueue.Clear();
-                                
-                                if (frameIndex % 200 == 0 && buffer.Count > 1024 * 1024)
+
+                                if (frameIndex % 200 == 0 && buffer.Capacity > 1024 * 1024)
                                 {
-                                    buffer.Clear();
                                     buffer.TrimExcess();
                                 }
                             }

@@ -10,8 +10,9 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
     'configurationpage?name=CreditsDetectorConfigurationBackupManager',
     'configurationpage?name=CreditsDetectorConfigurationRulesManager',
     'configurationpage?name=CreditsDetectorConfigurationAutoSkipManager',
-    'configurationpage?name=CreditsDetectorConfigurationTracerManager'
-], function (BaseView, loading, toast, embyInput, embyButton, embyCheckbox, loader, events, utils, dataManager, seriesManager, processingActions, progressMonitor, markersManager, backupManager, rulesManager, autoSkipManager, tracerManager) {
+    'configurationpage?name=CreditsDetectorConfigurationTracerManager',
+    'configurationpage?name=CreditsDetectorConfigurationOcrStatusManager'
+], function (BaseView, loading, toast, embyInput, embyButton, embyCheckbox, loader, events, utils, dataManager, seriesManager, processingActions, progressMonitor, markersManager, backupManager, rulesManager, autoSkipManager, tracerManager, ocrStatusManager) {
     'use strict';
 
     return class extends BaseView {
@@ -495,7 +496,10 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                         this.updateKeywordDisplay(view);
                     });
                     
-                    dataManager.loadData(this, view);
+                    dataManager.loadData(this, view).then(() => {
+                        // OCR docker command generator + engine readiness indicators
+                        ocrStatusManager.init(view);
+                    });
                     
                     // Enforce dropdown styles after load
                     this.enforceDropdownStyles(view);
@@ -582,6 +586,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 clearTimeout(this.progressHideTimeout);
                 this.progressHideTimeout = null;
             }
+            ocrStatusManager.destroy();
         }
     };
 });
