@@ -36,7 +36,6 @@ namespace EmbyCredits.Services
         private static volatile bool _cancellationRequested = false;
         private static CancellationTokenSource? _cancellationTokenSource = null;
 
-        /// <summary>Indicates whether cancellation has been requested via <see cref="CancelProcessing"/>.</summary>
         public static bool IsCancellationRequested => _cancellationRequested;
         private static bool _isDryRun = false;
         private static volatile bool _isManualDetectionRun = false;
@@ -64,8 +63,6 @@ namespace EmbyCredits.Services
         private static ConcurrentDictionary<string, DateTime> _batchDetectionCacheInsertTime = new ConcurrentDictionary<string, DateTime>();
         private static bool _isBatchMode = false;
 
-        // When a single episode triggers a season-wide Chromaprint scan, only save markers
-        // for the originally requested episode IDs. Empty = no restriction (save all).
         private static ConcurrentDictionary<string, bool> _singleEpisodeTargets = new ConcurrentDictionary<string, bool>();
         
         private static ConcurrentDictionary<string, ConcurrentQueue<string>> _episodeStatusMessages = new ConcurrentDictionary<string, ConcurrentQueue<string>>();
@@ -215,7 +212,6 @@ namespace EmbyCredits.Services
                         _chapterMarkerService, _debugLogger, configuration, _cachedRuleMatchingService!, _theIntroDbService);
                 }
 
-                // Delay disposal of old services to allow in-flight background tasks to finish using them
                 var cts = _cancellationTokenSource;
                 Task.Delay(10000, cts?.Token ?? CancellationToken.None).ContinueWith(_ =>
                 {
@@ -354,7 +350,6 @@ namespace EmbyCredits.Services
 
             if (removed < entriesToRemove)
             {
-                // Fallback: remove any remaining entries not tracked in the insert-time dict
                 foreach (var kvp in _batchDetectionCache)
                 {
                     if (removed >= entriesToRemove) break;
@@ -382,7 +377,6 @@ namespace EmbyCredits.Services
                     removed++;
             }
 
-            // Fall back to arbitrary removal if still over limit
             foreach (var kvp in _episodeStatusMessages)
             {
                 if (removed >= entriesToRemove) break;
@@ -450,7 +444,6 @@ namespace EmbyCredits.Services
             _processingQueue.Dispose();
             _processingQueue = new EpisodeQueue(MaxQueueSize);
 
-            // Recreate dictionaries to release capacity
             _batchDetectionCache.Clear();
             System.Threading.Interlocked.Exchange(ref _batchDetectionCache, new ConcurrentDictionary<string, List<(string method, double timestamp)>>());
             _batchDetectionCacheInsertTime.Clear();
@@ -501,16 +494,12 @@ namespace EmbyCredits.Services
                         return;
                     }
 
-                    // Track in Tracer and pending queue before library filter — these apply to all new episodes
                     if (tracerEnabled && Plugin.TracerService != null)
                         Plugin.TracerService.TrackEpisode(episode);
 
                     if (trackPending && Plugin.PendingEpisodesService != null)
                         Plugin.PendingEpisodesService.TrackEpisode(episode);
 
-                    // Library filter applies only to auto-detection.
-                    // CollectionFolders (virtual library roots) are NOT physical ancestors — they never
-                    // appear in GetParent() chains. Use path-based matching via GetVirtualFolders().
                     var libraryIds = _configuration.LibraryIds ?? Array.Empty<string>();
                     if (libraryIds.Length > 0 && _libraryManager != null)
                     {
@@ -529,7 +518,6 @@ namespace EmbyCredits.Services
 
                     LogInfo($"New episode detected: {episode.SeriesName} - {episode.Name}");
 
-                    // Stop here if auto-detection is off
                     if (!autoDetect)
                         return;
 
@@ -807,7 +795,6 @@ namespace EmbyCredits.Services
                 if (usesHashDetection && !isAnimeBlackFrame && !isBlackFrameOnly && !_isBatchMode)
                 {
                     LogInfo($"Hash detection enabled for '{episode.Series?.Name}' - queueing entire season instead of single episode");
-                    // Record which episode was originally requested so only it gets a marker saved.
                     _singleEpisodeTargets.Clear();
                     _singleEpisodeTargets[episodeId] = true;
                     QueueSeasonForEpisode(episode, isManualDetection);
@@ -876,13 +863,10 @@ namespace EmbyCredits.Services
                 }
             }
 
-            // Check for previously failed episodes (both automatic and manual detection)
             if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes)
             {
                 var hasFailed = episode.ProviderIds?.TryGetValue("EmbyCredits.Fail", out var failValue) == true && failValue == "true";
                 
-                // For manual detection, only skip if IgnoreFailureMarkers is FALSE
-                // For automatic detection, always skip
                 bool shouldSkip = hasFailed && (!isManualDetection || !_configuration.IgnoreFailureMarkers);
                 
                 if (shouldSkip)
@@ -911,7 +895,6 @@ namespace EmbyCredits.Services
                 }
             }
 
-            // Skip if file is unchanged since last detection
             if (!isManualDetection &&
                 _configuration != null &&
                 _configuration.SkipDetectionIfFileUnchanged &&
@@ -1027,7 +1010,6 @@ namespace EmbyCredits.Services
         {
             ClearCache();
 
-            // Ensure batch cache is fully reset
             _batchDetectionCache.Clear();
             System.Threading.Interlocked.Exchange(ref _batchDetectionCache, new ConcurrentDictionary<string, List<(string method, double timestamp)>>());
             _batchDetectionCacheInsertTime.Clear();
@@ -1144,11 +1126,6 @@ namespace EmbyCredits.Services
             return clearedCount;
         }
 
-        /// <summary>
-        /// Resets cancellation state and creates a fresh <see cref="CancellationTokenSource"/> so that
-        /// a newly-started scheduled task run is not immediately aborted by a stale cancellation flag
-        /// left over from a previous run or a UI cancel action.
-        /// </summary>
         public static void ResetForScheduledTask()
         {
             _cancellationRequested = false;
@@ -1277,7 +1254,6 @@ namespace EmbyCredits.Services
 
             _isManualDetectionRun = true;
 
-            // Import embedded credit chapters when the setting is enabled
             if (_configuration?.UseEmbeddedChapterMarkersManual == true && _chapterMarkerService != null)
             {
                 var remainingAfterImport = new List<Episode>();
@@ -1307,7 +1283,6 @@ namespace EmbyCredits.Services
                 episodesToQueue = remainingAfterImport;
             }
 
-            // Filter episodes with existing markers if requested
             if (skipExistingMarkers && _itemRepository != null)
             {
                 episodesToQueue = episodesToQueue.Where(episode =>
@@ -1339,7 +1314,6 @@ namespace EmbyCredits.Services
                 }).ToList();
             }
 
-            // Filter episodes with failure markers based on configuration
             var effectiveIgnoreFailureMarkers = ignoreFailureMarkers ?? _configuration?.IgnoreFailureMarkers ?? false;
             if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && !effectiveIgnoreFailureMarkers)
             {
@@ -1373,7 +1347,6 @@ namespace EmbyCredits.Services
             }
             else if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && effectiveIgnoreFailureMarkers)
             {
-                // Count how many failed episodes we're retrying
                 var retryCount = episodesToQueue.Count(e => 
                     e.ProviderIds?.TryGetValue("EmbyCredits.Fail", out var failValue) == true && failValue == "true");
                 
@@ -1383,7 +1356,6 @@ namespace EmbyCredits.Services
                 }
             }
 
-            // Log summary of skipped episodes
             if (skippedEpisodes.Count > 0)
             {
                 LogInfo($"Skipped {skippedEpisodes.Count} episode(s):");
@@ -1399,7 +1371,6 @@ namespace EmbyCredits.Services
                 return;
             }
 
-            // Save skip information before QueueSeries resets it
             Dictionary<string, string>? skipReasonsCopy = null;
             int skippedItemsCount = 0;
             if (Plugin.Instance != null && Plugin.Progress.SkipReasons.Count > 0)
@@ -1410,7 +1381,6 @@ namespace EmbyCredits.Services
 
             QueueSeries(episodesToQueue, clearTargets: !preserveTargets);
             
-            // Restore skip information after Reset
             if (Plugin.Instance != null && skipReasonsCopy != null)
             {
                 foreach (var kvp in skipReasonsCopy)
@@ -1585,7 +1555,6 @@ namespace EmbyCredits.Services
                 Plugin.Progress.CurrentItem = "Preparing...";
             }
 
-            // Create a new cancellation token source for this processing session
             var newCts = new CancellationTokenSource();
             Interlocked.Exchange(ref _cancellationTokenSource, newCts)?.Dispose();
 
@@ -1597,7 +1566,6 @@ namespace EmbyCredits.Services
             var processedCount = 0;
             try
             {
-                // Collect all episodes from queue
                 var allEpisodes = new List<Episode>();
                 while (_processingQueue.TryDequeue(out var episode))
                 {
@@ -1609,7 +1577,6 @@ namespace EmbyCredits.Services
 
                 LogInfo($"Collected {allEpisodes.Count} episodes from queue");
 
-                // Group episodes by series and season for batch processing
                 var episodesBySeason = allEpisodes
                     .Where(e => e.Series != null && e.ParentIndexNumber.HasValue)
                     .GroupBy(e => new { SeriesId = e.Series!.Id.ToString(), SeasonNumber = e.ParentIndexNumber!.Value })
@@ -1617,7 +1584,6 @@ namespace EmbyCredits.Services
 
                 LogInfo($"Grouped {allEpisodes.Count} episodes into {episodesBySeason.Count} seasons for batch processing");
 
-                // Build one rule-matching service for pre-filtering (reused across all season groups)
                 RuleMatchingService? queueRuleService = (_configuration != null && _logger != null && _configuration.DetectionRules?.Count > 0)
                     ? new RuleMatchingService(_logger, _configuration)
                     : null;
@@ -1652,7 +1618,6 @@ namespace EmbyCredits.Services
                     var firstEpisode = seasonEpisodes.First();
                     var seriesName = firstEpisode.Series?.Name ?? "Unknown Series";
 
-                    // Pre-filter: evaluate rules before any detection work starts
                     if (queueRuleService != null)
                     {
                         var preCheckConfig = queueRuleService.GetEffectiveConfiguration(firstEpisode);
@@ -1844,8 +1809,6 @@ namespace EmbyCredits.Services
             var seasonNumber = firstEpisode.ParentIndexNumber ?? 0;
             var seriesName = firstEpisode.Series?.Name ?? "Unknown Series";
 
-            // .strm files point to remote/virtual streams rather than a real media file and
-            // cause problems with duration/frame-based detection, so exclude them up front.
             var strmEpisodes = seasonEpisodes.Where(ep => IsStrmFile(ep.Path)).ToList();
             if (strmEpisodes.Count > 0)
             {
@@ -1889,10 +1852,6 @@ namespace EmbyCredits.Services
                 return;
             }
 
-            // Filter out previously failed episodes before any detection work begins.
-            // This prevents them from wasting CPU in the Chromaprint batch scan and the
-            // per-episode processing loop. Manual detection already filters before calling
-            // this method, so this primarily fixes the scheduled task path.
             if (_configuration != null && _configuration.SkipPreviouslyFailedEpisodes && !_configuration.IgnoreFailureMarkers)
             {
                 var beforeCount = seasonEpisodes.Count;
@@ -1927,9 +1886,6 @@ namespace EmbyCredits.Services
                 Plugin.Progress.CurrentItem = $"Preparing: {seriesName} Season {seasonNumber} ({seasonEpisodes.Count} episodes)";
             }
 
-            // Pre-query TheIntroDB for all episodes before any CPU-intensive detection runs.
-            // Episodes with a database hit are handled directly here and removed from the list
-            // so that Chromaprint / OCR / BlackFrame detection is never started for them.
             if (_configuration != null && _configuration.EnableTheIntroDB && _theIntroDbService != null && Plugin.ChapterMarkerService != null)
             {
                 var detectionNeeded = new List<Episode>();
@@ -1946,7 +1902,6 @@ namespace EmbyCredits.Services
                     var epId = ep.Id.ToString();
                     var epKey = $"{seriesName} S{ep.ParentIndexNumber:00}E{ep.IndexNumber:00}";
 
-                    // Honour scheduled-task "only process missing" before querying the external API
                     if (!isManualRun && _configuration.ScheduledTaskOnlyProcessMissing && _itemRepository != null)
                     {
                         var existingChapters = _itemRepository.GetChapters(ep);
@@ -2051,6 +2006,59 @@ namespace EmbyCredits.Services
                 }
             }
 
+            if (_configuration != null && _itemRepository != null)
+            {
+                var preDetectionEpisodes = new List<Episode>();
+
+                foreach (var ep in seasonEpisodes)
+                {
+                    if (cancellationToken.IsCancellationRequested || _cancellationRequested)
+                        break;
+
+                    var epKey = $"{seriesName} S{ep.ParentIndexNumber:00}E{ep.IndexNumber:00}";
+
+                    if (!isManualRun && _configuration.ScheduledTaskOnlyProcessMissing)
+                    {
+                        var chapters = _itemRepository.GetChapters(ep);
+                        var hasCreditsMarker = chapters?.Any(c => GetMarkerType(c) == "CreditsStart") ?? false;
+                        if (hasCreditsMarker)
+                        {
+                            _logger?.Info($"Skipping {ep.Name} - already has credits marker (ScheduledTaskOnlyProcessMissing is enabled)");
+                            if (Plugin.Instance != null)
+                            {
+                                Plugin.Progress.SkipReasons[epKey] = "Already has credits marker";
+                                Plugin.Progress.IncrementSkipped();
+                            }
+                            continue;
+                        }
+                    }
+
+                    var useEmbedded = isManualRun
+                        ? _configuration.UseEmbeddedChapterMarkersManual
+                        : _configuration.UseEmbeddedChapterMarkersScheduled;
+                    if (useEmbedded && _chapterMarkerService != null && _chapterMarkerService.TryImportEmbeddedCreditChapter(ep))
+                    {
+                        _logger?.Info($"Skipping detection for {ep.Name} - credits marker imported from embedded chapter");
+                        if (Plugin.Instance != null)
+                        {
+                            Plugin.Progress.SkipReasons[epKey] = "Imported from embedded chapter";
+                            Plugin.Progress.IncrementSkipped();
+                        }
+                        continue;
+                    }
+
+                    preDetectionEpisodes.Add(ep);
+                }
+
+                seasonEpisodes = preDetectionEpisodes;
+
+                if (seasonEpisodes.Count == 0)
+                {
+                    _logger?.Info($"All episodes in {seriesName} Season {seasonNumber} resolved via existing/embedded markers - skipping detection");
+                    return;
+                }
+            }
+
             bool isAnime = false;
             if (effectiveConfig.EnableAnimeDetection && !string.IsNullOrEmpty(seriesId))
             {
@@ -2066,8 +2074,6 @@ namespace EmbyCredits.Services
                 }
             }
 
-            // Get chromaprint detection method if available
-            // If using rule-based config, create temporary coordinator with effective config
             DetectionMethods.ChromaprintDetection? chromaprintMethod = null;
             DetectionCoordinator? tempCoordinator = null;
             
@@ -2090,7 +2096,6 @@ namespace EmbyCredits.Services
 
             Dictionary<string, double>? batchResults = null;
             
-            // Only use batch chromaprint when it's the PRIMARY method (not fallback)
             if (!isAnime && 
                 effectiveConfig != null &&
                 chromaprintMethod != null && 
@@ -2099,7 +2104,6 @@ namespace EmbyCredits.Services
                 (effectiveConfig.DetectionMode == DetectionMode.HashOnly || 
                  effectiveConfig.DetectionMode == DetectionMode.HashWithOcrFallback))
             {
-                // Process all episodes together using batch detection (non-anime only, Hash as primary method)
                 var episodeData = seasonEpisodes.Select(ep => (
                     EpisodeId: ep.Id.ToString(),
                     VideoPath: ep.Path,
@@ -2127,7 +2131,6 @@ namespace EmbyCredits.Services
                 _logger?.Info($"OCR as primary method (DetectionMode: {effectiveConfig.DetectionMode}) - processing episodes individually to try OCR first");
             }
 
-            // Process each episode with the batch results
             var blackFrameParallelSessions = _configuration?.BlackFrameParallelSessions ?? 1;
             var shouldRunParallel = isAnime && blackFrameParallelSessions > 1 && seasonEpisodes.Count > 2;
 
@@ -2149,7 +2152,6 @@ namespace EmbyCredits.Services
 
                 _logger?.Info($"[PaddleOCR] Concurrent file mode: processing {seedCount} seed episode sequentially, then {remainingEpisodes.Count} in parallel (max {paddleConcurrentFiles} concurrent)");
 
-                // Sequential seed phase — populates the episode-comparison timestamp cache
                 foreach (var episode in seedEpisodes)
                 {
                     if (cancellationToken.IsCancellationRequested || _cancellationRequested) break;
@@ -2187,14 +2189,12 @@ namespace EmbyCredits.Services
 
                 _logger?.Info($"[BlackFrame] Parallel mode: processing {seedCount} seed episodes sequentially, then {remainingEpisodes.Count} in parallel (max {blackFrameParallelSessions} concurrent)");
 
-                // Sequential seed phase — builds the comparison cache
                 foreach (var episode in seedEpisodes)
                 {
                     if (cancellationToken.IsCancellationRequested || _cancellationRequested) break;
                     await ProcessSingleEpisodeInBatch(episode, seriesName, matchedRuleName, batchResults, chromaprintMethod, tempCoordinator, isManualRun, cancellationToken);
                 }
 
-                // Parallel phase — all remaining episodes benefit from the seeded cache
                 if (!cancellationToken.IsCancellationRequested && !_cancellationRequested)
                 {
                     using var bfSemaphore = new SemaphoreSlim(blackFrameParallelSessions, blackFrameParallelSessions);
@@ -2220,7 +2220,6 @@ namespace EmbyCredits.Services
             }
             else
             {
-                // Sequential (existing behaviour)
                 foreach (var episode in seasonEpisodes)
                 {
                     if (cancellationToken.IsCancellationRequested || _cancellationRequested) break;
@@ -2265,48 +2264,6 @@ namespace EmbyCredits.Services
                 }
             }
 
-            if (_configuration != null && _itemRepository != null)
-            {
-                var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
-
-                // Existing-marker skip: only applies to scheduled runs, never to manual runs.
-                // Manual runs perform this filter at queue-build time in QueueSeriesManual/QueueEpisodeManual.
-                if (!isManualRun && _configuration.ScheduledTaskOnlyProcessMissing)
-                {
-                    var chapters = _itemRepository.GetChapters(episode);
-                    var hasCreditsMarker = chapters?.Any(c => GetMarkerType(c) == "CreditsStart") ?? false;
-                    if (hasCreditsMarker)
-                    {
-                        _logger?.Info($"Skipping {episode.Name} - already has credits marker (ScheduledTaskOnlyProcessMissing is enabled)");
-                        if (Plugin.Instance != null)
-                        {
-                            Plugin.Progress.SkipReasons[episodeKey] = "Already has credits marker";
-                            Plugin.Progress.IncrementSkipped();
-                        }
-                        return;
-                    }
-                }
-
-                // Embedded chapter import: use the setting that matches the run type.
-                var useEmbedded = isManualRun
-                    ? _configuration.UseEmbeddedChapterMarkersManual
-                    : _configuration.UseEmbeddedChapterMarkersScheduled;
-                if (useEmbedded && _chapterMarkerService != null)
-                {
-                    var imported = _chapterMarkerService.TryImportEmbeddedCreditChapter(episode);
-                    if (imported)
-                    {
-                        _logger?.Info($"Skipping detection for {episode.Name} - credits marker imported from embedded chapter");
-                        if (Plugin.Instance != null)
-                        {
-                            Plugin.Progress.SkipReasons[episodeKey] = "Imported from embedded chapter";
-                            Plugin.Progress.IncrementSkipped();
-                        }
-                        return;
-                    }
-                }
-            }
-
             try
             {
                 if (Plugin.Instance != null)
@@ -2325,9 +2282,6 @@ namespace EmbyCredits.Services
 
                 if (_episodeProcessor == null) return;
 
-                // If this run was triggered by a single-episode request, only save markers
-                // for the originally queued episode; treat all others as dry-run so they
-                // contribute to Chromaprint batch analysis but produce no output.
                 bool isTargetEpisode = _singleEpisodeTargets.Count == 0 || _singleEpisodeTargets.ContainsKey(episodeId);
                 bool effectiveDryRun = _isDryRun || !isTargetEpisode;
                 if (!isTargetEpisode)
@@ -2645,7 +2599,6 @@ namespace EmbyCredits.Services
                     return string.Empty;
                 }
 
-                // Create thumbnails directory in plugin data folder
                 var pluginDataPath = Plugin.Instance?.AppPaths?.PluginConfigurationsPath;
                 if (string.IsNullOrEmpty(pluginDataPath))
                 {
@@ -2657,12 +2610,10 @@ namespace EmbyCredits.Services
                 Directory.CreateDirectory(thumbnailDir);
                 LogDebug($"Thumbnail directory: {thumbnailDir}");
 
-                // Generate unique filename based on episode key and timestamp
                 var safeFileName = string.Join("_", episodeKey.Split(Path.GetInvalidFileNameChars()));
                 var thumbnailFileName = $"{safeFileName}_{timestamp:F2}.jpg";
                 var thumbnailPath = Path.Combine(thumbnailDir, thumbnailFileName);
 
-                // Extract frame using FFmpeg
                 var ffmpegPath = Utilities.FFmpegHelper.GetFfmpegPath();
                 var width = config.ThumbnailWidth > 0 ? config.ThumbnailWidth : 320;
                 var quality = config.ThumbnailQuality > 0 ? config.ThumbnailQuality : 85;

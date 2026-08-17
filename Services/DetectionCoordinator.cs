@@ -264,13 +264,11 @@ namespace EmbyCredits.Services
                 }
             }
 
-            // Legacy fallback approach (kept for compatibility)
             bool shouldTryFallback = false;
             DetectionMode fallbackMode = _configuration.DetectionMode;
             
             if (detectionResults.Count == 0 && (!seasonNumber.HasValue || !episodeNumber.HasValue))
             {
-                // Only use this path if we don't have season/episode info (edge case)
                 if (_configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
                 {
                     LogDebug("OCR detection failed, attempting Hash fallback (legacy path)...");
@@ -287,7 +285,6 @@ namespace EmbyCredits.Services
                 }
             }
 
-            // Try fallback if needed (legacy path)
             if (shouldTryFallback)
             {
                 var fallbackConfig = _configuration.ShallowClone();
@@ -386,7 +383,6 @@ namespace EmbyCredits.Services
             var result = SelectByStrategy(detectionResults);
             LogDebug($"Selected timestamp: {FormatTime(result.timestamp)} with confidence: {result.confidence:F2}");
             
-            // Get the method name BEFORE silence refinement, as refinement may change the timestamp
             var selectedMethod = detectionResults.FirstOrDefault(r => Math.Abs(r.timestamp - result.timestamp) < 0.1).method ?? "Unknown";
             
             if (_configuration.ChromaprintUseSilenceDetection && result.timestamp > 0)

@@ -13,12 +13,10 @@ namespace EmbyCredits.Services
 {
     public static class LocalTesseractService
     {
-        // Candidate names searched in PATH when no explicit binary path is configured
         private static readonly string[] BinaryNames = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? new[] { "tesseract.exe" }
             : new[] { "tesseract" };
 
-        // Well-known install locations checked after PATH
         private static readonly string[] WellKnownPaths = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? new[] { @"C:\Program Files\Tesseract-OCR\tesseract.exe", @"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe" }
             : new[] { "/usr/bin/tesseract", "/usr/local/bin/tesseract" };
@@ -140,7 +138,6 @@ namespace EmbyCredits.Services
 
                     await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
 
-                    // WaitForExit with a deadline to avoid blocking forever
                     var exited = await Task.Run(() => process.WaitForExit(28000), cts.Token).ConfigureAwait(false);
 
                     if (!exited)
@@ -157,7 +154,6 @@ namespace EmbyCredits.Services
                         return (string.Empty, 0);
                     }
 
-                    // Tesseract CLI does not output confidence; synthesize a plausible value
                     var confidence = CalculateSyntheticConfidence(text);
                     return (text, confidence);
                 }

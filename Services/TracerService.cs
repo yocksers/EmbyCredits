@@ -11,11 +11,6 @@ using System.Text.Json.Serialization;
 
 namespace EmbyCredits.Services
 {
-    /// <summary>
-    /// Tracks episodes that have been added to the library but have not yet had
-    /// credits detection run on them.  Thread-safe; persists state to a JSON file
-    /// in the plugin data folder so entries survive restarts.
-    /// </summary>
     public class TracerService : DebouncedPersistenceService
     {
         private readonly ILogger _logger;
@@ -25,7 +20,6 @@ namespace EmbyCredits.Services
         private const int MaxDetectedEntries = 100;
         private const int MaxFailedEntries = 100;
 
-        // episodeId (string) -> TracerEntry
         private ConcurrentDictionary<string, TracerEntry> _pending =
             new ConcurrentDictionary<string, TracerEntry>(StringComparer.OrdinalIgnoreCase);
 
@@ -52,11 +46,6 @@ namespace EmbyCredits.Services
             Load();
         }
 
-        // ------------------------------------------------------------------ //
-        //  Public API
-        // ------------------------------------------------------------------ //
-
-        /// <summary>Called when a new episode is added to the library.</summary>
         public void TrackEpisode(Episode episode)
         {
             try
@@ -83,7 +72,6 @@ namespace EmbyCredits.Services
             }
         }
 
-        /// <summary>Called when detection has successfully run for an episode.</summary>
         public void MarkDetected(string episodeId)
         {
             try
@@ -116,7 +104,6 @@ namespace EmbyCredits.Services
             }
         }
 
-        /// <summary>Called when detection ran for an episode but did not find credits.</summary>
         public void MarkFailed(string episodeId, string reason, Episode? episode = null)
         {
             try
@@ -124,11 +111,9 @@ namespace EmbyCredits.Services
                 TracerEntry? entry;
                 if (!_pending.TryRemove(episodeId, out entry))
                 {
-                    // Episode may not be in pending if tracer was enabled after the item was added
                     entry = new TracerEntry { EpisodeId = episodeId };
                 }
 
-                // Populate metadata from episode object when the entry has none (e.g. not previously tracked)
                 if (episode != null && string.IsNullOrEmpty(entry.SeriesName))
                 {
                     entry.SeriesName   = episode.Series?.Name ?? episode.SeriesName ?? string.Empty;
@@ -163,7 +148,6 @@ namespace EmbyCredits.Services
             }
         }
 
-        /// <summary>Clear the failed history list.</summary>
         public void ClearFailed()
         {
             _failed.Clear();
@@ -173,7 +157,6 @@ namespace EmbyCredits.Services
         public List<TracerEntry> GetAllFailed() =>
             _failed.Values.OrderByDescending(e => e.FailedUtc).ToList();
 
-        /// <summary>Clear the detected history list.</summary>
         public void ClearDetected()
         {
             _detected.Clear();
@@ -183,7 +166,6 @@ namespace EmbyCredits.Services
         public List<TracerEntry> GetAllDetected() =>
             _detected.Values.OrderByDescending(e => e.DetectedUtc).ToList();
 
-        /// <summary>Remove a single entry by ID (e.g. user dismissed it).</summary>
         public bool Remove(string episodeId)
         {
             var removed = _pending.TryRemove(episodeId, out _);
@@ -191,7 +173,6 @@ namespace EmbyCredits.Services
             return removed;
         }
 
-        /// <summary>Clear all pending entries.</summary>
         public void Clear()
         {
             _pending.Clear();
@@ -203,9 +184,6 @@ namespace EmbyCredits.Services
 
         public int Count => _pending.Count;
 
-        // ------------------------------------------------------------------ //
-        //  Persistence
-        // ------------------------------------------------------------------ //
 
         private void Load()
         {

@@ -11,11 +11,6 @@ using System.Text.Json.Serialization;
 
 namespace EmbyCredits.Services
 {
-    /// <summary>
-    /// Tracks episodes that have been added to the library but not yet processed
-    /// by detection. Used by the "Only process new episodes" scheduled task mode.
-    /// Thread-safe; persists to a JSON file so entries survive restarts.
-    /// </summary>
     public class PendingEpisodesService : DebouncedPersistenceService
     {
         private readonly ILogger _logger;
@@ -37,11 +32,6 @@ namespace EmbyCredits.Services
             Load();
         }
 
-        // ------------------------------------------------------------------ //
-        //  Public API
-        // ------------------------------------------------------------------ //
-
-        /// <summary>Called when a new episode file is added to the library.</summary>
         public void TrackEpisode(Episode episode)
         {
             try
@@ -97,9 +87,6 @@ namespace EmbyCredits.Services
             ScheduleSave();
         }
 
-        // ------------------------------------------------------------------ //
-        //  Persistence
-        // ------------------------------------------------------------------ //
 
         private void Load()
         {
@@ -144,9 +131,6 @@ namespace EmbyCredits.Services
             }
         }
 
-        // ------------------------------------------------------------------ //
-        //  State model
-        // ------------------------------------------------------------------ //
 
         private class PendingEntry
         {

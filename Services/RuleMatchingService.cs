@@ -72,8 +72,6 @@ namespace EmbyCredits.Services
             return FindMatchingRule(series)?.Name;
         }
 
-        // Specificity scores — higher wins regardless of rule list order.
-        // Tiebreaker is list order (earlier rule wins).
         private const int SpecificitySeriesName = 30;
         private const int SpecificityTag        = 20;
         private const int SpecificityStudio     = 20;
@@ -153,8 +151,6 @@ namespace EmbyCredits.Services
                 {
                     if (hasPrimaryMatchers)
                     {
-                        // Library acts as a scope constraint: a primary match is discarded
-                        // if the series is not in one of the rule's configured libraries.
                         if (matchScore > -1)
                         {
                             var matchedLib = FindLibraryNameForPath(series.Path, rule.LibraryIds, libraryManager);
@@ -167,7 +163,6 @@ namespace EmbyCredits.Services
                     }
                     else
                     {
-                        // No primary matchers: library is the sole match criterion.
                         if (matchScore < SpecificityLibrary)
                         {
                             var matchedLib = FindLibraryNameForPath(series.Path, rule.LibraryIds, libraryManager);
@@ -180,8 +175,6 @@ namespace EmbyCredits.Services
                     }
                 }
 
-                // Accept this rule if it scores strictly higher than the current best.
-                // Equal scores preserve list order (earlier rule already stored as best).
                 if (matchScore > bestScore)
                 {
                     bestScore = matchScore;
@@ -421,12 +414,6 @@ namespace EmbyCredits.Services
             return effectiveConfig;
         }
 
-        /// <summary>
-        /// Finds the name of the virtual library (CollectionFolder) whose physical Locations contain
-        /// the given path, and whose ID matches one of the configured library IDs.
-        /// Returns null if no match is found.
-        /// Supports both GUID-format IDs (current) and numeric InternalId strings (legacy).
-        /// </summary>
         internal static string? FindLibraryNameForPath(string path, IEnumerable<string> configuredIds, ILibraryManager libraryManager)
         {
             var idSet = new HashSet<string>(configuredIds, StringComparer.OrdinalIgnoreCase);
@@ -443,7 +430,6 @@ namespace EmbyCredits.Services
                     if (idSet.Contains(vf.ItemId))
                         return vf.Name;
 
-                    // Backward compat: config may have stored the numeric InternalId
                     if (Guid.TryParse(vf.ItemId, out var vfGuid))
                     {
                         var vfItem = libraryManager.GetItemById(vfGuid);

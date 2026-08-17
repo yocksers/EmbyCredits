@@ -175,9 +175,6 @@ namespace EmbyCredits
                 if (!System.IO.Directory.Exists(thumbnailDir))
                     return;
 
-                // Delete every file in the folder — thumbnails are only needed for the
-                // active session's UI display, so anything on disk from a prior run
-                // (including across server restarts) is stale and should be purged.
                 foreach (var file in System.IO.Directory.GetFiles(thumbnailDir, "*.jpg"))
                 {
                     try { System.IO.File.Delete(file); } catch { }

@@ -68,10 +68,6 @@ namespace EmbyCredits.Services
                     throw new ArgumentOutOfRangeException(nameof(creditsStartSeconds), $"Timestamp {creditsStartSeconds:F1}s exceeds video duration {durationSeconds:F1}s");
                 }
 
-                // Clamp to 30 seconds before the stored duration. Emby's database duration
-                // (RunTimeTicks) comes from container metadata and can differ from the actual
-                // file duration that ChapterImagesTask measures via ffmpeg by up to ~30 seconds,
-                // particularly with MKV files or after a file has been replaced without a rescan.
                 var safeMax = durationSeconds - 30.0;
                 if (safeMax <= 0) safeMax = durationSeconds - 1.0;
                 if (creditsStartSeconds > safeMax)

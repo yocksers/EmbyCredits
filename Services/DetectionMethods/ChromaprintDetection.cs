@@ -64,11 +64,9 @@ namespace EmbyCredits.Services.DetectionMethods
                 var minIntroDuration = Configuration.ChromaprintMinDuration;
                 var maxIntroDuration = Configuration.ChromaprintMaxDuration;
                 
-                // Attempt chromaprint audio fingerprinting
                 LogInfo("Attempting chromaprint audio fingerprinting...");
                 var fingerprintResults = await DetectCreditsUsingChromaprint(episodes, analysisPercent, minIntroDuration, maxIntroDuration, cancellationToken);
                 
-                // Track which episodes were successfully analyzed
                 var analyzedEpisodes = new HashSet<string>(fingerprintResults.Keys);
                 
                 foreach (var kvp in fingerprintResults)
@@ -94,17 +92,11 @@ namespace EmbyCredits.Services.DetectionMethods
             return results;
         }
         
-        /// <summary>
-        /// Get the confidence score for an episode from the most recent batch processing
-        /// </summary>
         public double GetBatchConfidence(string episodeId)
         {
             return _batchConfidenceScores.TryGetValue(episodeId, out var confidence) ? confidence : 0.90;
         }
         
-        /// <summary>
-        /// Detect credits using chromaprint audio fingerprinting (PRIMARY METHOD)
-        /// </summary>
         private async Task<Dictionary<string, double>> DetectCreditsUsingChromaprint(
             List<(string EpisodeId, string VideoPath, double Duration)> episodes,
             double analysisPercent,
@@ -166,7 +158,6 @@ namespace EmbyCredits.Services.DetectionMethods
 
                 await Task.WhenAll(fingerprintTasks).ConfigureAwait(false);
                 
-                // Step 2: Compare fingerprints to find matching credits music subsequences
                 if (episodeFingerprints.Count >= 2)
                 {
                     LogInfo($"Comparing {episodeFingerprints.Count} episode fingerprints using subsequence matching...");
@@ -246,7 +237,6 @@ namespace EmbyCredits.Services.DetectionMethods
                         }
                     }
                     
-                    // Step 3: For each episode, find the most common offset (where credits music starts)
                     foreach (var episode in episodes)
                     {
                         if (!episodeFingerprints.ContainsKey(episode.EpisodeId))
@@ -512,8 +502,6 @@ namespace EmbyCredits.Services.DetectionMethods
             
             var threshold = Math.Max(mean - stdDev, sortedScores[sortedScores.Count / 4]);
 
-            // Adaptive minimum: prevents accepting pure noise (~0.50) while allowing genuine
-            // matches whose scores cluster below the old hardcoded floor of 0.70.
             var minimumFloor = Math.Max(mean - 2 * stdDev, Configuration.ChromaprintMinimumScoreFloor);
             threshold = Math.Max(minimumFloor, Math.Min(0.85, threshold));
             
@@ -669,7 +657,6 @@ namespace EmbyCredits.Services.DetectionMethods
                         return 0;
                     }
 
-                    // Onset: leftmost position where similarity first rises to within 3% of peak.
                     var onsetThreshold = peakScore * 0.97;
                     var onsetOffset = -1;
                     var onsetScore = 0.0;

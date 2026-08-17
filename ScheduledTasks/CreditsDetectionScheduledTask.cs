@@ -91,10 +91,6 @@ namespace EmbyCredits.ScheduledTasks
                     return;
                 }
 
-                // For each season with pending episodes, fetch the full season so that
-                // Chromaprint batch detection has access to all episodes it needs.
-                // For non-Chromaprint series the extra episodes are filtered out below
-                // by ScheduledTaskOnlyProcessMissing, so there's no wasted work.
                 foreach (var kvp in pendingBySeason)
                 {
                     var (seriesId, seasonNumber) = kvp.Key;
@@ -120,12 +116,10 @@ namespace EmbyCredits.ScheduledTasks
                     _logger.Info($"Pending queue: queued {seasonEps.Count} episode(s) from {series.Name} Season {seasonNumber} (includes full season for Chromaprint)");
                 }
 
-                // Deduplicate in case seasons overlapped
                 allEpisodes = allEpisodes.GroupBy(e => e.Id).Select(g => g.First()).ToList();
             }
             else
             {
-                // Full library scan mode (original behaviour)
                 List<Folder> librariesToProcess;
 
                 if (libraryIds.Length == 0)
@@ -250,8 +244,6 @@ namespace EmbyCredits.ScheduledTasks
                 return;
             }
 
-            // Pre-filter previously failed episodes so their seasons are excluded from batch
-            // grouping entirely, avoiding unnecessary ProcessSeasonBatch calls and per-season delays.
             if (config.SkipPreviouslyFailedEpisodes && !config.IgnoreFailureMarkers)
             {
                 var beforeFailFilter = episodesToProcess.Count;
@@ -273,9 +265,6 @@ namespace EmbyCredits.ScheduledTasks
             Plugin.Progress.IsRunning = true;
             Plugin.Progress.StartTime = DateTime.Now;
 
-            // Reset any stale cancellation flag from a previous run and wire up Emby's
-            // cancellation token (runtime limit / dashboard X button) so that it also
-            // kills running ffmpeg processes and stops the DetectionCoordinator.
             CreditsDetectionService.ResetForScheduledTask();
             cancellationToken.Register(() => CreditsDetectionService.CancelProcessing());
 
@@ -283,7 +272,6 @@ namespace EmbyCredits.ScheduledTasks
             var failedEpisodeNames = new List<string>();
             var successfulSeriesNames = new HashSet<string>();
 
-            // Group episodes by series and season for batch processing
             var episodesBySeason = episodesToProcess
                 .Where(e => e.Series != null && e.ParentIndexNumber.HasValue)
                 .GroupBy(e => new { SeriesId = e.Series!.Id.ToString(), SeasonNumber = e.ParentIndexNumber!.Value })

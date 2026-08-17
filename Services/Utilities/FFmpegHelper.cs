@@ -307,14 +307,6 @@ namespace EmbyCredits.Services.Utilities
             return deletedCount;
         }
 
-        /// <summary>
-        /// Generate chromaprint audio fingerprint for a media file.
-        /// </summary>
-        /// <param name="filePath">Path to the media file</param>
-        /// <param name="startTime">Start time in seconds</param>
-        /// <param name="endTime">End time in seconds</param>
-        /// <param name="logger">Logger instance</param>
-        /// <returns>Array of chromaprint fingerprint points (uint32 values)</returns>
         public static uint[] GenerateChromaprint(string filePath, double startTime, double endTime, MediaBrowser.Model.Logging.ILogger? logger = null, int threads = 0)
         {
             var normalizedPath = NormalizeFilePath(filePath);
@@ -414,14 +406,6 @@ namespace EmbyCredits.Services.Utilities
             }
         }
 
-        /// <summary>
-        /// Compare two fingerprints using XOR operations to find matching sequences.
-        /// This is similar to how Intro Skipper compares chromaprint fingerprints.
-        /// </summary>
-        /// <param name="fp1">First fingerprint</param>
-        /// <param name="fp2">Second fingerprint</param>
-        /// <param name="maxShift">Maximum time shift to consider in points</param>
-        /// <returns>Best match score and offset (0-1, where 1 is perfect match)</returns>
         public static (double score, int offset) CompareFingerprints(uint[] fp1, uint[] fp2, int maxShift = 120)
         {
             if (fp1.Length == 0 || fp2.Length == 0)
@@ -430,13 +414,11 @@ namespace EmbyCredits.Services.Utilities
             double bestScore = 0;
             int bestOffset = 0;
 
-            // Try different time shifts
             for (int shift = -maxShift; shift <= maxShift; shift++)
             {
                 int matchCount = 0;
                 int compareCount = 0;
 
-                // Calculate overlap region
                 int start1 = Math.Max(0, -shift);
                 int start2 = Math.Max(0, shift);
                 int length = Math.Min(fp1.Length - start1, fp2.Length - start2);
@@ -444,12 +426,10 @@ namespace EmbyCredits.Services.Utilities
                 if (length <= 0)
                     continue;
 
-                // Compare fingerprints using XOR
                 for (int i = 0; i < length; i++)
                 {
                     var xorResult = fp1[start1 + i] ^ fp2[start2 + i];
                     
-                    // Count matching bits (bits that are 0 after XOR)
                     var matchingBits = 32 - System.Numerics.BitOperations.PopCount(xorResult);
                     matchCount += matchingBits;
                     compareCount += 32;
@@ -466,15 +446,6 @@ namespace EmbyCredits.Services.Utilities
             return (bestScore, bestOffset);
         }
         
-        /// <summary>
-        /// Find the best matching subsequence within two fingerprints.
-        /// This is useful for credits detection where we fingerprint a large window but need to find
-        /// where the credits music specifically begins within that window.
-        /// </summary>
-        /// <param name="fp1">First fingerprint</param>
-        /// <param name="fp2">Second fingerprint</param>
-        /// <param name="minWindowSize">Minimum window size in points (default 100 = ~13 seconds)</param>
-        /// <returns>Best match info: score, offset in fp1, offset in fp2</returns>
         public static (double score, int offsetFp1, int offsetFp2) FindBestMatchingSubsequence(uint[] fp1, uint[] fp2, int minWindowSize = 100, int maxDiagonalOffset = 75)
         {
             if (fp1.Length == 0 || fp2.Length == 0)
@@ -489,10 +460,6 @@ namespace EmbyCredits.Services.Utilities
 
             for (int start1 = 0; start1 <= fp1.Length - windowSize; start1 += 10)
             {
-                // Both fingerprints are anchored to the same position relative to the end
-                // of the video, so the credits audio appears at the same index in both arrays.
-                // Restricting search to positions near the diagonal (start2 ≈ start1) avoids
-                // the O(L²) explosion that causes lockups on large batches.
                 var start2Min = Math.Max(0, start1 - maxDiagonalOffset);
                 var start2Max = Math.Min(fp2.Length - windowSize, start1 + maxDiagonalOffset);
 

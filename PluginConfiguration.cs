@@ -26,7 +26,6 @@ namespace EmbyCredits
         LocalTesseract
     }
 
-    // Matcher fields; per-method overrides live in DetectionRule.Ocr/Chromaprint/BlackFrame.cs
     public partial class DetectionRule
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();

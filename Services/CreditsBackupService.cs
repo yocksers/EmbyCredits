@@ -38,7 +38,6 @@ namespace EmbyCredits.Services
             new ConcurrentDictionary<string, FileLockEntry>(StringComparer.OrdinalIgnoreCase);
         private static readonly object _fileLocksGate = new object();
 
-        // RefCount is guarded by _fileLocksGate so eviction can never remove an entry another caller is about to use.
         private static FileLockEntry AcquireFileLock(string key)
         {
             lock (_fileLocksGate)
@@ -296,10 +295,6 @@ namespace EmbyCredits.Services
             }
         }
 
-        /// <summary>
-        /// Updates (or creates) the series backup file with the new credits timestamp for a single episode.
-        /// Call this after any single-episode marker save so the backup stays in sync.
-        /// </summary>
         public async Task UpsertEpisodeInSeriesBackup(Episode episode, long creditsStartTicks, string backupFolder)
         {
             try
@@ -340,19 +335,16 @@ namespace EmbyCredits.Services
                     backup = new CreditsBackup { Version = "1.0", BackupDate = DateTime.UtcNow, Entries = new List<CreditsBackupEntry>() };
                 }
 
-                // Resolve episode provider IDs upfront for use in both Remove and Add
                 string? epTvdb = GetProviderId(episode.ProviderIds, "Tvdb");
                 string? epTmdb = GetProviderId(episode.ProviderIds, "Tmdb");
                 string? epImdb = GetProviderId(episode.ProviderIds, "Imdb");
 
-                // Remove any existing entry for this episode (match on provider ID, path, or S/E numbers)
                 backup.Entries.RemoveAll(e =>
                     (!string.IsNullOrEmpty(epTvdb) && e.TvdbEpisodeId == epTvdb) ||
                     (!string.IsNullOrEmpty(episode.Path) && string.Equals(e.FilePath, episode.Path, _pathComparison)) ||
                     (episode.ParentIndexNumber.HasValue && episode.IndexNumber.HasValue &&
                      e.SeasonNumber == episode.ParentIndexNumber.Value && e.EpisodeNumber == episode.IndexNumber.Value));
 
-                // Read current file fingerprint
                 long? fileSize = null;
                 DateTime? fileModified = null;
                 if (!string.IsNullOrEmpty(episode.Path) && File.Exists(episode.Path))
@@ -362,7 +354,6 @@ namespace EmbyCredits.Services
                     fileModified = fi.LastWriteTimeUtc;
                 }
 
-                // Add the updated entry
                 backup.Entries.Add(new CreditsBackupEntry
                 {
                     SeriesName = series.Name,

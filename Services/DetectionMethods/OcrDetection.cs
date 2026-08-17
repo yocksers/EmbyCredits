@@ -149,7 +149,6 @@ namespace EmbyCredits.Services.DetectionMethods
                 {
                     _calculatedConfidence = 0.95;
                     
-                    // Prepend Episode Comparison indicator to detection reason
                     if (!string.IsNullOrEmpty(DetectionReason))
                     {
                         DetectionReason = $"Episode Comparison (based on {cachedTimestamps.Count} episodes, avg={FormatTime(averageTimestamp)}) | {DetectionReason}";
@@ -715,7 +714,6 @@ namespace EmbyCredits.Services.DetectionMethods
                 {
                     LogInfo("Frame extraction cancelled");
                     
-                    // Clean up collections to prevent memory leak on cancellation
                     if (buffer != null)
                     {
                         buffer.Clear();
