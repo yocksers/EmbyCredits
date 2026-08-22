@@ -41,7 +41,6 @@ define([], function () {
 
         await Promise.all(promises);
         
-        // Verify content loaded correctly - check for key elements
         setTimeout(() => {
             const actionsPage = view.querySelector('#actionsPage');
             if (actionsPage && actionsPage.innerHTML.trim().length === 0) {

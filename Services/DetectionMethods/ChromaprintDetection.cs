@@ -362,7 +362,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     return 0;
                 }
                 
-                var normalizedVideoPath = FFmpegHelper.NormalizeFilePath(videoPath);
+                var normalizedVideoPath = FFmpegHelper.ResolveInputPath(videoPath);
 
                 var chromaBlackStartInfo = new ProcessStartInfo
                 {

@@ -56,8 +56,6 @@ namespace EmbyCredits.ScheduledTasks
 
             if (config.OnlyProcessNewEpisodes && Plugin.PendingEpisodesService != null)
             {
-                // Pending-queue mode: only process episodes that have been added since
-                // the last detection run, rather than scanning the whole library.
                 var pendingIds = Plugin.PendingEpisodesService.GetPendingEpisodeIds();
                 _logger.Info($"OnlyProcessNewEpisodes: {pendingIds.Count} pending episode(s) in queue");
 
@@ -67,7 +65,6 @@ namespace EmbyCredits.ScheduledTasks
                     return;
                 }
 
-                // Resolve IDs and group by series+season
                 var pendingBySeason = new Dictionary<(string seriesId, int season), List<Episode>>();
                 foreach (var id in pendingIds)
                 {
@@ -85,7 +82,6 @@ namespace EmbyCredits.ScheduledTasks
                 if (pendingBySeason.Count == 0)
                 {
                     _logger.Info("No resolvable pending episodes found (items may have been removed from library)");
-                    // Clear stale IDs
                     foreach (var id in pendingIds)
                         Plugin.PendingEpisodesService.MarkProcessed(id);
                     return;

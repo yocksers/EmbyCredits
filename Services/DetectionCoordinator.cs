@@ -471,7 +471,7 @@ namespace EmbyCredits.Services
                     return 0;
                 }
                 
-                var normalizedVideoPath = Utilities.FFmpegHelper.NormalizeFilePath(videoPath);
+                var normalizedVideoPath = Utilities.FFmpegHelper.ResolveInputPath(videoPath);
 
                 var silenceStartInfo = new System.Diagnostics.ProcessStartInfo
                 {

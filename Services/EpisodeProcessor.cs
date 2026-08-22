@@ -528,7 +528,7 @@ namespace EmbyCredits.Services
         {
             try
             {
-                var normalizedFilePath = Utilities.FFmpegHelper.NormalizeFilePath(filePath);
+                var normalizedFilePath = Utilities.FFmpegHelper.ResolveInputPath(filePath);
 
                 var ffprobeStartInfo = new ProcessStartInfo
                 {
@@ -582,7 +582,7 @@ namespace EmbyCredits.Services
             {
                 _debugLogger.LogDebug($"Getting video duration for: {filePath}");
 
-                var normalizedFilePath = Utilities.FFmpegHelper.NormalizeFilePath(filePath);
+                var normalizedFilePath = Utilities.FFmpegHelper.ResolveInputPath(filePath);
 
                 var ffprobeStartInfo = new ProcessStartInfo
                 {

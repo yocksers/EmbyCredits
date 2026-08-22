@@ -99,22 +99,18 @@ define([], function () {
         var hasLibraries = rule.LibraryIds && rule.LibraryIds.length > 0;
         var hasPrimary = hasSeriesNames || hasTags || hasStudios;
 
-        // Rule has no matchers at all — will never apply
         if (!hasPrimary && !hasLibraries) {
             warnings.push('This rule has no series names, tags, studios, or libraries set and will <strong>never match</strong> any show.');
         }
 
-        // Library-only rule with DisableDetection
         if (!hasPrimary && hasLibraries && rule.DisableDetection === true) {
             warnings.push('This rule will disable detection for <strong>every show</strong> in the selected librar' + (rule.LibraryIds.length > 1 ? 'ies' : 'y') + '.');
         }
 
-        // Library-only rule without DisableDetection — broad but not necessarily harmful, still worth a note
         if (!hasPrimary && hasLibraries && rule.DisableDetection !== true) {
             warnings.push('This rule has no series names, tags, or studios set, so it will apply to <strong>every show</strong> in the selected librar' + (rule.LibraryIds.length > 1 ? 'ies' : 'y') + '.');
         }
 
-        // Rule has matchers but also DisableDetection — just a sanity reminder
         if (hasPrimary && hasLibraries && rule.DisableDetection === true) {
             warnings.push('Detection will be disabled only for matching shows that are also inside the selected librar' + (rule.LibraryIds.length > 1 ? 'ies' : 'y') + '.');
         }

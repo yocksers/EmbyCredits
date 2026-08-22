@@ -25,7 +25,6 @@ define([], function () {
         });
     }
 
-    // Indicator shown above the Start Detection button on the Actions tab
     function refreshStartIndicator(view) {
         const indicator = view.querySelector('#ocrEngineReadyIndicator');
         const dot = view.querySelector('#ocrEngineReadyDot');
@@ -79,7 +78,6 @@ define([], function () {
         }
     }
 
-    // Docker command generator on the Guide tab
     function engineDetails(engine) {
         return engine === 'PaddleOCR'
             ? { image: 'yock1/embycreditpaddle', containerName: 'paddleocr', serviceName: 'paddleocr', volumePath: '/root/.paddleocr' }

@@ -274,6 +274,14 @@ namespace EmbyCredits.Services.Utilities
             return _mediaEncoder.GetInputArgument(normalizedPath.AsSpan(), protocol);
         }
 
+        public static string ResolveInputPath(string path)
+        {
+            // GetInputArgument returns a string meant for a shell-parsed command line (e.g. file:"D:\..." on
+            // Windows to disambiguate drive letters from protocol prefixes). ArgumentList entries are passed
+            // through as literal argv tokens, so the quote characters must be stripped, not the prefix.
+            return GetInputArgument(path).Replace("\"", string.Empty);
+        }
+
         public static int CleanupOrphanedTempDirectories()
         {
             var deletedCount = 0;
@@ -309,16 +317,16 @@ namespace EmbyCredits.Services.Utilities
 
         public static uint[] GenerateChromaprint(string filePath, double startTime, double endTime, MediaBrowser.Model.Logging.ILogger? logger = null, int threads = 0)
         {
-            var normalizedPath = NormalizeFilePath(filePath);
+            var inputArgument = GetInputArgument(filePath);
             var ffmpegPath = GetFfmpegPath();
             var duration = endTime - startTime;
 
             var threadArg = threads > 0 ? $"-threads {threads} " : string.Empty;
             var args = string.Format(
                 CultureInfo.InvariantCulture,
-                "-hide_banner -loglevel warning {3}-ss {0} -i \"{1}\" -to {2} -ac 2 -f chromaprint -fp_format raw -",
+                "-hide_banner -loglevel warning {3}-ss {0} -i {1} -to {2} -ac 2 -f chromaprint -fp_format raw -",
                 startTime,
-                normalizedPath,
+                inputArgument,
                 duration,
                 threadArg);
 

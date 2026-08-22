@@ -2266,6 +2266,31 @@ namespace EmbyCredits.Services
 
             try
             {
+                double? batchCreditsStart = null;
+                if (batchResults != null && batchResults.ContainsKey(episodeId))
+                {
+                    batchCreditsStart = batchResults[episodeId];
+                }
+
+                bool isTargetEpisode = _singleEpisodeTargets.Count == 0 || _singleEpisodeTargets.ContainsKey(episodeId);
+
+                // Non-target episodes only exist to give Chromaprint audio to compare against - never save
+                // markers or report progress/UI details for them, whether or not a match was found.
+                if (!isTargetEpisode)
+                {
+                    _logger?.Debug(batchCreditsStart.HasValue
+                        ? $"[SingleEpisodeTarget] Chromaprint match found for {episode.Name} but not saving - not the originally requested episode"
+                        : $"[SingleEpisodeTarget] Skipping fallback detection for {episode.Name} - not the originally requested episode and no chromaprint match");
+                    if (Plugin.Instance != null)
+                    {
+                        var episodeKey = $"{seriesName} S{episode.ParentIndexNumber:00}E{episode.IndexNumber:00}";
+                        Plugin.Progress.SkipReasons[episodeKey] = "Only needed for audio comparison";
+                        Plugin.Progress.IncrementSkipped();
+                        Plugin.Progress.ProcessedItems++;
+                    }
+                    return;
+                }
+
                 if (Plugin.Instance != null)
                 {
                     var episodeDisplayName = $"{seriesName} - S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2} - {episode.Name}";
@@ -2274,23 +2299,10 @@ namespace EmbyCredits.Services
 
                 _logger?.Debug($"Processing episode {episode.Name}");
 
-                double? batchCreditsStart = null;
-                if (batchResults != null && batchResults.ContainsKey(episodeId))
-                {
-                    batchCreditsStart = batchResults[episodeId];
-                }
-
                 if (_episodeProcessor == null) return;
 
-                bool isTargetEpisode = _singleEpisodeTargets.Count == 0 || _singleEpisodeTargets.ContainsKey(episodeId);
-                bool effectiveDryRun = _isDryRun || !isTargetEpisode;
-                if (!isTargetEpisode)
-                {
-                    _logger?.Debug($"[SingleEpisodeTarget] Skipping marker save for {episode.Name} - not the originally requested episode");
-                }
-
                 var (success, creditsStart, failureReason, confidence, methodName, detectionReason) = await _episodeProcessor.ProcessEpisodeWithBatchResult(
-                    episode, effectiveDryRun, batchCreditsStart, chromaprintMethod, tempCoordinator);
+                    episode, _isDryRun, batchCreditsStart, chromaprintMethod, tempCoordinator);
 
                 if (success && creditsStart > 0)
                 {
@@ -2631,7 +2643,7 @@ namespace EmbyCredits.Services
                 thumbnailStartInfo.ArgumentList.Add("-ss");
                 thumbnailStartInfo.ArgumentList.Add(timestamp.ToString(CultureInfo.InvariantCulture));
                 thumbnailStartInfo.ArgumentList.Add("-i");
-                thumbnailStartInfo.ArgumentList.Add(videoPath);
+                thumbnailStartInfo.ArgumentList.Add(Utilities.FFmpegHelper.ResolveInputPath(videoPath));
                 thumbnailStartInfo.ArgumentList.Add("-vframes");
                 thumbnailStartInfo.ArgumentList.Add("1");
                 thumbnailStartInfo.ArgumentList.Add("-vf");

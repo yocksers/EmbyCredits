@@ -8,7 +8,6 @@ define(['loading', 'toast'], function (loading, toast) {
         return ApiClient.getPluginConfiguration(pluginId).then(config => {
             instance.config = config;
 
-            // Handle DetectionMode with backward compatibility
             const detectionMode = config.DetectionMode || 'OcrOnly';
             view.querySelector('#selectDetectionMode').value = detectionMode;
 
@@ -82,13 +81,11 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkPaddleOcrEnableConcurrentFiles').checked = config.PaddleOcrEnableConcurrentFiles || false;
             view.querySelector('#txtPaddleOcrConcurrentFiles').value = config.PaddleOcrConcurrentFiles !== undefined ? config.PaddleOcrConcurrentFiles : 2;
 
-            // Character Density Detection settings
             view.querySelector('#chkOcrEnableCharacterDensityDetection').checked = config.OcrEnableCharacterDensityDetection !== false;
             view.querySelector('#txtOcrCharacterDensityThreshold').value = config.OcrCharacterDensityThreshold || 20;
             view.querySelector('#txtOcrCharacterDensityConsecutiveFrames').value = config.OcrCharacterDensityConsecutiveFrames || 3;
             view.querySelector('#chkOcrCharacterDensityPrimaryMethod').checked = config.OcrCharacterDensityPrimaryMethod !== false;
             
-            // Density Detection Filters
             view.querySelector('#chkOcrDensityRequireKeyword').checked = config.OcrDensityRequireKeyword !== false;
             view.querySelector('#txtOcrDensityKeywordWindowSeconds').value = config.OcrDensityKeywordWindowSeconds || 10;
             view.querySelector('#chkOcrDensityRequireTemporalConsistency').checked = config.OcrDensityRequireTemporalConsistency !== false;
@@ -96,7 +93,6 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkOcrDensityRequireStyleConsistency').checked = config.OcrDensityRequireStyleConsistency !== false;
             view.querySelector('#txtOcrDensityStyleConsistencyThreshold').value = config.OcrDensityStyleConsistencyThreshold || 0.7;
 
-            // OCR Enhancements - Tesseract Language Configuration
             view.querySelector('#selectOcrEngine').value = config.OcrEngine || 'Tesseract';
             const localTesseractPathEl = view.querySelector('#txtLocalTesseractPath');
             if (localTesseractPathEl) localTesseractPathEl.value = config.LocalTesseractPath || '';
@@ -105,27 +101,22 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtOcrEngineMode').value = config.OcrEngineMode ?? 3;
             view.querySelector('#chkOcrPreserveInterwordSpaces').checked = config.OcrPreserveInterwordSpaces !== false;
 
-            // OCR Enhancements - Image Preprocessing
             view.querySelector('#chkOcrEnableImagePreprocessing').checked = config.OcrEnableImagePreprocessing || false;
             view.querySelector('#txtOcrContrastEnhancement').value = config.OcrContrastEnhancement || 1.5;
             view.querySelector('#txtOcrBrightnessAdjustment').value = config.OcrBrightnessAdjustment || 0.05;
             view.querySelector('#chkOcrEnableSharpening').checked = config.OcrEnableSharpening || false;
             view.querySelector('#txtOcrSharpenAmount').value = config.OcrSharpenAmount || 1.0;
 
-            // Region of Interest
             view.querySelector('#chkOcrEnableRoiDetection').checked = config.OcrEnableRoiDetection || false;
             view.querySelector('#selectOcrRoiRegion').value = config.OcrRoiRegion || 'full';
 
-            // Fuzzy Keyword Matching
             view.querySelector('#chkOcrEnableFuzzyMatching').checked = config.OcrEnableFuzzyMatching || false;
             view.querySelector('#txtOcrFuzzyMatchMaxDistance').value = config.OcrFuzzyMatchMaxDistance || 2;
 
-            // Scrolling Pattern Detection
             view.querySelector('#chkOcrEnableScrollingDetection').checked = config.OcrEnableScrollingDetection || false;
             view.querySelector('#txtOcrScrollingMinFrames').value = config.OcrScrollingMinFrames || 5;
             view.querySelector('#txtOcrScrollingOverlapThreshold').value = config.OcrScrollingOverlapThreshold || 0.3;
 
-            // Adaptive Frame Rate
             view.querySelector('#chkOcrEnableAdaptiveFrameRate').checked = config.OcrEnableAdaptiveFrameRate || false;
             view.querySelector('#txtOcrAdaptiveFrameRateMin').value = config.OcrAdaptiveFrameRateMin || 0.25;
 
@@ -133,7 +124,6 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtOcrAdaptiveCoarseIntervalSeconds').value = config.OcrAdaptiveCoarseIntervalSeconds || 5;
             view.querySelector('#txtOcrAdaptiveRefinementRadiusSeconds').value = config.OcrAdaptiveRefinementRadiusSeconds || 10;
 
-            // Credit Structure Detection
             view.querySelector('#chkOcrEnableCreditStructureDetection').checked = config.OcrEnableCreditStructureDetection || false;
             view.querySelector('#txtOcrMinimumStructureLines').value = config.OcrMinimumStructureLines || 4;
 
@@ -179,7 +169,6 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtChromaprintFfmpegThreads').value = config.ChromaprintFfmpegThreads || 0;
             view.querySelector('#txtChromaprintDelayBetweenOperationsMs').value = config.ChromaprintDelayBetweenOperationsMs || 0;
 
-            // Anime Detection settings
             view.querySelector('#chkEnableAnimeDetection').checked = config.EnableAnimeDetection !== false;
             
             let animeDetectionMethod = config.AnimeDetectionMethod || 'BlackFrame';
@@ -201,23 +190,19 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtBlackFrameParallelSessions').value = config.BlackFrameParallelSessions !== undefined ? config.BlackFrameParallelSessions : 1;
             view.querySelector('#txtBlackFrameFfmpegThreads').value = config.BlackFrameFfmpegThreads || 0;
 
-            // Video Validation settings
             view.querySelector('#chkEnableVideoValidation').checked = config.EnableVideoValidation || false;
             view.querySelector('#numVideoValidationTimeoutSeconds').value = config.VideoValidationTimeoutSeconds !== undefined ? config.VideoValidationTimeoutSeconds : 10;
 
-            // Load libraries and series/episode dropdowns
             require(['configurationpage?name=CreditsDetectorConfigurationSeriesManager'], (seriesManager) => {
                 seriesManager.loadLibraries(view, config);
                 seriesManager.loadLibraryFilter(view);
                 seriesManager.loadSeriesList(view);
             });
 
-            // Load auto skip exclusions list
             require(['configurationpage?name=CreditsDetectorConfigurationAutoSkipManager'], (autoSkipManager) => {
                 autoSkipManager.loadAutoSkipSeriesList(view, config.AutoSkipExcludedSeriesIds || []);
             });
             
-            // Load rules
             require(['configurationpage?name=CreditsDetectorConfigurationRulesManager'], (rulesManager) => {
                 rulesManager.loadRules(view, config);
                 rulesManager.bindRulesEvents(view, instance);
@@ -231,7 +216,6 @@ define(['loading', 'toast'], function (loading, toast) {
                 view.dispatchEvent(event);
             }, 100);
 
-            // Trigger detection method color update after data is loaded
             setTimeout(() => {
                 const event = new CustomEvent('detectionMethodLoaded');
                 view.dispatchEvent(event);
@@ -315,7 +299,6 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrSearchStartUnit = view.querySelector('#selectOcrSearchStartUnit').value || 'minutes';
         instance.config.OcrSearchStartValue = Number.parseFloat(view.querySelector('#txtOcrSearchStartValue').value) || 3;
         
-        // Update legacy properties for backward compatibility
         if (instance.config.OcrSearchStartUnit === 'minutes') {
             instance.config.OcrMinutesFromEnd = instance.config.OcrSearchStartValue;
             instance.config.OcrDetectionSearchStart = 0.65; // fallback value
@@ -353,13 +336,11 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.PaddleOcrEnableConcurrentFiles = view.querySelector('#chkPaddleOcrEnableConcurrentFiles').checked;
         instance.config.PaddleOcrConcurrentFiles = Math.max(2, Number.parseInt(view.querySelector('#txtPaddleOcrConcurrentFiles').value, 10) || 2);
 
-        // Character Density Detection settings
         instance.config.OcrEnableCharacterDensityDetection = view.querySelector('#chkOcrEnableCharacterDensityDetection').checked;
         instance.config.OcrCharacterDensityThreshold = Number.parseInt(view.querySelector('#txtOcrCharacterDensityThreshold').value, 10) || 20;
         instance.config.OcrCharacterDensityConsecutiveFrames = Number.parseInt(view.querySelector('#txtOcrCharacterDensityConsecutiveFrames').value, 10) || 3;
         instance.config.OcrCharacterDensityPrimaryMethod = view.querySelector('#chkOcrCharacterDensityPrimaryMethod').checked;
         
-        // Density Detection Filters
         instance.config.OcrDensityRequireKeyword = view.querySelector('#chkOcrDensityRequireKeyword').checked;
         instance.config.OcrDensityKeywordWindowSeconds = Number.parseFloat(view.querySelector('#txtOcrDensityKeywordWindowSeconds').value) || 10;
         instance.config.OcrDensityRequireTemporalConsistency = view.querySelector('#chkOcrDensityRequireTemporalConsistency').checked;
@@ -367,7 +348,6 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrDensityRequireStyleConsistency = view.querySelector('#chkOcrDensityRequireStyleConsistency').checked;
         instance.config.OcrDensityStyleConsistencyThreshold = Number.parseFloat(view.querySelector('#txtOcrDensityStyleConsistencyThreshold').value) || 0.7;
 
-        // OCR Enhancements - Tesseract Language Configuration
         instance.config.OcrEngine = view.querySelector('#selectOcrEngine').value || 'Tesseract';
         const saveLocalPathEl = view.querySelector('#txtLocalTesseractPath');
         const rawLocalPath = saveLocalPathEl ? saveLocalPathEl.value || '' : '';
@@ -386,27 +366,22 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrEngineMode = Number.parseInt(view.querySelector('#txtOcrEngineMode').value, 10) ?? 3;
         instance.config.OcrPreserveInterwordSpaces = view.querySelector('#chkOcrPreserveInterwordSpaces').checked;
 
-        // OCR Enhancements - Image Preprocessing
         instance.config.OcrEnableImagePreprocessing = view.querySelector('#chkOcrEnableImagePreprocessing').checked;
         instance.config.OcrContrastEnhancement = Number.parseFloat(view.querySelector('#txtOcrContrastEnhancement').value) || 1.5;
         instance.config.OcrBrightnessAdjustment = Number.parseFloat(view.querySelector('#txtOcrBrightnessAdjustment').value) || 0.05;
         instance.config.OcrEnableSharpening = view.querySelector('#chkOcrEnableSharpening').checked;
         instance.config.OcrSharpenAmount = Number.parseFloat(view.querySelector('#txtOcrSharpenAmount').value) || 1.0;
 
-        // Region of Interest
         instance.config.OcrEnableRoiDetection = view.querySelector('#chkOcrEnableRoiDetection').checked;
         instance.config.OcrRoiRegion = view.querySelector('#selectOcrRoiRegion').value || 'full';
 
-        // Fuzzy Keyword Matching
         instance.config.OcrEnableFuzzyMatching = view.querySelector('#chkOcrEnableFuzzyMatching').checked;
         instance.config.OcrFuzzyMatchMaxDistance = Number.parseInt(view.querySelector('#txtOcrFuzzyMatchMaxDistance').value, 10) || 2;
 
-        // Scrolling Pattern Detection
         instance.config.OcrEnableScrollingDetection = view.querySelector('#chkOcrEnableScrollingDetection').checked;
         instance.config.OcrScrollingMinFrames = Number.parseInt(view.querySelector('#txtOcrScrollingMinFrames').value, 10) || 5;
         instance.config.OcrScrollingOverlapThreshold = Number.parseFloat(view.querySelector('#txtOcrScrollingOverlapThreshold').value) || 0.3;
 
-        // Adaptive Frame Rate
         instance.config.OcrEnableAdaptiveFrameRate = view.querySelector('#chkOcrEnableAdaptiveFrameRate').checked;
         instance.config.OcrAdaptiveFrameRateMin = Number.parseFloat(view.querySelector('#txtOcrAdaptiveFrameRateMin').value) || 0.25;
 
@@ -414,7 +389,6 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrAdaptiveCoarseIntervalSeconds = Number.parseFloat(view.querySelector('#txtOcrAdaptiveCoarseIntervalSeconds').value) || 5;
         instance.config.OcrAdaptiveRefinementRadiusSeconds = Number.parseFloat(view.querySelector('#txtOcrAdaptiveRefinementRadiusSeconds').value) || 10;
 
-        // Credit Structure Detection
         instance.config.OcrEnableCreditStructureDetection = view.querySelector('#chkOcrEnableCreditStructureDetection').checked;
         instance.config.OcrMinimumStructureLines = Number.parseInt(view.querySelector('#txtOcrMinimumStructureLines').value, 10) || 4;
 
@@ -462,7 +436,6 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.ChromaprintFfmpegThreads = Number.parseInt(view.querySelector('#txtChromaprintFfmpegThreads').value, 10) || 0;
         instance.config.ChromaprintDelayBetweenOperationsMs = Number.parseInt(view.querySelector('#txtChromaprintDelayBetweenOperationsMs').value, 10) || 0;
 
-        // Anime Detection settings
         instance.config.EnableAnimeDetection = view.querySelector('#chkEnableAnimeDetection').checked;
         instance.config.AnimeDetectionMethod = view.querySelector('#selectAnimeDetectionMethod').value || 'BlackFrame';
         instance.config.BlackFrameMinimumPercentage = Number.parseInt(view.querySelector('#txtBlackFrameMinimumPercentage').value, 10) || 85;
@@ -684,14 +657,11 @@ define(['loading', 'toast'], function (loading, toast) {
             const newUnit = this.value;
             const currentValue = Number.parseFloat(valueInput.value) || 0;
             
-            // Convert value when switching units
             if (newUnit === 'percentage') {
-                // If switching from minutes to percentage, suggest 65%
                 if (currentValue < 50) {
                     valueInput.value = 65;
                 }
             } else {
-                // If switching from percentage to minutes, suggest 3 minutes
                 if (currentValue >= 50) {
                     valueInput.value = 3;
                 }

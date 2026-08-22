@@ -186,7 +186,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 });
             }
 
-            // Initialize tracer tab if its elements are present
             const tracerList = view.querySelector('#tracerEpisodeList');
             if (tracerList) {
                 tracerManager.init(view);
@@ -201,7 +200,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     const ocrHeaders = view.querySelectorAll('.collapsible-header[data-detection-type="ocr"]');
                     const hashHeaders = view.querySelectorAll('.collapsible-header[data-detection-type="hash"]');
                     
-                    // For fallback modes, both OCR and Hash settings are used
                     const isFallbackMode = mode === 'OcrWithHashFallback' || mode === 'HashWithOcrFallback';
                     
                     ocrHeaders.forEach(header => {
@@ -225,7 +223,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                     updateCollapsibleColors();
                 });
                 
-                // Listen for data loaded event to update colors
                 view.addEventListener('detectionMethodLoaded', () => {
                     updateCollapsibleColors();
                 });
@@ -365,7 +362,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 this.toggleOcrEngineFields(view);
             }
 
-            // Auto-save: save config whenever a field changes
             const _autoSaveExcludedIds = new Set([
                 'selectLibraryFilter', 'selectSeries', 'selectEpisode',
                 'selectSeriesForMarkers', 'txtAutoSkipSearch', 'txtNewKeyword',
@@ -468,7 +464,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
         }
 
         enforceDropdownStyles(view) {
-            // Ensure dropdown styles are properly set
             const selects = view.querySelectorAll('select.emby-select');
             selects.forEach(select => {
                 if (!select.style.maxWidth && select.id !== 'selectOcrSearchStartUnit') {
@@ -483,28 +478,22 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
 
             loader.loadPagePartials(view).then(() => {
                 
-                // Ensure event bindings happen after DOM is fully populated
                 setTimeout(() => {
                     events.bindTabNavigation(view);
                     this.bindEventListeners(view);
                     
-                    // Initialize collapsible sections
                     utils.initializeCollapsibleSections(view);
                     
-                    // Listen for keywords loaded event
                     view.addEventListener('keywordsLoaded', () => {
                         this.updateKeywordDisplay(view);
                     });
                     
                     dataManager.loadData(this, view).then(() => {
-                        // OCR docker command generator + engine readiness indicators
                         ocrStatusManager.init(view);
                     });
                     
-                    // Enforce dropdown styles after load
                     this.enforceDropdownStyles(view);
                     
-                    // Restore last progress if available (only if not currently running)
                     if (this.lastProgress && !this.lastProgress.IsRunning) {
                         setTimeout(() => {
                             progressMonitor.updateProgressUI(view, this.lastProgress);
@@ -514,7 +503,6 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                         }, 100);
                     }
                         
-                        // Load donate image
                         const donateImg = view.querySelector('#donateImage');
                         if (donateImg && !donateImg.src) {
                             fetch(ApiClient.getUrl('CreditsDetector/Images/donate.png'), {

@@ -480,7 +480,7 @@ namespace EmbyCredits.Services.DetectionMethods
             List<(double timestamp, string text)> recentTextFrames,
             CancellationToken cancellationToken)
         {
-            var normalizedVideoPath = FFmpegHelper.NormalizeFilePath(videoPath);
+            var normalizedVideoPath = FFmpegHelper.ResolveInputPath(videoPath);
             var preInputArgs = BuildPreInputArgs(videoPath);
             var threadArgs = BuildThreadArgs();
             var filterChain = BuildFilterChain(fps);
@@ -562,7 +562,6 @@ namespace EmbyCredits.Services.DetectionMethods
                     }
                 });
 
-                // Declare outside try block so they're accessible in catch block for cleanup
                 List<byte>? buffer = null;
                 List<(byte[] data, double timestamp, int index)>? frameQueue = null;
                 byte[]? readBuffer = null;
@@ -1014,7 +1013,7 @@ namespace EmbyCredits.Services.DetectionMethods
             CancellationToken cancellationToken)
         {
             var hitTimestamps = new List<double>();
-            var normalizedPath = FFmpegHelper.NormalizeFilePath(videoPath);
+            var normalizedPath = FFmpegHelper.ResolveInputPath(videoPath);
             var preInputArgs = BuildPreInputArgs(videoPath);
             var threadArgs = BuildThreadArgs();
             var filterChain = BuildFilterChain(coarseFps);
@@ -1254,7 +1253,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 var ffmpegTempDir = tempDir.Replace("\\", "/");
                 var ffmpegFramePath = $"{ffmpegTempDir}/frame_%04d.{imageExtension}";
                 
-                var normalizedVideoPathDisk = FFmpegHelper.NormalizeFilePath(videoPath);
+                var normalizedVideoPathDisk = FFmpegHelper.ResolveInputPath(videoPath);
 
                 var preInputArgs = BuildPreInputArgs(videoPath);
                 var threadArgs = BuildThreadArgs();
@@ -1934,6 +1933,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     Configuration.OcrPageSegmentationMode,
                     Configuration.OcrEngineMode,
                     Configuration.LocalTesseractPath,
+                    Configuration.OcrUseDirectMemoryPipeline,
                     Logger,
                     cancellationToken).ConfigureAwait(false);
 
@@ -2113,7 +2113,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     psi.ArgumentList.Add("stream=codec_name");
                     psi.ArgumentList.Add("-of");
                     psi.ArgumentList.Add("default=noprint_wrappers=1:nokey=1");
-                    psi.ArgumentList.Add(FFmpegHelper.NormalizeFilePath(path));
+                    psi.ArgumentList.Add(FFmpegHelper.ResolveInputPath(path));
 
                     using var process = new Process { StartInfo = psi };
                     process.Start();

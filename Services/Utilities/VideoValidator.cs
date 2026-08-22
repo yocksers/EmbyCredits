@@ -29,7 +29,7 @@ namespace EmbyCredits.Services.Utilities
             try
             {
                 var ffprobePath = FFmpegHelper.GetFfprobePath();
-                var normalizedPath = FFmpegHelper.NormalizeFilePath(videoPath);
+                var normalizedPath = FFmpegHelper.ResolveInputPath(videoPath);
 
                 var processStartInfo = new ProcessStartInfo
                 {

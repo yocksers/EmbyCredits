@@ -245,6 +245,12 @@ namespace EmbyCredits.Services
                     if (durationTicks > 0 && (double)c.StartPositionTicks / durationTicks < 0.40)
                         return false;
 
+                    if (durationTicks > 0 && c.StartPositionTicks >= durationTicks)
+                    {
+                        _logger.Warn($"Ignoring embedded chapter '{c.Name}' at {FormatTime(c.StartPositionTicks / (double)TimeSpan.TicksPerSecond)} for {episode.Name} - exceeds episode runtime {FormatTime(durationTicks / (double)TimeSpan.TicksPerSecond)}");
+                        return false;
+                    }
+
                     return true;
                 });
 

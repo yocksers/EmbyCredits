@@ -315,7 +315,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 startInfo.ArgumentList.Add(Configuration.BlackFrameFfmpegThreads.ToString(CultureInfo.InvariantCulture));
             }
             startInfo.ArgumentList.Add("-i");
-            startInfo.ArgumentList.Add(FFmpegHelper.NormalizeFilePath(videoPath));
+            startInfo.ArgumentList.Add(FFmpegHelper.ResolveInputPath(videoPath));
             startInfo.ArgumentList.Add("-t");
             startInfo.ArgumentList.Add(analysisDuration.ToString(CultureInfo.InvariantCulture));
             startInfo.ArgumentList.Add("-an");
@@ -357,7 +357,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 startInfo.ArgumentList.Add(Configuration.BlackFrameFfmpegThreads.ToString(CultureInfo.InvariantCulture));
             }
             startInfo.ArgumentList.Add("-i");
-            startInfo.ArgumentList.Add(FFmpegHelper.NormalizeFilePath(videoPath));
+            startInfo.ArgumentList.Add(FFmpegHelper.ResolveInputPath(videoPath));
             startInfo.ArgumentList.Add("-t");
             startInfo.ArgumentList.Add(analysisDuration.ToString(CultureInfo.InvariantCulture));
             startInfo.ArgumentList.Add("-an");

@@ -8,16 +8,12 @@
             instance.progressHideTimeout = null;
         }
         
-        // Clear stored progress when new detection starts
         instance.lastProgress = null;
         
-        // Store dry run state for use in updateResults
         instance.isDryRun = isDryRun;
         
-        // Flag to prevent multiple completion handlers
         instance.hasCompleted = false;
         
-        // Clear previous results from UI
         const skipDetails = view.querySelector('#skipDetails');
         const skipList = view.querySelector('#skipList');
         const failureDetails = view.querySelector('#failureDetails');
@@ -37,7 +33,6 @@
         
         instance.progressInterval = setInterval(() => {
             ApiClient.getJSON(ApiClient.getUrl('CreditsDetector/GetProgress')).then(progress => {
-                // Store progress in instance for persistence
                 instance.lastProgress = progress;
                 
                 if (!progress.IsRunning && !instance.hasCompleted) {
@@ -64,8 +59,6 @@
                         setTimeout(() => downloadDebugLog(), 1000);
                     }
                     
-                    // Use the stored dry run flag (it was set when polling started)
-                    // Update results one final time with the correct dry run state
                     updateResults(view, progress, instance.isDryRun);
                     return;
                 }

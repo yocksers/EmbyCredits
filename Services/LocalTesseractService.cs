@@ -94,16 +94,19 @@ namespace EmbyCredits.Services
             int psm,
             int oem,
             string configuredPath,
+            bool useDirectMemoryPipeline,
             ILogger? logger,
             CancellationToken cancellationToken)
         {
             var binary = ResolveBinaryPath(configuredPath);
 
-            var tempDir = FFmpegHelper.GetTempPath();
-            var tempImage = Path.Combine(tempDir, $"ltocr_{Guid.NewGuid():N}.jpg");
+            string? tempImage = useDirectMemoryPipeline
+                ? null
+                : Path.Combine(FFmpegHelper.GetTempPath(), $"ltocr_{Guid.NewGuid():N}.jpg");
             try
             {
-                await File.WriteAllBytesAsync(tempImage, imageBytes, cancellationToken).ConfigureAwait(false);
+                if (tempImage != null)
+                    await File.WriteAllBytesAsync(tempImage, imageBytes, cancellationToken).ConfigureAwait(false);
 
                 var langArg = string.IsNullOrWhiteSpace(languages) ? "eng" : languages.Replace(',', '+');
 
@@ -111,11 +114,12 @@ namespace EmbyCredits.Services
                 {
                     FileName = binary,
                     UseShellExecute = false,
+                    RedirectStandardInput = useDirectMemoryPipeline,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true
                 };
-                psi.ArgumentList.Add(tempImage);
+                psi.ArgumentList.Add(tempImage ?? "-");
                 psi.ArgumentList.Add("stdout");
                 psi.ArgumentList.Add("-l");
                 psi.ArgumentList.Add(langArg);
@@ -135,6 +139,12 @@ namespace EmbyCredits.Services
 
                     var stdoutTask = process.StandardOutput.ReadToEndAsync();
                     var stderrTask = process.StandardError.ReadToEndAsync();
+
+                    if (useDirectMemoryPipeline)
+                    {
+                        await process.StandardInput.BaseStream.WriteAsync(imageBytes, 0, imageBytes.Length, cancellationToken).ConfigureAwait(false);
+                        process.StandardInput.Close();
+                    }
 
                     await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
 
@@ -164,7 +174,10 @@ namespace EmbyCredits.Services
             }
             finally
             {
-                try { if (File.Exists(tempImage)) File.Delete(tempImage); } catch { }
+                if (tempImage != null)
+                {
+                    try { if (File.Exists(tempImage)) File.Delete(tempImage); } catch { }
+                }
             }
         }
 

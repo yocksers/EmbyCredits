@@ -201,7 +201,6 @@ define(['loading', 'toast'], function (loading, toast) {
         .then(function (result) {
             if (result.Success) {
                 toast({ type: 'success', text: 'Detection queued' });
-                // Dismiss from list optimistically — detection service will also call MarkDetected
                 dismissEpisode(episodeId, itemEl);
             } else {
                 toast({ type: 'error', text: 'Failed: ' + (result.Message || 'Unknown error') });
@@ -250,7 +249,6 @@ define(['loading', 'toast'], function (loading, toast) {
             loading.show();
             var ids = episodes.map(function (e) { return e.EpisodeId; });
 
-            // Queue all via ProcessEpisode sequentially to avoid hammering the server
             var chain = Promise.resolve();
             ids.forEach(function (id) {
                 chain = chain.then(function () {
@@ -268,7 +266,6 @@ define(['loading', 'toast'], function (loading, toast) {
             chain.then(function () {
                 loading.hide();
                 toast({ type: 'success', text: 'Queued ' + ids.length + ' episode(s) for detection' });
-                // Clear the list in the UI — the backend will also clean up as each finishes
                 fetch(ApiClient.getUrl('CreditsDetector/ClearTracerList'), {
                     method: 'POST',
                     headers: { 'X-Emby-Token': ApiClient.accessToken(), 'Content-Type': 'application/json' },
@@ -368,12 +365,9 @@ define(['loading', 'toast'], function (loading, toast) {
         var btnSave = q('btnTracerSave');
         if (btnSave) btnSave.addEventListener('click', saveTracerSetting);
 
-        // Re-render immediately when the toggle is flipped
         var chkEnable = q('chkEnableTracerMode');
         if (chkEnable) chkEnable.addEventListener('change', refresh);
 
-        // Fetch config to correctly set the checkbox before the first render,
-        // since loadData() is async and may not have run yet
         ApiClient.getPluginConfiguration(pluginId).then(function (cfg) {
             var chk = q('chkEnableTracerMode');
             if (chk) chk.checked = cfg.EnableTracerMode || false;
@@ -382,7 +376,6 @@ define(['loading', 'toast'], function (loading, toast) {
             refresh();
         });
 
-        // Auto-refresh every 30 s while on this tab
         if (_refreshInterval) clearInterval(_refreshInterval);
         _refreshInterval = setInterval(refresh, 30000);
     }
