@@ -550,6 +550,15 @@
                 <div class="fieldDescription">When enabled, manual detection runs will check each episode for existing chapter markers with credits-related names (e.g. "Credits", "End Credits"). If one is found in the latter portion of the video it will be converted to the correct Emby format and detection will be skipped for that episode.</div>
             </div>
 
+            <h3 style="margin-top: 0; margin-bottom: 1em;">Quick Performance Presets</h3>
+            <div class="fieldDescription" style="margin-bottom: 1em;">Pick the option that best matches your hardware to instantly configure all performance/resource settings on this tab (CPU limits, thread/session counts, parallel processing, delays). These presets never change detection accuracy settings.</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.75em; margin-bottom: 1.5em;">
+                <button is="emby-button" type="button" class="raised" id="btnPresetSmallMachine" style="flex: 1; min-width: 150px; background-color: #E53935;">Small Machine</button>
+                <button is="emby-button" type="button" class="raised" id="btnPresetNormalMachine" style="flex: 1; min-width: 150px; background-color: #1e88e5;">Normal</button>
+                <button is="emby-button" type="button" class="raised" id="btnPresetHighEndMachine" style="flex: 1; min-width: 150px; background-color: #52B54B;">High End</button>
+                <button is="emby-button" type="button" class="raised" id="btnPresetDedicatedMachine" style="flex: 1; min-width: 150px; background-color: #9c27b0;">Dedicated Machine</button>
+            </div>
+
             <h3 style="margin-top: 0; margin-bottom: 1em;">CPU & Process Priority</h3>
             
             <div class="checkboxContainer">
@@ -734,8 +743,8 @@
 
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="txtOcrParallelBatchSize">Parallel Batch Size</label>
-                <input is="emby-input" type="number" id="txtOcrParallelBatchSize" data-config-key="OcrParallelBatchSize" />
-                <div class="fieldDescription"><strong>Recommended: 4.</strong> Number of frames to process in parallel when parallel processing is enabled. Higher = faster but more resource intensive.</div>
+                <input is="emby-input" type="number" id="txtOcrParallelBatchSize" data-config-key="OcrParallelBatchSize" min="1" max="32" />
+                <div class="fieldDescription"><strong>Recommended: 4.</strong> Number of frames (and therefore OCR/Tesseract instances) to process in parallel when parallel processing is enabled. Higher = faster but more resource intensive. Can be raised further on powerful or dedicated machines.</div>
             </div>
 
             <div class="inputContainer">
@@ -766,20 +775,20 @@
                 <div class="fieldDescription"><strong>Recommended: 0 (disabled).</strong> Minimum OCR confidence score to accept a match (0 = accept all). Set to 0.6-0.8 to filter out false positives. Requires OCR API that returns confidence scores.</div>
             </div>
 
-            <h3 style="margin-top: 2em; margin-bottom: 1em;">PaddleOCR Concurrent File Processing</h3>
+            <h3 style="margin-top: 2em; margin-bottom: 1em;">Concurrent File Processing (Multiple Videos at Once)</h3>
 
             <div class="checkboxContainer">
                 <label>
-                    <input is="emby-checkbox" type="checkbox" id="chkPaddleOcrEnableConcurrentFiles" data-config-key="PaddleOcrEnableConcurrentFiles" />
-                    <span>Enable Concurrent File Processing (PaddleOCR only)</span>
+                    <input is="emby-checkbox" type="checkbox" id="chkOcrEnableConcurrentFiles" data-config-key="OcrEnableConcurrentFiles" />
+                    <span>Enable Concurrent File Processing</span>
                 </label>
-                <div class="fieldDescription"><strong>PaddleOCR only — not supported with Tesseract.</strong> Process multiple video files simultaneously. Please note: This is not recommended on normal systems as it requires a powerful and/or dedicated machine, otherwise it might bottleneck the system.</div>
+                <div class="fieldDescription"><strong>Works with PaddleOCR, Local Tesseract, and Tesseract API.</strong> Process multiple video files simultaneously instead of one at a time. Please note: This is not recommended on normal systems as it requires a powerful and/or dedicated machine, otherwise it might bottleneck the system.</div>
             </div>
 
             <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="txtPaddleOcrConcurrentFiles">Max Concurrent Files</label>
-                <input is="emby-input" type="number" id="txtPaddleOcrConcurrentFiles" data-config-key="PaddleOcrConcurrentFiles" min="2" max="8" />
-                <div class="fieldDescription"><strong>Recommended: 2–3.</strong> Maximum number of video files processed in parallel. Higher values increase OCR server and FFmpeg load. Start at 2 and raise only if your hardware can handle it.</div>
+                <label class="inputLabel inputLabelUnfocused" for="txtOcrConcurrentFiles">Max Concurrent Files</label>
+                <input is="emby-input" type="number" id="txtOcrConcurrentFiles" data-config-key="OcrConcurrentFiles" min="1" max="16" />
+                <div class="fieldDescription"><strong>Recommended: 2–3.</strong> Maximum number of video files processed in parallel. Each file can still use its own Parallel Batch Size of concurrent OCR calls on top of this. Higher values increase OCR server/Tesseract and FFmpeg load. Start low and raise only if your hardware can handle it.</div>
             </div>
         </div>
     </div>

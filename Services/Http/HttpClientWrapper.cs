@@ -13,6 +13,7 @@ namespace EmbyCredits.Services.Http
 
     public class HttpClientWrapper : IHttpClientWrapper, IDisposable
     {
+        private const int TransientRetryDelayMs = 300;
         private readonly HttpClient _httpClient;
         private bool _disposed;
 
@@ -27,12 +28,28 @@ namespace EmbyCredits.Services.Http
 
         public async Task<HttpResponseMessage> PostAsync(string url, HttpContent content, CancellationToken cancellationToken = default)
         {
-            return await _httpClient.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                return await _httpClient.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
+            }
+            catch (HttpRequestException)
+            {
+                await Task.Delay(TransientRetryDelayMs, cancellationToken).ConfigureAwait(false);
+                return await _httpClient.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         public async Task<HttpResponseMessage> GetAsync(string url, CancellationToken cancellationToken = default)
         {
-            return await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                return await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+            }
+            catch (HttpRequestException)
+            {
+                await Task.Delay(TransientRetryDelayMs, cancellationToken).ConfigureAwait(false);
+                return await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         public void Dispose()

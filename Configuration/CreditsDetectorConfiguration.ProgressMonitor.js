@@ -136,11 +136,14 @@
                 ffmpegSessionsList.innerHTML = '';
                 processes.forEach(proc => {
                     const age = proc.AgeSeconds;
-                    const pct = proc.PercentOfTimeout;
+                    const hasRealProgress = proc.ProgressPercent !== null && proc.ProgressPercent !== undefined;
+                    const pct = hasRealProgress ? proc.ProgressPercent : proc.PercentOfTimeout;
                     const minutes = Math.floor(age / 60);
                     const seconds = age % 60;
                     const ageLabel = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-                    const barColor = pct >= 80 ? '#E53935' : pct >= 50 ? '#FFA726' : '#52B54B';
+                    const barColor = hasRealProgress
+                        ? '#52B54B'
+                        : (pct >= 80 ? '#E53935' : pct >= 50 ? '#FFA726' : '#52B54B');
 
                     const stalled = proc.SecondsSinceLastOutput != null && proc.SecondsSinceLastOutput >= 30;
                     const stalledBadge = stalled

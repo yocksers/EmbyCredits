@@ -44,7 +44,7 @@ namespace EmbyCredits.Services
             _chapterMarkerService = chapterMarkerService;
             _debugLogger = debugLogger;
             _configuration = configuration;
-            _cpuThrottler = new CpuThrottler(configuration);
+            _cpuThrottler = new CpuThrottler(configuration, logger);
             _ruleMatchingService = ruleMatchingService;
             _videoValidator = new VideoValidator(logger, configuration);
             _theIntroDbService = theIntroDbService;

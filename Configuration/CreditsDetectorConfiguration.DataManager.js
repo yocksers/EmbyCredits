@@ -78,8 +78,8 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#txtOcrConsecutiveMatchesForEarlyStop').value = config.OcrConsecutiveMatchesForEarlyStop || 3;
             view.querySelector('#txtOcrMinimumConfidence').value = config.OcrMinimumConfidence || 0;
 
-            view.querySelector('#chkPaddleOcrEnableConcurrentFiles').checked = config.PaddleOcrEnableConcurrentFiles || false;
-            view.querySelector('#txtPaddleOcrConcurrentFiles').value = config.PaddleOcrConcurrentFiles !== undefined ? config.PaddleOcrConcurrentFiles : 2;
+            view.querySelector('#chkOcrEnableConcurrentFiles').checked = config.OcrEnableConcurrentFiles || false;
+            view.querySelector('#txtOcrConcurrentFiles').value = config.OcrConcurrentFiles !== undefined ? config.OcrConcurrentFiles : 2;
 
             view.querySelector('#chkOcrEnableCharacterDensityDetection').checked = config.OcrEnableCharacterDensityDetection !== false;
             view.querySelector('#txtOcrCharacterDensityThreshold').value = config.OcrCharacterDensityThreshold || 20;
@@ -120,7 +120,7 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkOcrEnableAdaptiveFrameRate').checked = config.OcrEnableAdaptiveFrameRate || false;
             view.querySelector('#txtOcrAdaptiveFrameRateMin').value = config.OcrAdaptiveFrameRateMin || 0.25;
 
-            view.querySelector('#chkOcrAdaptiveSamplingEnabled').checked = config.OcrAdaptiveSamplingEnabled !== false;
+            view.querySelector('#chkOcrAdaptiveSamplingEnabled').checked = config.OcrAdaptiveSamplingEnabled === true;
             view.querySelector('#txtOcrAdaptiveCoarseIntervalSeconds').value = config.OcrAdaptiveCoarseIntervalSeconds || 5;
             view.querySelector('#txtOcrAdaptiveRefinementRadiusSeconds').value = config.OcrAdaptiveRefinementRadiusSeconds || 10;
 
@@ -333,8 +333,8 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.OcrConsecutiveMatchesForEarlyStop = Number.parseInt(view.querySelector('#txtOcrConsecutiveMatchesForEarlyStop').value, 10) || 3;
         instance.config.OcrMinimumConfidence = Number.parseFloat(view.querySelector('#txtOcrMinimumConfidence').value) || 0;
 
-        instance.config.PaddleOcrEnableConcurrentFiles = view.querySelector('#chkPaddleOcrEnableConcurrentFiles').checked;
-        instance.config.PaddleOcrConcurrentFiles = Math.max(2, Number.parseInt(view.querySelector('#txtPaddleOcrConcurrentFiles').value, 10) || 2);
+        instance.config.OcrEnableConcurrentFiles = view.querySelector('#chkOcrEnableConcurrentFiles').checked;
+        instance.config.OcrConcurrentFiles = Math.max(1, Number.parseInt(view.querySelector('#txtOcrConcurrentFiles').value, 10) || 2);
 
         instance.config.OcrEnableCharacterDensityDetection = view.querySelector('#chkOcrEnableCharacterDensityDetection').checked;
         instance.config.OcrCharacterDensityThreshold = Number.parseInt(view.querySelector('#txtOcrCharacterDensityThreshold').value, 10) || 20;
@@ -537,6 +537,8 @@ define(['loading', 'toast'], function (loading, toast) {
         view.querySelector('#chkOcrEnableSmartFrameSkipping').checked = true;
         view.querySelector('#txtOcrConsecutiveMatchesForEarlyStop').value = 3;
         view.querySelector('#txtOcrMinimumConfidence').value = 0;
+        view.querySelector('#chkOcrEnableConcurrentFiles').checked = false;
+        view.querySelector('#txtOcrConcurrentFiles').value = 2;
         
         view.querySelector('#chkOcrEnableCharacterDensityDetection').checked = true;
         view.querySelector('#txtOcrCharacterDensityThreshold').value = 20;
@@ -574,7 +576,7 @@ define(['loading', 'toast'], function (loading, toast) {
         view.querySelector('#chkOcrEnableAdaptiveFrameRate').checked = false;
         view.querySelector('#txtOcrAdaptiveFrameRateMin').value = 0.25;
 
-        view.querySelector('#chkOcrAdaptiveSamplingEnabled').checked = true;
+        view.querySelector('#chkOcrAdaptiveSamplingEnabled').checked = false;
         view.querySelector('#txtOcrAdaptiveCoarseIntervalSeconds').value = 5;
         view.querySelector('#txtOcrAdaptiveRefinementRadiusSeconds').value = 10;
 
@@ -764,7 +766,7 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkOcrEnableAdaptiveFrameRate', false, true);
         setIfExists('#txtOcrAdaptiveFrameRateMin', 0.25);
 
-        setIfExists('#chkOcrAdaptiveSamplingEnabled', true, true);
+        setIfExists('#chkOcrAdaptiveSamplingEnabled', false, true);
         setIfExists('#txtOcrAdaptiveCoarseIntervalSeconds', 5);
         setIfExists('#txtOcrAdaptiveRefinementRadiusSeconds', 10);
 
@@ -874,7 +876,7 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkOcrEnableAdaptiveFrameRate', false, true);
         setIfExists('#txtOcrAdaptiveFrameRateMin', 0.25);
 
-        setIfExists('#chkOcrAdaptiveSamplingEnabled', true, true);
+        setIfExists('#chkOcrAdaptiveSamplingEnabled', false, true);
         setIfExists('#txtOcrAdaptiveCoarseIntervalSeconds', 5);
         setIfExists('#txtOcrAdaptiveRefinementRadiusSeconds', 10);
 
@@ -905,6 +907,156 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#txtOcrEpisodeComparisonMinimumEpisodes', 3);
 
         toast('Applied Best Speed preset - optimized for fast processing');
+    }
+
+    function applyMachinePresetValues(view, values) {
+        const setIfExists = (selector, value, isCheckbox = false) => {
+            const elem = view.querySelector(selector);
+            if (elem) {
+                if (isCheckbox) elem.checked = value;
+                else elem.value = value;
+            }
+        };
+
+        setIfExists('#chkPreventConcurrentPluginProcessing', values.preventConcurrentPluginProcessing, true);
+        setIfExists('#chkLowerThreadPriority', values.lowerThreadPriority, true);
+        setIfExists('#chkLowerProcessPriority', values.lowerProcessPriority, true);
+        setIfExists('#txtCpuUsageLimit', values.cpuUsageLimit);
+        setIfExists('#txtCpuThrottleDelayMs', values.cpuThrottleDelayMs);
+        setIfExists('#txtDelayBetweenEpisodesMs', values.delayBetweenEpisodesMs);
+        setIfExists('#txtOcrDelayBetweenFramesMs', values.ocrDelayBetweenFramesMs);
+
+        setIfExists('#chkChromaprintLowerProcessPriority', values.chromaprintLowerProcessPriority, true);
+        setIfExists('#txtChromaprintParallelSessions', values.chromaprintParallelSessions);
+        setIfExists('#txtChromaprintFfmpegThreads', values.chromaprintFfmpegThreads);
+        setIfExists('#txtChromaprintDelayBetweenOperationsMs', values.chromaprintDelayBetweenOperationsMs);
+
+        setIfExists('#txtBlackFrameParallelSessions', values.blackFrameParallelSessions);
+        setIfExists('#txtBlackFrameFfmpegThreads', values.blackFrameFfmpegThreads);
+
+        setIfExists('#txtOcrFfmpegThreads', values.ocrFfmpegThreads);
+        setIfExists('#txtOcrFfmpegFilterThreads', values.ocrFfmpegFilterThreads);
+
+        setIfExists('#chkOcrEnableParallelProcessing', values.ocrEnableParallelProcessing, true);
+        setIfExists('#txtOcrParallelBatchSize', values.ocrParallelBatchSize);
+        setIfExists('#txtOcrDelayBetweenBatchesMs', values.ocrDelayBetweenBatchesMs);
+
+        setIfExists('#chkOcrEnableConcurrentFiles', values.ocrEnableConcurrentFiles, true);
+        setIfExists('#txtOcrConcurrentFiles', values.ocrConcurrentFiles);
+
+        setIfExists('#chkOcrAdaptiveSamplingEnabled', values.ocrAdaptiveSamplingEnabled, true);
+    }
+
+    function applySmallMachinePreset(view) {
+        applyMachinePresetValues(view, {
+            preventConcurrentPluginProcessing: true,
+            lowerThreadPriority: true,
+            lowerProcessPriority: true,
+            cpuUsageLimit: 50,
+            cpuThrottleDelayMs: 250,
+            delayBetweenEpisodesMs: 4000,
+            ocrDelayBetweenFramesMs: 500,
+            chromaprintLowerProcessPriority: true,
+            chromaprintParallelSessions: 1,
+            chromaprintFfmpegThreads: 2,
+            chromaprintDelayBetweenOperationsMs: 750,
+            blackFrameParallelSessions: 1,
+            blackFrameFfmpegThreads: 2,
+            ocrFfmpegThreads: 2,
+            ocrFfmpegFilterThreads: 1,
+            ocrEnableParallelProcessing: false,
+            ocrParallelBatchSize: 2,
+            ocrDelayBetweenBatchesMs: 500,
+            ocrEnableConcurrentFiles: false,
+            ocrConcurrentFiles: 1,
+            ocrAdaptiveSamplingEnabled: false
+        });
+
+        toast('Applied Small Machine preset - minimized resource usage');
+    }
+
+    function applyNormalMachinePreset(view) {
+        applyMachinePresetValues(view, {
+            preventConcurrentPluginProcessing: true,
+            lowerThreadPriority: false,
+            lowerProcessPriority: false,
+            cpuUsageLimit: 100,
+            cpuThrottleDelayMs: 100,
+            delayBetweenEpisodesMs: 0,
+            ocrDelayBetweenFramesMs: 0,
+            chromaprintLowerProcessPriority: false,
+            chromaprintParallelSessions: 2,
+            chromaprintFfmpegThreads: 2,
+            chromaprintDelayBetweenOperationsMs: 0,
+            blackFrameParallelSessions: 1,
+            blackFrameFfmpegThreads: 2,
+            ocrFfmpegThreads: 2,
+            ocrFfmpegFilterThreads: 1,
+            ocrEnableParallelProcessing: true,
+            ocrParallelBatchSize: 4,
+            ocrDelayBetweenBatchesMs: 200,
+            ocrEnableConcurrentFiles: false,
+            ocrConcurrentFiles: 2,
+            ocrAdaptiveSamplingEnabled: false
+        });
+
+        toast('Applied Normal preset - balanced resource usage');
+    }
+
+    function applyHighEndMachinePreset(view) {
+        applyMachinePresetValues(view, {
+            preventConcurrentPluginProcessing: true,
+            lowerThreadPriority: false,
+            lowerProcessPriority: false,
+            cpuUsageLimit: 100,
+            cpuThrottleDelayMs: 100,
+            delayBetweenEpisodesMs: 0,
+            ocrDelayBetweenFramesMs: 0,
+            chromaprintLowerProcessPriority: false,
+            chromaprintParallelSessions: 4,
+            chromaprintFfmpegThreads: 0,
+            chromaprintDelayBetweenOperationsMs: 0,
+            blackFrameParallelSessions: 2,
+            blackFrameFfmpegThreads: 0,
+            ocrFfmpegThreads: 0,
+            ocrFfmpegFilterThreads: 0,
+            ocrEnableParallelProcessing: true,
+            ocrParallelBatchSize: 8,
+            ocrDelayBetweenBatchesMs: 50,
+            ocrEnableConcurrentFiles: true,
+            ocrConcurrentFiles: 4,
+            ocrAdaptiveSamplingEnabled: false
+        });
+
+        toast('Applied High End preset - high parallelism, low throttling');
+    }
+
+    function applyDedicatedMachinePreset(view) {
+        applyMachinePresetValues(view, {
+            preventConcurrentPluginProcessing: false,
+            lowerThreadPriority: false,
+            lowerProcessPriority: false,
+            cpuUsageLimit: 100,
+            cpuThrottleDelayMs: 0,
+            delayBetweenEpisodesMs: 0,
+            ocrDelayBetweenFramesMs: 0,
+            chromaprintLowerProcessPriority: false,
+            chromaprintParallelSessions: 8,
+            chromaprintFfmpegThreads: 0,
+            chromaprintDelayBetweenOperationsMs: 0,
+            blackFrameParallelSessions: 6,
+            blackFrameFfmpegThreads: 0,
+            ocrFfmpegThreads: 0,
+            ocrFfmpegFilterThreads: 0,
+            ocrEnableParallelProcessing: true,
+            ocrParallelBatchSize: 16,
+            ocrDelayBetweenBatchesMs: 0,
+            ocrEnableConcurrentFiles: true,
+            ocrConcurrentFiles: 8,
+            ocrAdaptiveSamplingEnabled: false
+        });
+
+        toast('Applied Dedicated Machine preset - maximum throughput, no throttling');
     }
 
     function resetAllExceptFolders(view) {
@@ -983,6 +1135,8 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkOcrEnableSmartFrameSkipping', true, true);
         setIfExists('#txtOcrConsecutiveMatchesForEarlyStop', 3);
         setIfExists('#txtOcrMinimumConfidence', 0);
+        setIfExists('#chkOcrEnableConcurrentFiles', false, true);
+        setIfExists('#txtOcrConcurrentFiles', 2);
 
         setIfExists('#chkOcrEnableCharacterDensityDetection', true, true);
         setIfExists('#txtOcrCharacterDensityThreshold', 20);
@@ -1020,7 +1174,7 @@ define(['loading', 'toast'], function (loading, toast) {
         setIfExists('#chkOcrEnableAdaptiveFrameRate', false, true);
         setIfExists('#txtOcrAdaptiveFrameRateMin', 0.25);
 
-        setIfExists('#chkOcrAdaptiveSamplingEnabled', true, true);
+        setIfExists('#chkOcrAdaptiveSamplingEnabled', false, true);
         setIfExists('#txtOcrAdaptiveCoarseIntervalSeconds', 5);
         setIfExists('#txtOcrAdaptiveRefinementRadiusSeconds', 10);
 
@@ -1114,6 +1268,10 @@ define(['loading', 'toast'], function (loading, toast) {
         setupUnitChangeListener: setupUnitChangeListener,
         applyQualityPreset: applyQualityPreset,
         applySpeedPreset: applySpeedPreset,
+        applySmallMachinePreset: applySmallMachinePreset,
+        applyNormalMachinePreset: applyNormalMachinePreset,
+        applyHighEndMachinePreset: applyHighEndMachinePreset,
+        applyDedicatedMachinePreset: applyDedicatedMachinePreset,
         resetAllExceptFolders: resetAllExceptFolders,
         saveDetectionSettings: saveDetectionSettings
     };

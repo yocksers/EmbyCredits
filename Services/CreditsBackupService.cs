@@ -481,6 +481,15 @@ namespace EmbyCredits.Services
                     StartPositionTicks = entry.CreditsStartTicks
                 };
 
+                if (ChapterMarkerService.IsAutoSkipExcluded(episode))
+                {
+                    chapters.Add(creditsChapter);
+                    chapters = chapters.OrderBy(c => c.StartPositionTicks).ToList();
+                    _itemRepository.SaveChapters(episode.InternalId, chapters);
+                    _logger.Info($"Restored credits marker for '{series.Name} S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2}' from backup (auto-skip excluded)");
+                    return true;
+                }
+
                 var markerTypeProp = creditsChapter.GetType().GetProperty("MarkerType");
                 if (markerTypeProp != null && markerTypeProp.CanWrite)
                 {
@@ -1005,7 +1014,16 @@ namespace EmbyCredits.Services
                         StartPositionTicks = entry.CreditsStartTicks
                     };
 
-                    if (SetMarkerType(creditsChapter, CreditsMarkerType.CreditsStart))
+                    if (ChapterMarkerService.IsAutoSkipExcluded(episode))
+                    {
+                        chapters.Add(creditsChapter);
+                        chapters = chapters.OrderBy(c => c.StartPositionTicks).ToList();
+                        _itemRepository.SaveChapters(episode.InternalId, chapters);
+                        imported++;
+                        if (progress != null) progress.SuccessfulItems++;
+                        _logger.Info($"Restored credits marker for: {episode.Series?.Name} - S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2} - {episode.Name} (auto-skip excluded)");
+                    }
+                    else if (SetMarkerType(creditsChapter, CreditsMarkerType.CreditsStart))
                     {
                         chapters.Add(creditsChapter);
                         chapters = chapters.OrderBy(c => c.StartPositionTicks).ToList();

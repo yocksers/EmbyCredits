@@ -15,7 +15,13 @@ namespace EmbyCredits.Services.DetectionMethods
     {
         private static readonly DetectionTimestampCache _cache = new DetectionTimestampCache();
         
-        private double _calculatedConfidence = 0.85;
+        // AsyncLocal-backed so concurrently-processed episodes sharing this same detection method instance don't overwrite each other's per-run confidence
+        private static readonly AsyncLocal<double?> _calculatedConfidenceState = new AsyncLocal<double?>();
+        private double _calculatedConfidence
+        {
+            get => _calculatedConfidenceState.Value ?? 0.85;
+            set => _calculatedConfidenceState.Value = value;
+        }
         
         public override string MethodName => "BlackFrame";
         public override double Confidence => _calculatedConfidence;

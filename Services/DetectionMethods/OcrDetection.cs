@@ -22,8 +22,14 @@ namespace EmbyCredits.Services.DetectionMethods
     public class OcrDetection : BaseDetectionMethod
     {
         public override string MethodName => "OCR Detection";
-        
-        private double _calculatedConfidence = 0.95;
+
+        // AsyncLocal-backed so concurrently-processed episodes sharing this same detection method instance don't overwrite each other's per-run state
+        private static readonly AsyncLocal<double?> _calculatedConfidenceState = new AsyncLocal<double?>();
+        private double _calculatedConfidence
+        {
+            get => _calculatedConfidenceState.Value ?? 0.95;
+            set => _calculatedConfidenceState.Value = value;
+        }
         public override double Confidence => _calculatedConfidence;
         
         private readonly bool _isForAnime;
@@ -34,13 +40,52 @@ namespace EmbyCredits.Services.DetectionMethods
                                           Configuration.DetectionMode == DetectionMode.HashWithOcrFallback ||
                                           (_isForAnime && Configuration.AnimeDetectionMethod == AnimeDetectionMethod.Ocr);
 
-        private List<double> _ocrTextConfidences = new List<double>();
-        private int _totalKeywordMatches = 0;
-        private int _totalFramesProcessed = 0;
+        private static readonly AsyncLocal<List<double>?> _ocrTextConfidencesState = new AsyncLocal<List<double>?>();
+        private List<double> _ocrTextConfidences
+        {
+            get
+            {
+                if (_ocrTextConfidencesState.Value == null)
+                    _ocrTextConfidencesState.Value = new List<double>();
+                return _ocrTextConfidencesState.Value;
+            }
+            set => _ocrTextConfidencesState.Value = value;
+        }
 
-        private int _lastProcessedFrameIndex = -1;
-        private DateTime _lastFrameProgressTime = DateTime.UtcNow;
-        private int _stuckRetryCount = 0;
+        private static readonly AsyncLocal<int> _totalKeywordMatchesState = new AsyncLocal<int>();
+        private int _totalKeywordMatches
+        {
+            get => _totalKeywordMatchesState.Value;
+            set => _totalKeywordMatchesState.Value = value;
+        }
+
+        private static readonly AsyncLocal<int> _totalFramesProcessedState = new AsyncLocal<int>();
+        private int _totalFramesProcessed
+        {
+            get => _totalFramesProcessedState.Value;
+            set => _totalFramesProcessedState.Value = value;
+        }
+
+        private static readonly AsyncLocal<int?> _lastProcessedFrameIndexState = new AsyncLocal<int?>();
+        private int _lastProcessedFrameIndex
+        {
+            get => _lastProcessedFrameIndexState.Value ?? -1;
+            set => _lastProcessedFrameIndexState.Value = value;
+        }
+
+        private static readonly AsyncLocal<DateTime?> _lastFrameProgressTimeState = new AsyncLocal<DateTime?>();
+        private DateTime _lastFrameProgressTime
+        {
+            get => _lastFrameProgressTimeState.Value ?? DateTime.UtcNow;
+            set => _lastFrameProgressTimeState.Value = value;
+        }
+
+        private static readonly AsyncLocal<int> _stuckRetryCountState = new AsyncLocal<int>();
+        private int _stuckRetryCount
+        {
+            get => _stuckRetryCountState.Value;
+            set => _stuckRetryCountState.Value = value;
+        }
         private const int StuckDetectionTimeoutSeconds = 20;
         private const int MaxStuckRetries = 1;
 
@@ -522,6 +567,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 {
                     process.Start();
                     Utilities.FFmpegHelper.RegisterProcess(process, $"OCR Memory: {System.IO.Path.GetFileName(videoPath)}");
+                    ActiveFfmpegProcessId = process.Id;
                     Utilities.CpuThrottler.SetProcessPriority(process, Configuration);
 
                     var timeoutMinutes = Configuration.OcrMaxAnalysisDuration > 0 
@@ -862,6 +908,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     finally
                     {
                         Utilities.FFmpegHelper.UnregisterProcess(process);
+                        ActiveFfmpegProcessId = null;
                     }
                 }
             }
@@ -972,6 +1019,15 @@ namespace EmbyCredits.Services.DetectionMethods
             LogInfo($"Adaptive sampling: coarse pass found {hitTimestamps.Count} signal(s) at [{string.Join(", ", hitTimestamps.Select(FormatTime))}]");
 
             var windows = BuildRefinementWindows(hitTimestamps, refinementRadius, startTime, searchEnd);
+            var totalWindowDuration = windows.Sum(w => w.end - w.start);
+
+            if (totalWindowDuration >= analysisDuration * 0.5)
+            {
+                LogInfo($"Adaptive sampling: coarse hits cover {totalWindowDuration:F0}s of {analysisDuration:F0}s (too widespread to refine efficiently, likely subtitles/on-screen text) - running a single full-rate scan instead");
+                UpdateProgress(20, "Adaptive: hits too widespread, full scan");
+                return await ProcessFramesDirectFromMemory(videoPath, duration, startTime, analysisDuration, fps, keywords, recentTextFrames, cancellationToken).ConfigureAwait(false);
+            }
+
             LogInfo($"Adaptive sampling phase 2: refining {windows.Count} window(s) at {fps} fps");
 
             double earliest = 0;
@@ -1013,6 +1069,8 @@ namespace EmbyCredits.Services.DetectionMethods
             CancellationToken cancellationToken)
         {
             var hitTimestamps = new List<double>();
+            var pendingBatch = new List<(byte[] data, double timestamp)>();
+            var coarseBatchSize = Configuration.OcrEnableParallelProcessing ? Math.Max(1, Configuration.OcrParallelBatchSize) : 1;
             var normalizedPath = FFmpegHelper.ResolveInputPath(videoPath);
             var preInputArgs = BuildPreInputArgs(videoPath);
             var threadArgs = BuildThreadArgs();
@@ -1049,6 +1107,7 @@ namespace EmbyCredits.Services.DetectionMethods
             {
                 process.Start();
                 Utilities.FFmpegHelper.RegisterProcess(process, $"OCR Coarse: {System.IO.Path.GetFileName(videoPath)}");
+                ActiveFfmpegProcessId = process.Id;
                 Utilities.CpuThrottler.SetProcessPriority(process, Configuration);
 
                 var timeoutMinutes = (analysisDuration / 60) + 5;
@@ -1097,11 +1156,7 @@ namespace EmbyCredits.Services.DetectionMethods
                                     {
                                         var fd = buffer.GetRange(s, e + _jpegEndMarker.Length - s).ToArray();
                                         var ts = startTime + (frameIndex / coarseFps);
-                                        if (await HasCreditSignal(fd, keywords, cancellationToken).ConfigureAwait(false))
-                                        {
-                                            hitTimestamps.Add(ts);
-                                            LogDebug($"Adaptive coarse hit at {FormatTime(ts)}");
-                                        }
+                                        pendingBatch.Add((fd, ts));
                                         frameIndex++;
                                     }
                                 }
@@ -1136,15 +1191,20 @@ namespace EmbyCredits.Services.DetectionMethods
                             if (frameData.Length >= 1024)
                             {
                                 var timestamp = startTime + (frameIndex / coarseFps);
-                                if (await HasCreditSignal(frameData, keywords, token).ConfigureAwait(false))
+                                pendingBatch.Add((frameData, timestamp));
+
+                                if (pendingBatch.Count >= coarseBatchSize)
                                 {
-                                    hitTimestamps.Add(timestamp);
-                                    LogDebug($"Adaptive coarse hit at {FormatTime(timestamp)}");
+                                    await FlushCoarseBatch(pendingBatch, keywords, hitTimestamps, token).ConfigureAwait(false);
+                                    if (Configuration.OcrDelayBetweenBatchesMs > 0)
+                                        await Task.Delay(Configuration.OcrDelayBetweenBatchesMs, token).ConfigureAwait(false);
                                 }
                             }
                             frameIndex++;
                         }
                     }
+
+                    await FlushCoarseBatch(pendingBatch, keywords, hitTimestamps, token).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -1171,9 +1231,38 @@ namespace EmbyCredits.Services.DetectionMethods
             finally
             {
                 Utilities.FFmpegHelper.UnregisterProcess(process);
+                ActiveFfmpegProcessId = null;
             }
 
             return hitTimestamps;
+        }
+
+        private async Task FlushCoarseBatch(
+            List<(byte[] data, double timestamp)> batch,
+            List<string> keywords,
+            List<double> hitTimestamps,
+            CancellationToken cancellationToken)
+        {
+            if (batch.Count == 0)
+                return;
+
+            var tasks = batch.Select(async item =>
+            {
+                var isHit = await HasCreditSignal(item.data, keywords, cancellationToken).ConfigureAwait(false);
+                return (item.timestamp, isHit);
+            }).ToList();
+
+            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+            batch.Clear();
+
+            foreach (var (timestamp, isHit) in results.OrderBy(r => r.timestamp))
+            {
+                if (isHit)
+                {
+                    hitTimestamps.Add(timestamp);
+                    LogDebug($"Adaptive coarse hit at {FormatTime(timestamp)}");
+                }
+            }
         }
 
         private async Task<bool> HasCreditSignal(byte[] frameData, List<string> keywords, CancellationToken cancellationToken)
@@ -1290,6 +1379,7 @@ namespace EmbyCredits.Services.DetectionMethods
                 {
                     process.Start();
                     Utilities.FFmpegHelper.RegisterProcess(process, $"OCR Disk: {System.IO.Path.GetFileName(videoPath)}");
+                    ActiveFfmpegProcessId = process.Id;
                     try
                     {
                     Utilities.CpuThrottler.SetProcessPriority(process, Configuration);
@@ -1900,6 +1990,7 @@ namespace EmbyCredits.Services.DetectionMethods
                     finally
                     {
                         Utilities.FFmpegHelper.UnregisterProcess(process);
+                        ActiveFfmpegProcessId = null;
                     }
                 }
             }

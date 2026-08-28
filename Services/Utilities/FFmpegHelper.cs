@@ -20,14 +20,26 @@ namespace EmbyCredits.Services.Utilities
         private static string? _customTempPath;
         private static IFfmpegManager? _ffmpegManager;
         private static IMediaEncoder? _mediaEncoder;
+        private static MediaBrowser.Model.Logging.ILogger? _logger;
         private static readonly ConcurrentDictionary<int, (Process process, DateTime startTime, string description)> _activeProcesses = new ConcurrentDictionary<int, (Process, DateTime, string)>();
         private static readonly ConcurrentDictionary<int, DateTime> _lastOutputTime = new ConcurrentDictionary<int, DateTime>();
+        private static readonly ConcurrentDictionary<int, int> _processProgress = new ConcurrentDictionary<int, int>();
         private static readonly object _cleanupLock = new object();
         private static Timer? _hungProcessCleanupTimer;
+
+        public static void SetLogger(MediaBrowser.Model.Logging.ILogger logger)
+        {
+            _logger = logger;
+        }
 
         public static void UpdateLastOutputTime(int pid)
         {
             _lastOutputTime[pid] = DateTime.UtcNow;
+        }
+
+        public static void UpdateProcessProgress(int pid, int percent)
+        {
+            _processProgress[pid] = Math.Max(0, Math.Min(100, percent));
         }
 
         public static void RegisterProcess(Process process, string description)
@@ -39,8 +51,9 @@ namespace EmbyCredits.Services.Utilities
                     _activeProcesses.TryAdd(process.Id, (process, DateTime.UtcNow, description));
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                _logger?.Debug($"Failed to register process '{description}': {ex.Message}");
             }
         }
 
@@ -52,10 +65,12 @@ namespace EmbyCredits.Services.Utilities
                 {
                     _activeProcesses.TryRemove(process.Id, out _);
                     _lastOutputTime.TryRemove(process.Id, out _);
+                    _processProgress.TryRemove(process.Id, out _);
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                _logger?.Debug($"Failed to unregister process: {ex.Message}");
             }
         }
 
@@ -87,14 +102,16 @@ namespace EmbyCredits.Services.Utilities
                                 process.Kill();
                                 killedCount++;
                             }
-                            catch
+                            catch (Exception ex)
                             {
+                                _logger?.Debug($"Failed to kill hung process '{description}': {ex.Message}");
                             }
                             toRemove.Add(kvp.Key);
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        _logger?.Debug($"Error checking active process during hung-process cleanup: {ex.Message}");
                         toRemove.Add(kvp.Key);
                     }
                 }
@@ -127,10 +144,12 @@ namespace EmbyCredits.Services.Utilities
                     {
                         secondsSinceLastOutput = (int)(now - lastOutput).TotalSeconds;
                     }
-                    result.Add(new { Description = description, AgeSeconds = (int)ageSeconds, PercentOfTimeout = Math.Round(percentOfTimeout, 1), SecondsSinceLastOutput = secondsSinceLastOutput });
+                    int? progressPercent = _processProgress.TryGetValue(kvp.Key, out var storedProgress) ? storedProgress : (int?)null;
+                    result.Add(new { Description = description, AgeSeconds = (int)ageSeconds, PercentOfTimeout = Math.Round(percentOfTimeout, 1), ProgressPercent = progressPercent, SecondsSinceLastOutput = secondsSinceLastOutput });
                 }
-                catch
+                catch (Exception ex)
                 {
+                    _logger?.Debug($"Error reading active process info: {ex.Message}");
                 }
             }
             return result;
@@ -302,15 +321,15 @@ namespace EmbyCredits.Services.Utilities
                             deletedCount++;
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-
+                        _logger?.Debug($"Failed to delete stale temp directory '{dir}': {ex.Message}");
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                _logger?.Debug($"Error cleaning up stale OCR temp directories: {ex.Message}");
             }
             return deletedCount;
         }

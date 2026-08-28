@@ -78,7 +78,7 @@ namespace EmbyCredits.Services
                 if (_configuration.EnableDetailedLogging)
                     _logger.Debug($"[TheIntroDB] Querying: {url}");
 
-                using var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+                using var response = await GetWithRetryAsync(url, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -105,6 +105,44 @@ namespace EmbyCredits.Services
                 _logger.Warn($"[TheIntroDB] Unexpected error for '{episode.SeriesName}': {ex.Message}");
                 return null;
             }
+        }
+
+        private async Task<HttpResponseMessage> GetWithRetryAsync(string url, CancellationToken cancellationToken)
+        {
+            const int maxAttempts = 3;
+            var delayMs = 500;
+
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+                    if (!IsTransientStatusCode(response.StatusCode) || attempt == maxAttempts)
+                        return response;
+
+                    response.Dispose();
+                }
+                catch (HttpRequestException) when (attempt < maxAttempts)
+                {
+                }
+                catch (TaskCanceledException) when (attempt < maxAttempts && !cancellationToken.IsCancellationRequested)
+                {
+                }
+
+                if (_configuration.EnableDetailedLogging)
+                    _logger.Debug($"[TheIntroDB] Retrying request (attempt {attempt + 1}/{maxAttempts}) after {delayMs}ms");
+
+                await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+                delayMs *= 2;
+            }
+
+            return await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static bool IsTransientStatusCode(System.Net.HttpStatusCode statusCode)
+        {
+            var code = (int)statusCode;
+            return code == 429 || (code >= 500 && code <= 599);
         }
 
         private double? ParseCreditsTimestamp(string json, string seriesName, int season, int episode)

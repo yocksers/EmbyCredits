@@ -79,15 +79,6 @@ namespace EmbyCredits.Services
             return _pending.Keys.ToList();
         }
 
-        public int GetCount() => _pending.Count;
-
-        public void Clear()
-        {
-            _pending.Clear();
-            ScheduleSave();
-        }
-
-
         private void Load()
         {
             try

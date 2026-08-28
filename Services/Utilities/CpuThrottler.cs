@@ -3,20 +3,23 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Model.Logging;
 
 namespace EmbyCredits.Services.Utilities
 {
     public class CpuThrottler
     {
         private readonly PluginConfiguration _configuration;
+        private readonly ILogger? _logger;
         private DateTime _lastWorkTime = DateTime.UtcNow;
         private TimeSpan _lastWorkDuration = TimeSpan.Zero;
         private static readonly bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
         private static readonly bool IsLinux = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
 
-        public CpuThrottler(PluginConfiguration configuration)
+        public CpuThrottler(PluginConfiguration configuration, ILogger? logger = null)
         {
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _logger = logger;
         }
 
         public void BeginWork()
@@ -34,6 +37,12 @@ namespace EmbyCredits.Services.Utilities
             var throttleDelayMs = CalculateThrottleDelay();
             if (throttleDelayMs > 0)
             {
+                if (_configuration.EnableDetailedLogging)
+                {
+                    var achievedRatio = _lastWorkDuration.TotalMilliseconds / (_lastWorkDuration.TotalMilliseconds + throttleDelayMs) * 100.0;
+                    _logger?.Debug($"[CpuThrottler] Work: {_lastWorkDuration.TotalMilliseconds:F0}ms, Delay: {throttleDelayMs}ms, Target: {_configuration.CpuUsageLimit}%, Achieved: {achievedRatio:F1}%");
+                }
+
                 try { await Task.Delay(throttleDelayMs, cancellationToken).ConfigureAwait(false); }
                 catch (OperationCanceledException) { }
             }

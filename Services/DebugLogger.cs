@@ -92,13 +92,6 @@ namespace EmbyCredits.Services
 
                 _debugLog.AppendLine("DETECTION METHODS");
                 _debugLog.AppendLine("-".PadRight(80, '-'));
-                _debugLog.AppendLine($"  Video Pattern Detection:          {(_configuration.EnableVideoPatternDetection ? $"Yes (Priority: {_configuration.VideoPatternPriority})" : "No")}");
-                _debugLog.AppendLine($"  Audio Pattern Detection:          {(_configuration.EnableAudioPatternDetection ? $"Yes (Priority: {_configuration.AudioPatternPriority})" : "No")}");
-                _debugLog.AppendLine($"  Black Screen Detection:           {(_configuration.EnableBlackScreenDetection ? $"Yes (Priority: {_configuration.BlackScreenPriority})" : "No")}");
-                _debugLog.AppendLine($"  Audio Silence Detection:          {(_configuration.EnableAudioSilenceDetection ? $"Yes (Priority: {_configuration.AudioSilencePriority})" : "No")}");
-                _debugLog.AppendLine($"  Text Detection:                   {(_configuration.EnableTextDetection ? $"Yes (Priority: {_configuration.TextDetectionPriority})" : "No")}");
-                _debugLog.AppendLine($"  Scene Change Detection:           {(_configuration.EnableSceneChangeDetection ? $"Yes (Priority: {_configuration.SceneChangePriority})" : "No")}");
-                _debugLog.AppendLine($"  Keyword Detection:                {(_configuration.EnableKeywordDetection ? $"Yes (Priority: {_configuration.KeywordDetectionPriority})" : "No")}");
                 _debugLog.AppendLine($"  Detection Mode:                   {_configuration.DetectionMode}");
                 _debugLog.AppendLine($"  Combined Heuristic:               {(_configuration.EnableCombinedHeuristic ? $"Yes (Priority: {_configuration.CombinedHeuristicPriority})" : "No")}");
                 _debugLog.AppendLine();
@@ -109,77 +102,6 @@ namespace EmbyCredits.Services
                 _debugLog.AppendLine($"  Use Correlation Scoring:          {_configuration.UseCorrelationScoring}");
                 _debugLog.AppendLine($"  Correlation Window (seconds):     {_configuration.CorrelationWindowSeconds}");
                 _debugLog.AppendLine();
-
-                if (_configuration.EnableVideoPatternDetection)
-                {
-                    _debugLog.AppendLine("VIDEO PATTERN SETTINGS");
-                    _debugLog.AppendLine("-".PadRight(80, '-'));
-                    _debugLog.AppendLine($"  Sensitivity:                      {_configuration.VideoPatternSensitivity}");
-                    _debugLog.AppendLine($"  Window Size:                      {_configuration.VideoPatternWindowSize}");
-                    _debugLog.AppendLine($"  Search Start:                     {_configuration.VideoPatternSearchStart:F2}");
-                    _debugLog.AppendLine();
-                }
-
-                if (_configuration.EnableAudioPatternDetection)
-                {
-                    _debugLog.AppendLine("AUDIO PATTERN SETTINGS");
-                    _debugLog.AppendLine("-".PadRight(80, '-'));
-                    _debugLog.AppendLine($"  Sensitivity:                      {_configuration.AudioPatternSensitivity}");
-                    _debugLog.AppendLine($"  Window Size:                      {_configuration.AudioPatternWindowSize}");
-                    _debugLog.AppendLine($"  Search Start:                     {_configuration.AudioPatternSearchStart:F2}");
-                    _debugLog.AppendLine();
-                }
-
-                if (_configuration.EnableBlackScreenDetection)
-                {
-                    _debugLog.AppendLine("BLACK SCREEN SETTINGS");
-                    _debugLog.AppendLine("-".PadRight(80, '-'));
-                    _debugLog.AppendLine($"  Threshold:                        {_configuration.BlackScreenThreshold}");
-                    _debugLog.AppendLine($"  Minimum Duration (seconds):       {_configuration.BlackScreenMinDuration}");
-                    _debugLog.AppendLine($"  Search Start:                     {_configuration.BlackScreenSearchStart:F2}");
-                    _debugLog.AppendLine();
-                }
-
-                if (_configuration.EnableAudioSilenceDetection)
-                {
-                    _debugLog.AppendLine("AUDIO SILENCE SETTINGS");
-                    _debugLog.AppendLine("-".PadRight(80, '-'));
-                    _debugLog.AppendLine($"  Threshold (dB):                   {_configuration.AudioSilenceThreshold}");
-                    _debugLog.AppendLine($"  Minimum Duration (seconds):       {_configuration.AudioSilenceMinDuration:F1}");
-                    _debugLog.AppendLine($"  Search Start:                     {_configuration.AudioSearchStartPosition:F2}");
-                    _debugLog.AppendLine();
-                }
-
-                if (_configuration.EnableTextDetection)
-                {
-                    _debugLog.AppendLine("TEXT DETECTION SETTINGS");
-                    _debugLog.AppendLine("-".PadRight(80, '-'));
-                    _debugLog.AppendLine($"  Threshold:                        {_configuration.TextDetectionThreshold}");
-                    _debugLog.AppendLine($"  Minimum Lines:                    {_configuration.TextDetectionMinLines}");
-                    _debugLog.AppendLine($"  Search Start:                     {_configuration.TextDetectionSearchStart:F2}");
-                    _debugLog.AppendLine();
-                }
-
-                if (_configuration.EnableSceneChangeDetection)
-                {
-                    _debugLog.AppendLine("SCENE CHANGE SETTINGS");
-                    _debugLog.AppendLine("-".PadRight(80, '-'));
-                    _debugLog.AppendLine($"  Threshold:                        {_configuration.SceneChangeThreshold}");
-                    _debugLog.AppendLine($"  Search Start:                     {_configuration.SceneChangeSearchStart:F2}");
-                    _debugLog.AppendLine($"  Min Deviation:                    {_configuration.SceneChangeMinDeviation:F2}");
-                    _debugLog.AppendLine();
-                }
-
-                if (_configuration.EnableKeywordDetection)
-                {
-                    _debugLog.AppendLine("KEYWORD DETECTION SETTINGS");
-                    _debugLog.AppendLine("-".PadRight(80, '-'));
-                    _debugLog.AppendLine($"  Search Start:                     {_configuration.KeywordDetectionSearchStart:F2}");
-                    _debugLog.AppendLine($"  Min Text Score:                   {_configuration.KeywordDetectionMinTextScore}");
-                    _debugLog.AppendLine($"  Region Height:                    {_configuration.KeywordDetectionRegionHeight}");
-                    _debugLog.AppendLine($"  Keywords:                         {(_configuration.KeywordDetectionKeywords?.Length > 50 ? _configuration.KeywordDetectionKeywords.Substring(0, 50) + "..." : _configuration.KeywordDetectionKeywords)}");
-                    _debugLog.AppendLine();
-                }
 
                 if (_configuration.DetectionMode == DetectionMode.OcrOnly || _configuration.DetectionMode == DetectionMode.OcrWithHashFallback)
                 {

@@ -133,13 +133,20 @@ namespace EmbyCredits.Services
                     StartPositionTicks = (long)(creditsStartSeconds * TimeSpan.TicksPerSecond)
                 };
 
-                var markerTypeSet = SetMarkerType(creditsMarker, MarkerType.CreditsStart);
-                _logger.Info($"MarkerType.CreditsStart set: {markerTypeSet}");
-
-                if (markerTypeSet)
+                if (IsAutoSkipExcluded(episode))
                 {
-                    var verifyType = GetMarkerType(creditsMarker);
-                    _logger.Info($"Verified MarkerType value: {verifyType}");
+                    _logger.Info($"Series is excluded from auto-skip; saving marker for {episode.Name} without CreditsStart MarkerType");
+                }
+                else
+                {
+                    var markerTypeSet = SetMarkerType(creditsMarker, MarkerType.CreditsStart);
+                    _logger.Info($"MarkerType.CreditsStart set: {markerTypeSet}");
+
+                    if (markerTypeSet)
+                    {
+                        var verifyType = GetMarkerType(creditsMarker);
+                        _logger.Info($"Verified MarkerType value: {verifyType}");
+                    }
                 }
 
                 int insertIndex = chapters.FindIndex(c => c.StartPositionTicks > creditsMarker.StartPositionTicks);
@@ -322,10 +329,17 @@ namespace EmbyCredits.Services
 
         private string FormatTime(double seconds) => ItemLookupHelper.FormatTime(seconds);
 
-        public string GetChapterMarkerType(ChapterInfo chapter)
+        public static bool IsAutoSkipExcluded(Episode episode)
         {
-            return GetMarkerType(chapter) ?? "Chapter";
-        }
+            var excludedIds = Plugin.Instance?.Configuration?.AutoSkipExcludedSeriesIds;
+            if (excludedIds == null || excludedIds.Length == 0)
+                return false;
 
+            var seriesId = episode.Series?.Id.ToString();
+            if (string.IsNullOrEmpty(seriesId))
+                return false;
+
+            return excludedIds.Any(id => string.Equals(id, seriesId, StringComparison.OrdinalIgnoreCase));
+        }
     }
 }

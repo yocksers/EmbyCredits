@@ -329,6 +329,7 @@ namespace EmbyCredits
             
             Services.Utilities.FFmpegHelper.Initialize(_ffmpegManager, _mediaEncoder);
             Services.Utilities.FFmpegHelper.SetCustomTempPath(Configuration.TempFolderPath);
+            Services.Utilities.FFmpegHelper.SetLogger(_logger);
 
             CreditsBackupService = new CreditsBackupService(_logger, _libraryManager, _itemRepository);
             ChapterMarkerService = new ChapterMarkerService(_logger, _itemRepository);

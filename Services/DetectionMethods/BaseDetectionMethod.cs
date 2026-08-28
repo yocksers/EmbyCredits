@@ -11,9 +11,29 @@ namespace EmbyCredits.Services.DetectionMethods
     {
         protected readonly ILogger Logger;
         protected readonly PluginConfiguration Configuration;
-        protected string LastError = string.Empty;
-        protected string DetectionReason = string.Empty;
+        private static readonly AsyncLocal<string?> _lastError = new AsyncLocal<string?>();
+        private static readonly AsyncLocal<string?> _detectionReason = new AsyncLocal<string?>();
+        private static readonly AsyncLocal<int?> _activeFfmpegProcessId = new AsyncLocal<int?>();
         private bool _disposed = false;
+
+        // AsyncLocal so concurrently-processed episodes sharing this same detection method instance don't overwrite each other's state
+        protected string LastError
+        {
+            get => _lastError.Value ?? string.Empty;
+            set => _lastError.Value = value;
+        }
+
+        protected string DetectionReason
+        {
+            get => _detectionReason.Value ?? string.Empty;
+            set => _detectionReason.Value = value;
+        }
+
+        protected int? ActiveFfmpegProcessId
+        {
+            get => _activeFfmpegProcessId.Value;
+            set => _activeFfmpegProcessId.Value = value;
+        }
 
         public abstract string MethodName { get; }
         public abstract double Confidence { get; }
@@ -72,6 +92,11 @@ namespace EmbyCredits.Services.DetectionMethods
             {
                 progressPercentage = Math.Max(0, Math.Min(100, progressPercentage));
                 Plugin.Progress.CurrentItemProgress = (int)progressPercentage;
+
+                if (ActiveFfmpegProcessId.HasValue)
+                {
+                    FFmpegHelper.UpdateProcessProgress(ActiveFfmpegProcessId.Value, (int)progressPercentage);
+                }
 
                 if (!string.IsNullOrEmpty(statusMessage))
                 {

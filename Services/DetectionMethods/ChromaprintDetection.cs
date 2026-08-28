@@ -16,10 +16,16 @@ namespace EmbyCredits.Services.DetectionMethods
     {
         public override string MethodName => "Chromaprint Audio Fingerprint Detection";
         
-        private double _calculatedConfidence = 0.90;
+        // AsyncLocal-backed so concurrently-processed episodes sharing this same detection method instance don't overwrite each other's per-run confidence
+        private static readonly AsyncLocal<double?> _calculatedConfidenceState = new AsyncLocal<double?>();
+        private double _calculatedConfidence
+        {
+            get => _calculatedConfidenceState.Value ?? 0.90;
+            set => _calculatedConfidenceState.Value = value;
+        }
         public override double Confidence => _calculatedConfidence;
         
-        private Dictionary<string, double> _batchConfidenceScores = new Dictionary<string, double>();
+        private ConcurrentDictionary<string, double> _batchConfidenceScores = new ConcurrentDictionary<string, double>();
         
         public override int Priority => Configuration.ChromaprintDetectionPriority;
         public override bool IsEnabled => Configuration.DetectionMode == DetectionMode.HashOnly || 

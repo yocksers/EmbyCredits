@@ -183,10 +183,6 @@ namespace EmbyCredits.Services
             var previousAutoDetectionState = _configuration?.EnableAutoDetection ?? false;
             _configuration = configuration;
             _logger?.Info("Credits Detection Service configuration updated");
-            LogInfo($"Text Detection Enabled: {configuration.EnableTextDetection}");
-            LogInfo($"Text Detection Threshold: {configuration.TextDetectionThreshold}");
-            LogInfo($"Text Detection MinLines: {configuration.TextDetectionMinLines}");
-            LogInfo($"Text Detection SearchStart: {configuration.TextDetectionSearchStart}");
 
             if (_logger != null && _appPaths != null)
             {
@@ -2134,23 +2130,21 @@ namespace EmbyCredits.Services
             var blackFrameParallelSessions = _configuration?.BlackFrameParallelSessions ?? 1;
             var shouldRunParallel = isAnime && blackFrameParallelSessions > 1 && seasonEpisodes.Count > 2;
 
-            var isPaddleOcr = effectiveConfig?.OcrEngine == OcrEngine.PaddleOCR;
-            var paddleConcurrentFiles = _configuration?.PaddleOcrConcurrentFiles ?? 2;
-            var shouldRunPaddleParallel = !isAnime &&
-                isPaddleOcr &&
-                (_configuration?.PaddleOcrEnableConcurrentFiles ?? false) &&
-                paddleConcurrentFiles > 1 &&
+            var ocrConcurrentFiles = _configuration?.OcrConcurrentFiles ?? 2;
+            var shouldRunOcrFilesParallel = !isAnime &&
+                (_configuration?.OcrEnableConcurrentFiles ?? false) &&
+                ocrConcurrentFiles > 1 &&
                 seasonEpisodes.Count > 1 &&
                 (effectiveConfig?.DetectionMode == DetectionMode.OcrOnly ||
                  effectiveConfig?.DetectionMode == DetectionMode.OcrWithHashFallback);
 
-            if (shouldRunPaddleParallel)
+            if (shouldRunOcrFilesParallel)
             {
                 const int seedCount = 1;
                 var seedEpisodes = seasonEpisodes.Take(seedCount).ToList();
                 var remainingEpisodes = seasonEpisodes.Skip(seedCount).ToList();
 
-                _logger?.Info($"[PaddleOCR] Concurrent file mode: processing {seedCount} seed episode sequentially, then {remainingEpisodes.Count} in parallel (max {paddleConcurrentFiles} concurrent)");
+                _logger?.Info($"[OCR:{effectiveConfig?.OcrEngine}] Concurrent file mode: processing {seedCount} seed episode sequentially, then {remainingEpisodes.Count} in parallel (max {ocrConcurrentFiles} concurrent)");
 
                 foreach (var episode in seedEpisodes)
                 {
@@ -2160,13 +2154,13 @@ namespace EmbyCredits.Services
 
                 if (!cancellationToken.IsCancellationRequested && !_cancellationRequested)
                 {
-                    using var paddleSemaphore = new SemaphoreSlim(paddleConcurrentFiles, paddleConcurrentFiles);
+                    using var ocrFilesSemaphore = new SemaphoreSlim(ocrConcurrentFiles, ocrConcurrentFiles);
                     var parallelTasks = remainingEpisodes.Select(async episode =>
                     {
                         if (cancellationToken.IsCancellationRequested || _cancellationRequested) return;
                         try
                         {
-                            await paddleSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                            await ocrFilesSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
                         }
                         catch (OperationCanceledException) { return; }
                         try
@@ -2175,7 +2169,7 @@ namespace EmbyCredits.Services
                         }
                         finally
                         {
-                            paddleSemaphore.Release();
+                            ocrFilesSemaphore.Release();
                         }
                     }).ToList();
                     await Task.WhenAll(parallelTasks).ConfigureAwait(false);

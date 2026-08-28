@@ -78,14 +78,14 @@ namespace EmbyCredits
 
         public bool OcrEnableAdaptiveFrameRate { get; set; } = false;
         public double OcrAdaptiveFrameRateMin { get; set; } = 0.25;
-        public bool OcrAdaptiveSamplingEnabled { get; set; } = true;
+        public bool OcrAdaptiveSamplingEnabled { get; set; } = false;
         public double OcrAdaptiveCoarseIntervalSeconds { get; set; } = 5.0;
         public double OcrAdaptiveRefinementRadiusSeconds { get; set; } = 10.0;
 
         public bool OcrEnableCreditStructureDetection { get; set; } = false;
         public int OcrMinimumStructureLines { get; set; } = 4;
 
-        public bool PaddleOcrEnableConcurrentFiles { get; set; } = false;
-        public int PaddleOcrConcurrentFiles { get; set; } = 2;
+        public bool OcrEnableConcurrentFiles { get; set; } = false;
+        public int OcrConcurrentFiles { get; set; } = 2;
     }
 }

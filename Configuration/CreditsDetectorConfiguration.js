@@ -68,6 +68,34 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 });
             }
 
+            const btnPresetSmallMachine = view.querySelector('#btnPresetSmallMachine');
+            if (btnPresetSmallMachine) {
+                btnPresetSmallMachine.addEventListener('click', () => {
+                    dataManager.applySmallMachinePreset(view);
+                });
+            }
+
+            const btnPresetNormalMachine = view.querySelector('#btnPresetNormalMachine');
+            if (btnPresetNormalMachine) {
+                btnPresetNormalMachine.addEventListener('click', () => {
+                    dataManager.applyNormalMachinePreset(view);
+                });
+            }
+
+            const btnPresetHighEndMachine = view.querySelector('#btnPresetHighEndMachine');
+            if (btnPresetHighEndMachine) {
+                btnPresetHighEndMachine.addEventListener('click', () => {
+                    dataManager.applyHighEndMachinePreset(view);
+                });
+            }
+
+            const btnPresetDedicatedMachine = view.querySelector('#btnPresetDedicatedMachine');
+            if (btnPresetDedicatedMachine) {
+                btnPresetDedicatedMachine.addEventListener('click', () => {
+                    dataManager.applyDedicatedMachinePreset(view);
+                });
+            }
+
             const btnProcessSeries = view.querySelector('#btnProcessSeries');
             if (btnProcessSeries) {
                 btnProcessSeries.addEventListener('click', () => {
