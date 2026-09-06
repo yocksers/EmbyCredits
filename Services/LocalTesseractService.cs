@@ -129,10 +129,10 @@ namespace EmbyCredits.Services
                 psi.ArgumentList.Add(psm.ToString());
 
                 using var process = new Process { StartInfo = psi };
-                FFmpegHelper.RegisterProcess(process, "LocalTesseract OCR");
                 try
                 {
                     process.Start();
+                    FFmpegHelper.RegisterProcess(process, "LocalTesseract OCR");
 
                     using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     cts.CancelAfter(TimeSpan.FromSeconds(30));

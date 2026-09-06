@@ -22,6 +22,8 @@ namespace EmbyCredits.Api
         public const string GetDebugLog = "/CreditsDetector/GetDebugLog";
         public const string ExportCreditsBackup = "/CreditsDetector/ExportCreditsBackup";
         public const string ImportCreditsBackup = "/CreditsDetector/ImportCreditsBackup";
+        public const string ClearZeroCreditsMarkers = "/CreditsDetector/ClearZeroCreditsMarkers";
+        public const string GetClearZeroCreditsProgress = "/CreditsDetector/GetClearZeroCreditsProgress";
         public const string ExportSeriesCredits = "/CreditsDetector/ExportSeriesCredits";
         public const string BulkExportToFolder = "/CreditsDetector/BulkExportToFolder";
         public const string ImportSeriesCredits = "/CreditsDetector/ImportSeriesCredits";

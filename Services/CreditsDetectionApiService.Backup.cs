@@ -147,6 +147,71 @@ namespace EmbyCredits.Services
             }
         }
 
+        public object Post(ClearZeroCreditsMarkersRequest request)
+        {
+            try
+            {
+                if (Plugin.ClearZeroCreditsProgress.IsRunning)
+                {
+                    return new { Success = false, Message = "A clear-markers scan is already running" };
+                }
+
+                if (Plugin.Instance?.Configuration?.EnableDetailedLogging == true)
+                {
+                    _logger?.Info("Clear invalid (0:00) credits markers requested");
+                }
+
+                var backupService = Plugin.CreditsBackupService;
+                if (backupService == null)
+                {
+                    return new { Success = false, Message = "Backup service not initialized" };
+                }
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await backupService.ClearZeroCreditsMarkers().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.ErrorException("Error clearing invalid credits markers", ex);
+                    }
+                });
+
+                return new { Success = true, Message = "Started" };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error starting clear invalid credits markers task", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
+        public object Get(GetClearZeroCreditsProgressRequest request)
+        {
+            try
+            {
+                var progress = Plugin.ClearZeroCreditsProgress;
+
+                return new
+                {
+                    Success = progress.FailedItems == 0,
+                    IsRunning = progress.IsRunning,
+                    TotalItems = progress.TotalItems,
+                    ProcessedItems = progress.ProcessedItems,
+                    ClearedCount = progress.SuccessfulItems,
+                    CurrentItem = progress.CurrentItem,
+                    PercentComplete = progress.PercentComplete
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.ErrorException("Error getting clear invalid credits markers progress", ex);
+                return new { Success = false, Message = ex.Message };
+            }
+        }
+
         public async Task<object> Post(BulkExportToFolderRequest request)
         {
             try

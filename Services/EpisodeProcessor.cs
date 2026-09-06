@@ -298,70 +298,19 @@ namespace EmbyCredits.Services
                     return (false, 0, "Detection disabled by rule", 0, string.Empty, string.Empty);
                 }
 
-                if (batchDetectedTime.HasValue && batchDetectedTime.Value > 0)
+                // Chromaprint can never succeed on a single episode, so for OcrWithHashFallback the
+                // precomputed season batch result is only used once OCR has been tried and failed.
+                bool ocrIsPrimary = effectiveConfig.DetectionMode == DetectionMode.OcrWithHashFallback;
+
+                if (batchDetectedTime.HasValue && batchDetectedTime.Value > 0 && !ocrIsPrimary)
                 {
-                    double creditsStart = batchDetectedTime.Value;
-                    var normalizedPath = Utilities.FFmpegHelper.NormalizeFilePath(episode.Path);
-                    var containerStartTime = await GetVideoContainerStartTime(normalizedPath).ConfigureAwait(false);
-                    if (containerStartTime > 0)
-                        _debugLogger.LogInfo($"Applying container start_time correction of {containerStartTime:F3}s to {episode.Name}");
-                    double finalTimestamp = creditsStart + containerStartTime + _configuration.TimestampOffsetSeconds;
-
-                    double duration = episode.RunTimeTicks.HasValue && episode.RunTimeTicks.Value > 0
-                        ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond
-                        : 0;
-
-                    if (finalTimestamp < 0)
-                    {
-                        _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) is negative for {episode.Name}");
-                        return (false, 0, $"Final timestamp with offset is negative: {finalTimestamp:F1}s", 0, string.Empty, string.Empty);
-                    }
-
-                    if (duration > 0 && finalTimestamp >= duration)
-                    {
-                        _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) exceeds video duration ({FormatTime(duration)}) for {episode.Name}");
-                        return (false, 0, $"Final timestamp with offset exceeds duration: {finalTimestamp:F1}s >= {duration:F1}s", 0, string.Empty, string.Empty);
-                    }
-
-                    if (!isDryRun)
-                    {
-                        if (_configuration.TimestampOffsetSeconds != 0)
-                        {
-                            _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(finalTimestamp)} (detected: {FormatTime(creditsStart)}, offset: {_configuration.TimestampOffsetSeconds:+0;-0}s)");
-                        }
-                        else
-                        {
-                            _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(finalTimestamp)}");
-                        }
-                        _chapterMarkerService.SaveCreditsMarker(episode, finalTimestamp);
-                        _debugLogger.LogInfo($"Successfully added chapter marker");
-                    }
-                    else
-                    {
-                        if (_configuration.TimestampOffsetSeconds != 0)
-                        {
-                            _debugLogger.LogInfo($"Dry run - would add chapter marker at {FormatTime(finalTimestamp)} (detected: {FormatTime(creditsStart)}, offset: {_configuration.TimestampOffsetSeconds:+0;-0}s)");
-                        }
-                        else
-                        {
-                            _debugLogger.LogInfo($"Dry run - would add chapter marker at {FormatTime(creditsStart)}");
-                        }
-                    }
-                    
-                    if (episode.ProviderIds != null && episode.ProviderIds.ContainsKey("EmbyCredits.Fail"))
-                    {
-                        episode.ProviderIds.Remove("EmbyCredits.Fail");
-                        _libraryManager?.UpdateItem(episode, episode.Parent, ItemUpdateType.MetadataEdit, null!);
-                    }
-
-                    // Get actual confidence from chromaprint batch processing
-                    double confidence = chromaprintMethod?.GetBatchConfidence(episode.Id.ToString()) ?? Plugin.Instance?.Configuration.ChromaprintMinConfidence ?? 0.85;
-                    return (true, creditsStart, string.Empty, confidence, "Chromaprint Audio Fingerprint Detection", "Batch comparison");
+                    return await SaveBatchChromaprintResult(episode, isDryRun, batchDetectedTime.Value, chromaprintMethod);
                 }
                 else
                 {
-                    // No batch result - fall back to regular detection methods (OCR, etc.)
-                    _debugLogger.LogDebug($"No batch result for {episode.Name}, trying other detection methods");
+                    _debugLogger.LogDebug(ocrIsPrimary
+                        ? $"Trying OCR first for {episode.Name} before falling back to the batch chromaprint result"
+                        : $"No batch result for {episode.Name}, trying other detection methods");
                     
                     var normalizedPath = Utilities.FFmpegHelper.NormalizeFilePath(episode.Path);
                     if (string.IsNullOrEmpty(normalizedPath))
@@ -481,6 +430,12 @@ namespace EmbyCredits.Services
                     }
                     else
                     {
+                        if (ocrIsPrimary && batchDetectedTime.HasValue && batchDetectedTime.Value > 0)
+                        {
+                            _debugLogger.LogInfo($"OCR failed for {episode.Name}, using precomputed Chromaprint batch result as Hash fallback");
+                            return await SaveBatchChromaprintResult(episode, isDryRun, batchDetectedTime.Value, chromaprintMethod);
+                        }
+
                         var durationStr = episode.RunTimeTicks.HasValue && episode.RunTimeTicks.Value > 0
                             ? $" ({FormatTime(episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond)})"
                             : string.Empty;
@@ -522,6 +477,70 @@ namespace EmbyCredits.Services
         public List<DetectionMethods.IDetectionMethod> GetDetectionMethods()
         {
             return _detectionCoordinator.GetAllDetectionMethods();
+        }
+
+        public async Task<(bool success, double creditsStart, string failureReason, double confidence, string methodName, string detectionReason)> SaveBatchChromaprintResult(
+            Episode episode,
+            bool isDryRun,
+            double batchCreditsStart,
+            DetectionMethods.ChromaprintDetection? chromaprintMethod)
+        {
+            double creditsStart = batchCreditsStart;
+            var normalizedPath = Utilities.FFmpegHelper.NormalizeFilePath(episode.Path);
+            var containerStartTime = await GetVideoContainerStartTime(normalizedPath).ConfigureAwait(false);
+            if (containerStartTime > 0)
+                _debugLogger.LogInfo($"Applying container start_time correction of {containerStartTime:F3}s to {episode.Name}");
+            double finalTimestamp = creditsStart + containerStartTime + _configuration.TimestampOffsetSeconds;
+
+            double duration = episode.RunTimeTicks.HasValue && episode.RunTimeTicks.Value > 0
+                ? episode.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond
+                : 0;
+
+            if (finalTimestamp < 0)
+            {
+                _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) is negative for {episode.Name}");
+                return (false, 0, $"Final timestamp with offset is negative: {finalTimestamp:F1}s", 0, string.Empty, string.Empty);
+            }
+
+            if (duration > 0 && finalTimestamp >= duration)
+            {
+                _debugLogger.LogWarn($"✗ Final timestamp with offset ({FormatTime(finalTimestamp)}) exceeds video duration ({FormatTime(duration)}) for {episode.Name}");
+                return (false, 0, $"Final timestamp with offset exceeds duration: {finalTimestamp:F1}s >= {duration:F1}s", 0, string.Empty, string.Empty);
+            }
+
+            if (!isDryRun)
+            {
+                if (_configuration.TimestampOffsetSeconds != 0)
+                {
+                    _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(finalTimestamp)} (detected: {FormatTime(creditsStart)}, offset: {_configuration.TimestampOffsetSeconds:+0;-0}s)");
+                }
+                else
+                {
+                    _debugLogger.LogInfo($"Adding chapter marker at {FormatTime(finalTimestamp)}");
+                }
+                _chapterMarkerService.SaveCreditsMarker(episode, finalTimestamp);
+                _debugLogger.LogInfo($"Successfully added chapter marker");
+            }
+            else
+            {
+                if (_configuration.TimestampOffsetSeconds != 0)
+                {
+                    _debugLogger.LogInfo($"Dry run - would add chapter marker at {FormatTime(finalTimestamp)} (detected: {FormatTime(creditsStart)}, offset: {_configuration.TimestampOffsetSeconds:+0;-0}s)");
+                }
+                else
+                {
+                    _debugLogger.LogInfo($"Dry run - would add chapter marker at {FormatTime(creditsStart)}");
+                }
+            }
+
+            if (episode.ProviderIds != null && episode.ProviderIds.ContainsKey("EmbyCredits.Fail"))
+            {
+                episode.ProviderIds.Remove("EmbyCredits.Fail");
+                _libraryManager?.UpdateItem(episode, episode.Parent, ItemUpdateType.MetadataEdit, null!);
+            }
+
+            double confidence = chromaprintMethod?.GetBatchConfidence(episode.Id.ToString()) ?? Plugin.Instance?.Configuration.ChromaprintMinConfidence ?? 0.85;
+            return (true, creditsStart, string.Empty, confidence, "Chromaprint Audio Fingerprint Detection", "Batch comparison");
         }
 
         private async Task<double> GetVideoContainerStartTime(string filePath)

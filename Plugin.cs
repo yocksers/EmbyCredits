@@ -33,6 +33,7 @@ namespace EmbyCredits
         public static CreditsDetectionProgress Progress { get; } = new CreditsDetectionProgress();
         public static CreditsDetectionProgress BackupExportProgress { get; } = new CreditsDetectionProgress();
         public static CreditsDetectionProgress BackupImportProgress { get; } = new CreditsDetectionProgress();
+        public static CreditsDetectionProgress ClearZeroCreditsProgress { get; } = new CreditsDetectionProgress();
         public static CreditsBackupService? CreditsBackupService { get; private set; }
         public static ChapterMarkerService? ChapterMarkerService { get; private set; }
         public static TracerService? TracerService { get; private set; }

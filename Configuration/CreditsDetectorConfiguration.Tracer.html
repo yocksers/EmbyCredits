@@ -176,6 +176,12 @@
         <span style="font-size:0.82em;opacity:0.55;">Track newly added episodes that haven't had detection run yet</span>
     </div>
 
+    <div style="display:flex;align-items:center;gap:0.75em;margin-bottom:1em;flex-wrap:wrap;">
+        <label class="inputLabel inputLabelUnfocused" for="txtTracerMaxEntries" style="margin:0;">Max Tracer Entries</label>
+        <input is="emby-input" type="number" id="txtTracerMaxEntries" data-config-key="TracerMaxEntries" style="width:6em;" min="1" />
+        <span style="font-size:0.82em;opacity:0.55;">Maximum pending/detected/failed entries kept before the oldest are trimmed</span>
+    </div>
+
     <div class="tracer-header">
         <h2>Episodes Pending Detection</h2>
         <div class="tracer-header-actions">

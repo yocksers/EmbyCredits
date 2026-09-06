@@ -107,6 +107,7 @@ namespace EmbyCredits
         public bool UseEmbeddedChapterMarkersScheduled { get; set; } = false;
         public bool UseEmbeddedChapterMarkersManual { get; set; } = false;
         public bool EnableTracerMode { get; set; } = false;
+        public int TracerMaxEntries { get; set; } = 500;
         public bool OnlyProcessNewEpisodes { get; set; } = false;
 
         public bool EnableThumbnailGeneration { get; set; } = false;

@@ -24,6 +24,11 @@ define(['loading', 'toast'], function (loading, toast) {
         var pluginId = 'b1a65a73-a620-432a-9f5b-285038031c26';
         ApiClient.getPluginConfiguration(pluginId).then(function (cfg) {
             cfg.EnableTracerMode = q('chkEnableTracerMode').checked;
+            var maxEntriesInput = q('txtTracerMaxEntries');
+            if (maxEntriesInput) {
+                var parsed = Number.parseInt(maxEntriesInput.value, 10);
+                cfg.TracerMaxEntries = (Number.isNaN(parsed) || parsed < 1) ? 500 : parsed;
+            }
             ApiClient.updatePluginConfiguration(pluginId, cfg).then(function () {
                 refresh();
             }).catch(function () {
@@ -371,6 +376,8 @@ define(['loading', 'toast'], function (loading, toast) {
         ApiClient.getPluginConfiguration(pluginId).then(function (cfg) {
             var chk = q('chkEnableTracerMode');
             if (chk) chk.checked = cfg.EnableTracerMode || false;
+            var maxEntriesInput = q('txtTracerMaxEntries');
+            if (maxEntriesInput) maxEntriesInput.value = (cfg.TracerMaxEntries !== null && cfg.TracerMaxEntries !== undefined) ? cfg.TracerMaxEntries : 500;
             refresh();
         }).catch(function () {
             refresh();

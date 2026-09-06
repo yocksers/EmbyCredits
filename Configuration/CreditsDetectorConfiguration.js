@@ -214,6 +214,13 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-check
                 });
             }
 
+            const btnClearZeroCreditsMarkers = view.querySelector('#btnClearZeroCreditsMarkers');
+            if (btnClearZeroCreditsMarkers) {
+                btnClearZeroCreditsMarkers.addEventListener('click', () => {
+                    backupManager.clearZeroCreditsMarkers(view);
+                });
+            }
+
             const tracerList = view.querySelector('#tracerEpisodeList');
             if (tracerList) {
                 tracerManager.init(view);

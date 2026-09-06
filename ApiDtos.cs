@@ -143,6 +143,14 @@ namespace EmbyCredits.Api
         public bool OverwriteExisting { get; set; }
     }
     [Authenticated(Roles = "Admin")]
+    [Route(ApiRoutes.ClearZeroCreditsMarkers, "POST", Summary = "Clears end credits markers saved at 0:00")]
+    public class ClearZeroCreditsMarkersRequest : IReturn<object>
+    {
+    }
+    [Authenticated(Roles = "Admin")]
+    [Route(ApiRoutes.GetClearZeroCreditsProgress, "GET", Summary = "Gets the current progress of the clear 0:00 credits markers task.")]
+    public class GetClearZeroCreditsProgressRequest : IReturn<object> { }
+    [Authenticated(Roles = "Admin")]
     [Route(ApiRoutes.ExportSeriesCredits, "GET", Summary = "Exports credits markers for a single TV series")]
     public class ExportSeriesCreditsRequest : IReturn<System.IO.Stream>
     {

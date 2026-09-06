@@ -315,6 +315,97 @@ define(['loading', 'toast'], function (loading, toast) {
         });
     }
     
+    function clearZeroCreditsMarkers(view) {
+        if (!confirm('Scan the entire library and remove end credits markers saved at 0:00?\n\nThis only affects credits markers with an invalid 0:00 timestamp — chapters, intro markers, and valid credits markers are not touched.')) {
+            return;
+        }
+
+        const button = view.querySelector('#btnClearZeroCreditsMarkers');
+        const originalLabel = button ? button.querySelector('span').textContent : '';
+        if (button) button.disabled = true;
+
+        const startUrl = ApiClient.getUrl('CreditsDetector/ClearZeroCreditsMarkers');
+
+        fetch(startUrl, {
+            method: 'POST',
+            headers: {
+                'X-Emby-Token': ApiClient.accessToken(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(result => {
+            if (!result.Success) {
+                if (button) {
+                    button.disabled = false;
+                    button.querySelector('span').textContent = originalLabel;
+                }
+                toast({ type: 'error', text: 'Failed to start: ' + result.Message });
+                return;
+            }
+
+            pollClearZeroCreditsProgress(button, originalLabel);
+        })
+        .catch(error => {
+            if (button) {
+                button.disabled = false;
+                button.querySelector('span').textContent = originalLabel;
+            }
+            console.error('Error starting clear invalid credits markers:', error);
+            toast({ type: 'error', text: 'Failed to clear markers: ' + error.message });
+        });
+    }
+
+    function pollClearZeroCreditsProgress(button, originalLabel) {
+        const progressUrl = ApiClient.getUrl('CreditsDetector/GetClearZeroCreditsProgress');
+
+        const poll = () => {
+            fetch(progressUrl, {
+                headers: { 'X-Emby-Token': ApiClient.accessToken() }
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.json();
+            })
+            .then(progress => {
+                if (progress.IsRunning) {
+                    if (button) {
+                        button.querySelector('span').textContent = `Clearing... ${progress.ProcessedItems}/${progress.TotalItems}`;
+                    }
+                    setTimeout(poll, 1000);
+                    return;
+                }
+
+                if (button) {
+                    button.disabled = false;
+                    button.querySelector('span').textContent = originalLabel;
+                }
+
+                if (progress.Success) {
+                    toast({ type: 'success', text: `Cleared ${progress.ClearedCount} invalid credits marker(s)` });
+                } else {
+                    toast({ type: 'error', text: 'Failed to clear markers: ' + (progress.CurrentItem || 'Unknown error') });
+                }
+            })
+            .catch(error => {
+                if (button) {
+                    button.disabled = false;
+                    button.querySelector('span').textContent = originalLabel;
+                }
+                console.error('Error polling clear invalid credits markers progress:', error);
+                toast({ type: 'error', text: 'Lost progress updates: ' + error.message });
+            });
+        };
+
+        poll();
+    }
+
     return {
         exportBackup: exportBackup,
         importBackup: importBackup,
@@ -323,6 +414,7 @@ define(['loading', 'toast'], function (loading, toast) {
         loadBulkExportSeriesList: loadBulkExportSeriesList,
         selectAllSeries: selectAllSeries,
         deselectAllSeries: deselectAllSeries,
-        confirmBulkExport: confirmBulkExport
+        confirmBulkExport: confirmBulkExport,
+        clearZeroCreditsMarkers: clearZeroCreditsMarkers
     };
 });

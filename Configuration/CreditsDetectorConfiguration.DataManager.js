@@ -135,6 +135,7 @@ define(['loading', 'toast'], function (loading, toast) {
             view.querySelector('#chkUseEmbeddedChapterMarkersScheduled').checked = config.UseEmbeddedChapterMarkersScheduled || false;
             view.querySelector('#chkUseEmbeddedChapterMarkersManual').checked = config.UseEmbeddedChapterMarkersManual || false;
             view.querySelector('#chkEnableTracerMode').checked = config.EnableTracerMode || false;
+            view.querySelector('#txtTracerMaxEntries').value = config.TracerMaxEntries !== null && config.TracerMaxEntries !== undefined ? config.TracerMaxEntries : 500;
             view.querySelector('#chkOnlyProcessNewEpisodes').checked = config.OnlyProcessNewEpisodes || false;
             view.querySelector('#chkEnableAutoRestoreAfterScan').checked = config.EnableAutoRestoreAfterScan || false;
 
@@ -400,6 +401,8 @@ define(['loading', 'toast'], function (loading, toast) {
         instance.config.UseEmbeddedChapterMarkersScheduled = view.querySelector('#chkUseEmbeddedChapterMarkersScheduled').checked;
         instance.config.UseEmbeddedChapterMarkersManual = view.querySelector('#chkUseEmbeddedChapterMarkersManual').checked;
         instance.config.EnableTracerMode = view.querySelector('#chkEnableTracerMode').checked;
+        const tracerMaxEntries = Number.parseInt(view.querySelector('#txtTracerMaxEntries').value, 10);
+        instance.config.TracerMaxEntries = Number.isNaN(tracerMaxEntries) || tracerMaxEntries < 1 ? 500 : tracerMaxEntries;
         instance.config.OnlyProcessNewEpisodes = view.querySelector('#chkOnlyProcessNewEpisodes').checked;
         instance.config.EnableAutoRestoreAfterScan = view.querySelector('#chkEnableAutoRestoreAfterScan').checked;
 

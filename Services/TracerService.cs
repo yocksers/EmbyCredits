@@ -17,8 +17,18 @@ namespace EmbyCredits.Services
         private readonly string _stateFilePath;
         private readonly string _detectedFilePath;
         private readonly string _failedFilePath;
-        private const int MaxDetectedEntries = 100;
-        private const int MaxFailedEntries = 100;
+        private const int DefaultMaxEntries = 500;
+
+        private static int MaxEntries
+        {
+            get
+            {
+                var configured = Plugin.Instance?.Configuration?.TracerMaxEntries ?? DefaultMaxEntries;
+                return configured > 0 ? configured : DefaultMaxEntries;
+            }
+        }
+
+        private static bool IsEnabled => Plugin.Instance?.Configuration?.EnableTracerMode == true;
 
         private ConcurrentDictionary<string, TracerEntry> _pending =
             new ConcurrentDictionary<string, TracerEntry>(StringComparer.OrdinalIgnoreCase);
@@ -48,6 +58,8 @@ namespace EmbyCredits.Services
 
         public void TrackEpisode(Episode episode)
         {
+            if (!IsEnabled) return;
+
             try
             {
                 var id = episode.Id.ToString();
@@ -63,6 +75,19 @@ namespace EmbyCredits.Services
                 };
 
                 _pending[id] = entry;
+
+                var pendingOverflow = _pending.Count - MaxEntries;
+                if (pendingOverflow > 0)
+                {
+                    var oldestPending = _pending.Values
+                        .OrderBy(e => e.AddedUtc)
+                        .Take(pendingOverflow)
+                        .Select(e => e.EpisodeId)
+                        .ToList();
+                    foreach (var oldId in oldestPending)
+                        _pending.TryRemove(oldId, out _);
+                }
+
                 ScheduleSave();
                 _logger.Debug($"Tracer: tracking new episode '{entry.SeriesName} S{entry.SeasonNumber:D2}E{entry.EpisodeNumber:D2}'");
             }
@@ -74,6 +99,8 @@ namespace EmbyCredits.Services
 
         public void MarkDetected(string episodeId)
         {
+            if (!IsEnabled) return;
+
             try
             {
                 if (_pending.TryRemove(episodeId, out var entry))
@@ -81,8 +108,7 @@ namespace EmbyCredits.Services
                     entry.DetectedUtc = DateTime.UtcNow;
                     _detected[episodeId] = entry;
 
-                    // Trim detected list to MaxDetectedEntries
-                    var overflow = _detected.Count - MaxDetectedEntries;
+                    var overflow = _detected.Count - MaxEntries;
                     if (overflow > 0)
                     {
                         var oldest = _detected.Values
@@ -106,6 +132,8 @@ namespace EmbyCredits.Services
 
         public void MarkFailed(string episodeId, string reason, Episode? episode = null)
         {
+            if (!IsEnabled) return;
+
             try
             {
                 TracerEntry? entry;
@@ -127,7 +155,7 @@ namespace EmbyCredits.Services
                 entry.FailureReason = reason;
                 _failed[episodeId] = entry;
 
-                var overflow = _failed.Count - MaxFailedEntries;
+                var overflow = _failed.Count - MaxEntries;
                 if (overflow > 0)
                 {
                     var oldest = _failed.Values

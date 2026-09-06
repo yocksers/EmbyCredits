@@ -122,6 +122,28 @@ namespace EmbyCredits.Services
             return latest;
         }
 
+        private static string GetEntryKey(CreditsBackupEntry e) =>
+            !string.IsNullOrEmpty(e.TvdbEpisodeId) ? $"tvdb:{e.TvdbEpisodeId}" :
+            !string.IsNullOrEmpty(e.FilePath) ? $"path:{e.FilePath}" :
+            $"se:{e.SeasonNumber}:{e.EpisodeNumber}";
+
+        private static bool AreEntriesEquivalent(List<CreditsBackupEntry> existing, List<CreditsBackupEntry> current)
+        {
+            if (existing.Count != current.Count)
+                return false;
+
+            var existingByKey = existing.ToDictionary(GetEntryKey, e => e, StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in current)
+            {
+                if (!existingByKey.TryGetValue(GetEntryKey(entry), out var match))
+                    return false;
+                if (match.CreditsStartTicks != entry.CreditsStartTicks ||
+                    !string.Equals(match.FilePath, entry.FilePath, _pathComparison))
+                    return false;
+            }
+            return true;
+        }
+
         public async Task SaveSeriesBackupToFile(Series series, List<Episode> episodes, string backupFolder, int maxBackups)
         {
             try
@@ -466,6 +488,12 @@ namespace EmbyCredits.Services
                     return false;
                 }
 
+                if (entry.CreditsStartTicks <= 0)
+                {
+                    _logger.Debug($"Backed-up entry for '{episode.Name}' has no valid timestamp (detection previously failed) — skipping restore");
+                    return false;
+                }
+
                 if (!episode.RunTimeTicks.HasValue || entry.CreditsStartTicks >= episode.RunTimeTicks.Value)
                 {
                     _logger.Warn($"Backed-up timestamp for '{episode.Name}' exceeds episode duration — skipping restore");
@@ -700,22 +728,44 @@ namespace EmbyCredits.Services
                     foreach (var seriesGroup in bySeriesName)
                     {
                         var seriesEntries = seriesGroup.ToList();
-                        var seriesBackup = new CreditsBackup
+
+                        var seriesLock = AcquireFileLock(seriesGroup.Key);
+                        await seriesLock.Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                        try
                         {
-                            Version = "1.0",
-                            BackupDate = DateTime.UtcNow,
-                            TotalEpisodes = seriesEntries.Count,
-                            EpisodesWithCredits = seriesEntries.Count,
-                            Entries = seriesEntries
-                        };
+                            var existingFile = FindLatestSeriesBackupFile(seriesGroup.Key, backupFolder);
+                            if (existingFile != null)
+                            {
+                                var existingBackup = ReadBackupCached(existingFile);
+                                if (existingBackup?.Entries != null && AreEntriesEquivalent(existingBackup.Entries, seriesEntries))
+                                {
+                                    _logger.Debug($"Skipped backup for '{seriesGroup.Key}' — unchanged since {Path.GetFileName(existingFile)}");
+                                    continue;
+                                }
+                            }
 
-                        var seriesJson = JsonSerializer.Serialize(seriesBackup, _jsonOptions);
-                        var safeName = SanitizeFileName(seriesGroup.Key);
-                        var filePath = Path.Combine(backupFolder, $"{safeName}_{timestamp}.json");
-                        await File.WriteAllTextAsync(filePath, seriesJson, cancellationToken).ConfigureAwait(false);
-                        _logger.Debug($"Saved series backup: {filePath}");
+                            var seriesBackup = new CreditsBackup
+                            {
+                                Version = "1.0",
+                                BackupDate = DateTime.UtcNow,
+                                TotalEpisodes = seriesEntries.Count,
+                                EpisodesWithCredits = seriesEntries.Count,
+                                Entries = seriesEntries
+                            };
 
-                        RotateSeriesBackups(backupFolder, seriesGroup.Key, maxBackupsPerSeries);
+                            var seriesJson = JsonSerializer.Serialize(seriesBackup, _jsonOptions);
+                            var safeName = SanitizeFileName(seriesGroup.Key);
+                            var filePath = Path.Combine(backupFolder, $"{safeName}_{timestamp}.json");
+                            await File.WriteAllTextAsync(filePath, seriesJson, cancellationToken).ConfigureAwait(false);
+                            _logger.Debug($"Saved series backup: {filePath}");
+
+                            RotateSeriesBackups(backupFolder, seriesGroup.Key, maxBackupsPerSeries);
+                        }
+                        finally
+                        {
+                            seriesLock.Semaphore.Release();
+                            ReleaseFileLock(seriesGroup.Key, seriesLock);
+                        }
                     }
 
                     _logger.Info($"Saved {bySeriesName.Count} per-series backup files to: {backupFolder}");
@@ -1088,6 +1138,71 @@ namespace EmbyCredits.Services
             }
         }
 
+        public async Task<ClearZeroCreditsResult> ClearZeroCreditsMarkers()
+        {
+            var result = new ClearZeroCreditsResult { Success = true };
+            var progress = Plugin.ClearZeroCreditsProgress;
+
+            try
+            {
+                progress.Reset();
+                progress.IsRunning = true;
+                progress.StartTime = DateTime.Now;
+
+                var allEpisodes = _libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    IncludeItemTypes = new[] { typeof(Episode).Name },
+                    Recursive = true
+                }).Cast<Episode>().ToList();
+
+                progress.TotalItems = allEpisodes.Count;
+
+                int processed = 0;
+                foreach (var episode in allEpisodes)
+                {
+                    var chapters = _itemRepository.GetChapters(episode)?.ToList();
+                    if (chapters != null && chapters.Count > 0)
+                    {
+                        var removedCount = chapters.RemoveAll(c => GetMarkerType(c) == "CreditsStart" && c.StartPositionTicks <= 0);
+                        if (removedCount > 0)
+                        {
+                            _itemRepository.SaveChapters(episode.InternalId, chapters);
+                            result.ClearedCount++;
+                            _logger.Info($"Cleared invalid (0:00) credits marker for '{episode.Series?.Name} S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2} - {episode.Name}'");
+                        }
+                    }
+
+                    processed++;
+                    progress.ProcessedItems = processed;
+                    progress.CurrentItem = $"{episode.Series?.Name} - S{episode.ParentIndexNumber:D2}E{episode.IndexNumber:D2}";
+
+                    if (processed % 200 == 0)
+                    {
+                        await Task.Yield();
+                    }
+                }
+
+                result.Message = $"Cleared {result.ClearedCount} invalid (0:00) credits marker(s)";
+                progress.SuccessfulItems = result.ClearedCount;
+                _logger.Info(result.Message);
+            }
+            catch (Exception ex)
+            {
+                result.Success = false;
+                result.Message = $"Failed to clear invalid credits markers: {ex.Message}";
+                progress.FailedItems = 1;
+                _logger.ErrorException("Error clearing invalid credits markers", ex);
+            }
+            finally
+            {
+                progress.IsRunning = false;
+                progress.EndTime = DateTime.Now;
+                progress.CurrentItem = result.Success ? "Complete" : $"Failed: {result.Message}";
+            }
+
+            return result;
+        }
+
         private string? GetMarkerType(ChapterInfo chapter)
         {
             try
@@ -1177,6 +1292,13 @@ namespace EmbyCredits.Services
         public int ItemsImported { get; set; }
         public int ItemsSkipped { get; set; }
         public int ItemsNotFound { get; set; }
+    }
+
+    public class ClearZeroCreditsResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public int ClearedCount { get; set; }
     }
 
     public enum CreditsMarkerType
