@@ -12,7 +12,7 @@ namespace EmbyCredits.Services
 {
     public class TheIntroDbService : IDisposable
     {
-        private const string ApiBase = "https://api.theintrodb.org/v3/media";
+        private const string ApiBase = "https://api.theintrodb.org/v4/media";
 
         private readonly ILogger _logger;
         private readonly PluginConfiguration _configuration;
@@ -44,11 +44,11 @@ namespace EmbyCredits.Services
                 if (!seasonNumber.HasValue || !episodeNumber.HasValue)
                     return null;
 
-                string? tmdbId = GetProviderId(series.ProviderIds, "Tmdb");
-                string? tvdbId = GetProviderId(series.ProviderIds, "Tvdb");
+                string? tvdbId = GetNumericProviderId(series.ProviderIds, "Tvdb");
+                string? tmdbId = GetNumericProviderId(series.ProviderIds, "Tmdb");
                 string? imdbId = GetProviderId(series.ProviderIds, "Imdb");
 
-                if (string.IsNullOrEmpty(tmdbId) && string.IsNullOrEmpty(tvdbId) && string.IsNullOrEmpty(imdbId))
+                if (string.IsNullOrEmpty(tvdbId) && string.IsNullOrEmpty(tmdbId) && string.IsNullOrEmpty(imdbId))
                 {
                     if (_configuration.EnableDetailedLogging)
                         _logger.Debug($"[TheIntroDB] No provider IDs found for series '{series.Name}', skipping lookup");
@@ -61,10 +61,19 @@ namespace EmbyCredits.Services
 
                 var query = HttpUtility.ParseQueryString(string.Empty);
 
-                if (!string.IsNullOrEmpty(tmdbId))
-                    query["tmdb_id"] = tmdbId;
-                else if (!string.IsNullOrEmpty(tvdbId))
+                // TVDB is the v4 identity; tmdb_id/imdb_id are resolved server-side and slower.
+                // Season/episode are read in the numbering of whichever ID is sent.
+                if (!string.IsNullOrEmpty(tvdbId))
+                {
                     query["tvdb_id"] = tvdbId;
+
+                    // mapping only names TVDB orders, so it only applies to tvdb_id lookups
+                    var mapping = GetTvdbMapping(series.DisplayOrder);
+                    if (mapping != null)
+                        query["mapping"] = mapping;
+                }
+                else if (!string.IsNullOrEmpty(tmdbId))
+                    query["tmdb_id"] = tmdbId;
                 else
                     query["imdb_id"] = imdbId;
 
@@ -192,6 +201,30 @@ namespace EmbyCredits.Services
 
         private static string? GetProviderId(MediaBrowser.Model.Entities.ProviderIdDictionary? ids, string provider) =>
             ids?.TryGetValue(provider, out var val) == true ? val : null;
+
+        // v4 rejects non-integer tvdb_id/tmdb_id with 422, so skip malformed IDs and try the next provider
+        private static string? GetNumericProviderId(MediaBrowser.Model.Entities.ProviderIdDictionary? ids, string provider)
+        {
+            var val = GetProviderId(ids, provider)?.Trim();
+            return long.TryParse(val, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id) && id > 0
+                ? val
+                : null;
+        }
+
+        // Aired order is TVDB's default, so no mapping is sent for it; unknown values are omitted
+        // because v4 rejects an unknown mapping with 400.
+        private static string? GetTvdbMapping(MediaBrowser.Model.Entities.SeriesDisplayOrder displayOrder)
+        {
+            switch (displayOrder)
+            {
+                case MediaBrowser.Model.Entities.SeriesDisplayOrder.Dvd:
+                    return "dvd";
+                case MediaBrowser.Model.Entities.SeriesDisplayOrder.Absolute:
+                    return "absolute";
+                default:
+                    return null;
+            }
+        }
 
         public void Dispose()
         {

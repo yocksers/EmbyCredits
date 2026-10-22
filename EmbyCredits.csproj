@@ -9,8 +9,8 @@
 		<Nullable>enable</Nullable>
 
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-	<AssemblyVersion>2.9.2.1</AssemblyVersion>
-	<FileVersion>2.9.2.1</FileVersion>
+	<AssemblyVersion>2.9.2.2</AssemblyVersion>
+	<FileVersion>2.9.2.2</FileVersion>
 		<RootNamespace>EmbyCredits</RootNamespace>
 		<DefaultItemExcludes>$(DefaultItemExcludes);meta\**;credit\**;test\**;introskipper\**</DefaultItemExcludes>
 		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
